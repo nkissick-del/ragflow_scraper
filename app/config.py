@@ -17,6 +17,21 @@ DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
 CONFIG_DIR = Path(os.getenv("CONFIG_DIR", BASE_DIR / "config"))
 
 
+def _parse_proxy_count(raw: str) -> int:
+    """Validate TRUST_PROXY_COUNT as a bounded non-negative integer."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid Config.TRUST_PROXY_COUNT: must be an integer, got '{raw}'")
+
+    if value < 0 or value > 10:
+        raise ValueError(
+            f"Invalid Config.TRUST_PROXY_COUNT: must be between 0 and 10 inclusive, got '{value}'"
+        )
+
+    return value
+
+
 class Config:
     """Application configuration."""
 
@@ -75,7 +90,7 @@ class Config:
     LOG_TO_FILE = os.getenv("LOG_TO_FILE", "true").lower() == "true"
 
     # Proxy handling (for correct host/proto when behind reverse proxies)
-    TRUST_PROXY_COUNT = int(os.getenv("TRUST_PROXY_COUNT", 0))
+    TRUST_PROXY_COUNT = _parse_proxy_count(os.getenv("TRUST_PROXY_COUNT", "0"))
 
     @classmethod
     def ensure_directories(cls):
