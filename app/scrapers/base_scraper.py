@@ -19,6 +19,14 @@ from selenium.webdriver.chrome.options import Options
 
 from app.config import Config
 from app.utils import get_logger, sanitize_filename, ensure_dir, get_file_hash
+from app.utils.errors import (
+    ScraperError,
+    NetworkError,
+    ParsingError,
+    DownloadError,
+    ConfigurationError,
+)
+from app.utils.retry import retry_on_error
 from app.services.state_tracker import StateTracker
 from app.services.flaresolverr_client import FlareSolverrClient
 
@@ -144,7 +152,7 @@ class BaseScraper(ABC):
 
     # RAGFlow settings (can be overridden per scraper)
     default_chunk_method: str = "paper"  # PDF scrapers use "paper", article scrapers use "naive"
-    default_parser: str = "DeepDOC"  # Document parser: DeepDOC, Naive, MinerU, Docling
+    default_parser: str = "Docling"  # Document parser: DeepDOC, Naive, MinerU, Docling
 
     # Feed/API scraper mode - skip Selenium, use HTTP session instead
     skip_webdriver: bool = False  # Set True for feed/API scrapers
@@ -610,6 +618,27 @@ class BaseScraper(ABC):
                 self.logger.warning(f"Error closing driver: {e}")
             self.driver = None
 
+    @retry_on_error(exceptions=(NetworkError,), max_attempts=None)
+    def _request_with_retry(
+        self,
+        session: requests.Session,
+        method: str,
+        url: str,
+        **kwargs,
+    ) -> requests.Response:
+        """Perform an HTTP request with standardized retry semantics."""
+        timeout = kwargs.pop("timeout", Config.REQUEST_TIMEOUT)
+        try:
+            response = session.request(method=method, url=url, timeout=timeout, **kwargs)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            raise NetworkError(
+                f"{method.upper()} request failed for {url}",
+                scraper=self.name,
+                context={"url": url},
+            ) from exc
+
     def _is_processed(self, url: str) -> bool:
         """Check if a URL has already been processed."""
         if self.force_redownload:
@@ -708,7 +737,8 @@ class BaseScraper(ABC):
         safe_filename = sanitize_filename(filename)
         download_path = ensure_dir(Config.DOWNLOAD_DIR / self.name) / safe_filename
 
-        for attempt in range(self.retry_attempts):
+        @retry_on_error(exceptions=(NetworkError, DownloadError), max_attempts=None)
+        def _attempt_download() -> Path:
             try:
                 self.logger.info(f"Downloading: {url}")
                 response = requests.get(
@@ -718,29 +748,39 @@ class BaseScraper(ABC):
                     headers={"User-Agent": "Mozilla/5.0 PDF Scraper"},
                 )
                 response.raise_for_status()
+            except requests.RequestException as exc:
+                raise NetworkError(
+                    f"Failed to fetch {url}",
+                    scraper=self.name,
+                    context={"url": url},
+                ) from exc
 
+            try:
                 with open(download_path, "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
+            except Exception as exc:
+                raise DownloadError(
+                    f"Failed to write file for {url}",
+                    scraper=self.name,
+                    recoverable=False,
+                    context={"url": url, "path": str(download_path)},
+                ) from exc
 
-                self.logger.info(f"Downloaded: {download_path}")
+            self.logger.info(f"Downloaded: {download_path}")
 
-                # Save metadata sidecar
-                if metadata:
-                    metadata.local_path = str(download_path)
-                    self._save_metadata(metadata)
+            if metadata:
+                metadata.local_path = str(download_path)
+                self._save_metadata(metadata)
 
-                return download_path
+            return download_path
 
-            except Exception as e:
-                self.logger.warning(
-                    f"Download attempt {attempt + 1}/{self.retry_attempts} failed: {e}"
-                )
-                if attempt < self.retry_attempts - 1:
-                    time.sleep(2**attempt)  # Exponential backoff
-
-        self._errors.append(f"Failed to download {url} after {self.retry_attempts} attempts")
-        return None
+        try:
+            return _attempt_download()
+        except ScraperError as exc:
+            self.logger.warning(str(exc))
+            self._errors.append(str(exc))
+            return None
 
     def _save_metadata(self, metadata: DocumentMetadata):
         """Save metadata as a JSON sidecar file."""
@@ -875,6 +915,13 @@ class BaseScraper(ABC):
                 self.driver = self._init_driver()
 
             result = self.scrape()
+        except ScraperError as exc:
+            self.logger.error(f"Scraper failed: {exc}", exc_info=True)
+            result = ScraperResult(
+                status="failed",
+                scraper=self.name,
+                errors=[str(exc)],
+            )
         except Exception as e:
             self.logger.error(f"Scraper failed: {e}")
             result = ScraperResult(

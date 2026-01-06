@@ -18,6 +18,7 @@ from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 
 from app.scrapers.base_scraper import BaseScraper, DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
+from app.utils.errors import NetworkError
 
 
 class AEMCScraper(BaseScraper):
@@ -99,8 +100,7 @@ class AEMCScraper(BaseScraper):
 
             # Step 1: Fetch main page
             self.logger.info(f"Fetching main page: {self.base_url}")
-            response = session.get(self.base_url, timeout=30)
-            response.raise_for_status()
+            response = self._request_with_retry(session, "get", self.base_url, timeout=30)
 
             # Step 2: Parse review entries from table
             reviews = self._parse_reviews_table(response.text)
@@ -187,6 +187,10 @@ class AEMCScraper(BaseScraper):
 
                 self._polite_delay()
 
+        except NetworkError as e:
+            self.logger.error(f"Scraper failed: {e}")
+            result.errors.append(str(e))
+            result.status = "failed"
         except Exception as e:
             self.logger.error(f"Scraper failed: {e}")
             result.errors.append(str(e))
@@ -310,8 +314,7 @@ class AEMCScraper(BaseScraper):
         pdfs = []
 
         try:
-            response = session.get(review_url, timeout=30)
-            response.raise_for_status()
+            response = self._request_with_retry(session, "get", review_url, timeout=30)
 
             soup = BeautifulSoup(response.text, "lxml")
 

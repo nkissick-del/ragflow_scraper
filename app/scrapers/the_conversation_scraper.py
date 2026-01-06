@@ -23,6 +23,8 @@ from app.scrapers.base_scraper import (
     ScraperResult,
 )
 from app.utils import sanitize_filename, ArticleConverter
+from app.utils.errors import NetworkError, ParsingError
+from app.utils.retry import retry_on_error
 
 
 class TheConversationScraper(BaseScraper):
@@ -165,54 +167,24 @@ class TheConversationScraper(BaseScraper):
             return self.FEED_URL
         return f"{self.FEED_URL}?page={page}"
 
-    def _fetch_feed_page(self, url: str, max_retries: int = 3) -> list[Any]:
-        """
-        Fetch and parse a feed page.
-
-        Args:
-            url: Feed URL to fetch
-            max_retries: Maximum retry attempts
-
-        Returns:
-            List of feed entry objects from feedparser
-        """
+    @retry_on_error(exceptions=(NetworkError,), max_attempts=None)
+    def _fetch_feed_page(self, url: str) -> list[Any]:
+        """Fetch and parse a feed page with standardized retry."""
         if not self._session:
             raise RuntimeError("HTTP session not initialized")
 
-        for attempt in range(max_retries):
-            try:
-                self.logger.debug(f"Fetching feed: {url}")
+        response = self._request_with_retry(self._session, "get", url, timeout=30)
+        feed = feedparser.parse(response.content)
 
-                response = self._session.get(url, timeout=30)
+        if feed.bozo and not feed.entries:
+            raise ParsingError(
+                "Feed parse error",
+                scraper=self.name,
+                recoverable=False,
+                context={"url": url},
+            )
 
-                # Handle rate limiting
-                if response.status_code == 429:
-                    wait_time = 2 ** (attempt + 1)
-                    self.logger.warning(f"Rate limited, waiting {wait_time}s")
-                    time.sleep(wait_time)
-                    continue
-
-                response.raise_for_status()
-
-                # Parse feed
-                feed = feedparser.parse(response.content)
-
-                # Check for parse errors
-                if feed.bozo and not feed.entries:
-                    self.logger.warning(f"Feed parse error: {feed.bozo_exception}")
-                    return []
-
-                return feed.entries
-
-            except requests.RequestException as e:
-                if attempt < max_retries - 1:
-                    wait_time = 2 ** attempt
-                    self.logger.warning(f"Request failed, retry in {wait_time}s: {e}")
-                    time.sleep(wait_time)
-                else:
-                    raise
-
-        return []
+        return feed.entries
 
     def _process_feed_entry(self, entry: Any, result: ScraperResult) -> None:
         """

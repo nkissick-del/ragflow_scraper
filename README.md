@@ -101,6 +101,16 @@ class MyScraper(BaseScraper):
 
 See `.env.example` for all configuration options.
 
+## Running Tests
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+pytest tests/unit -v --cov=app
+```
+
+Integration tests are skipped by default; set `RUN_INTEGRATION_TESTS=1` to enable them. Integration runs may require network access and Selenium services.
+
 ## License
 
 MIT

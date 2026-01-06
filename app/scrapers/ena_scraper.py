@@ -22,6 +22,7 @@ from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 
 from app.scrapers.base_scraper import BaseScraper, DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
+from app.utils.errors import NetworkError
 
 
 # Resource sections to scrape - all follow the same page structure
@@ -193,7 +194,7 @@ class ENAScraper(BaseScraper):
 
                 # Step 1: Fetch first page
                 self.logger.info(f"Fetching first page: {section_url}")
-                response = session.get(section_url, timeout=30)
+                response = self._request_with_retry(session, "get", section_url, timeout=30)
                 response.raise_for_status()
 
                 # Step 2: Detect total pages
@@ -217,7 +218,7 @@ class ENAScraper(BaseScraper):
                         page_url = self._build_page_url(section_url, page_num)
                         self.logger.info(f"Fetching page {page_num}: {page_url}")
                         self._polite_delay()
-                        response = session.get(page_url, timeout=30)
+                        response = self._request_with_retry(session, "get", page_url, timeout=30)
                         response.raise_for_status()
 
                     # Parse articles from this page
@@ -391,7 +392,7 @@ class ENAScraper(BaseScraper):
 
         try:
             # First, do a HEAD request to check content type
-            head_response = session.head(article_url, timeout=10, allow_redirects=True)
+            head_response = self._request_with_retry(session, "head", article_url, timeout=10, allow_redirects=True)
             content_type = head_response.headers.get("Content-Type", "").lower()
 
             # If the article URL itself is a PDF, treat it as a direct download

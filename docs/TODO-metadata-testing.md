@@ -1,6 +1,8 @@
 # RAGFlow Metadata Integration - Testing Checklist
 
 **Status:** RAGFlow server currently down - execute this checklist when server is available
+**Testing coverage note:** Current automated tests do not cover full scraper scope; return for full-suite coverage when higher priority.
+**Latest unit snapshot (2026-01-06):** docker compose -f docker-compose.dev.yml exec scraper pytest tests/unit -m "not slow" -v --cov=app → 25 passed, coverage ~23%.
 
 **Implementation Date:** 2026-01-06
 

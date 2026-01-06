@@ -25,6 +25,8 @@ from app.scrapers.base_scraper import (
     ScraperResult,
 )
 from app.utils import sanitize_filename, ArticleConverter
+from app.utils.retry import retry_on_error
+from app.utils.errors import NetworkError, ParsingError
 
 
 class GuardianScraper(BaseScraper):
@@ -107,78 +109,38 @@ class GuardianScraper(BaseScraper):
         # Article converter for body HTML
         self._markdown = ArticleConverter()
 
+    @retry_on_error(exceptions=(NetworkError,), max_attempts=None)
     def _api_request(
         self,
         endpoint: str = "/search",
         params: Optional[dict[str, Any]] = None,
-        max_retries: int = 3,
     ) -> dict[str, Any]:
-        """
-        Make authenticated Guardian API request with retry logic.
-
-        Args:
-            endpoint: API endpoint (default: /search)
-            params: Query parameters
-            max_retries: Maximum retry attempts on failure
-
-        Returns:
-            Response JSON as dict
-
-        Raises:
-            requests.RequestException on failure after retries
-        """
+        """Make authenticated Guardian API request with standardized retry."""
         if not self._session:
             raise RuntimeError("HTTP session not initialized")
 
         url = f"{self.API_BASE_URL}{endpoint}"
-
-        # Add API key to all requests
         request_params: dict[str, Any] = {"api-key": self._api_key}
         if params:
             request_params.update(params)
 
-        for attempt in range(max_retries):
-            try:
-                self.logger.debug(f"API request: {endpoint} params={params}")
+        response = self._request_with_retry(
+            self._session,
+            "get",
+            url,
+            params=request_params,
+            timeout=30,
+        )
 
-                response = self._session.get(
-                    url,
-                    params=request_params,
-                    timeout=30,
-                )
-
-                # Handle rate limiting
-                if response.status_code == 429:
-                    wait_time = 2 ** (attempt + 1)
-                    self.logger.warning(
-                        f"Rate limited, waiting {wait_time}s (attempt {attempt + 1})"
-                    )
-                    time.sleep(wait_time)
-                    continue
-
-                # Handle authentication errors
-                if response.status_code in (401, 403):
-                    self.logger.error(
-                        f"API authentication failed: {response.status_code}"
-                    )
-                    raise requests.HTTPError(
-                        f"API key invalid or unauthorized: {response.status_code}"
-                    )
-
-                response.raise_for_status()
-                return response.json()
-
-            except requests.RequestException as e:
-                if attempt < max_retries - 1:
-                    wait_time = 2 ** attempt
-                    self.logger.warning(
-                        f"Request failed, retrying in {wait_time}s: {e}"
-                    )
-                    time.sleep(wait_time)
-                else:
-                    raise
-
-        return {}
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise ParsingError(
+                "Failed to parse Guardian API response",
+                scraper=self.name,
+                recoverable=False,
+                context={"url": url},
+            ) from exc
 
     def _build_search_params(
         self,
