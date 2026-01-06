@@ -1,6 +1,7 @@
 # Multi-stage Dockerfile for PDF Scraper
-# Stage 1: Dependencies
-FROM python:3.11-slim as builder
+
+# Stage 1: Base dependencies (production runtime deps only)
+FROM python:3.11-slim as base
 
 WORKDIR /app
 
@@ -9,13 +10,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
-COPY requirements.txt requirements-dev.txt ./
-RUN pip install --no-cache-dir --user -r requirements.txt \
-    && pip install --no-cache-dir --user -r requirements-dev.txt
+# Install production Python dependencies
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Stage 2: Runtime
-FROM python:3.11-slim
+# Stage 1b: Development/Test dependencies (not copied into prod image)
+FROM base as dev
+COPY requirements-dev.txt ./
+RUN pip install --no-cache-dir --user -r requirements-dev.txt
+
+# Stage 2: Runtime (production)
+FROM python:3.11-slim as runtime
 
 WORKDIR /app
 
@@ -29,8 +34,8 @@ RUN useradd --create-home --shell /bin/bash scraper
 RUN mkdir -p /app/data /app/config /app/logs && \
     chown -R scraper:scraper /app
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /home/scraper/.local
+# Copy Python packages from base (prod-only deps)
+COPY --from=base /root/.local /home/scraper/.local
 
 # Make sure scripts in .local are usable
 ENV PATH=/home/scraper/.local/bin:$PATH
@@ -57,3 +62,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Default command - run the web interface
 CMD ["python", "app/main.py"]
+
+# Stage 2b: Runtime with dev/test deps (opt-in for local dev/CI)
+FROM runtime as dev-runtime
+COPY --from=dev /root/.local /home/scraper/.local

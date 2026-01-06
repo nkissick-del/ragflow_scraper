@@ -29,8 +29,11 @@ def test_discover_registers_expected_scrapers():
 @pytest.mark.usefixtures("reset_registry")
 def test_get_scraper_returns_instance():
     ScraperRegistry.discover()
-    scraper_name = ScraperRegistry.get_scraper_names()[0]
+    scraper_names = ScraperRegistry.get_scraper_names()
 
+    assert scraper_names, "No scrapers discovered - registry is empty"
+
+    scraper_name = scraper_names[0]
     scraper = ScraperRegistry.get_scraper(scraper_name, dry_run=True, max_pages=1)
 
     assert scraper is not None
