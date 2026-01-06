@@ -109,7 +109,7 @@ class GuardianScraper(BaseScraper):
         # Article converter for body HTML
         self._markdown = ArticleConverter()
 
-    @retry_on_error(exceptions=(NetworkError,), max_attempts=None)
+    @retry_on_error(exceptions=(NetworkError,), max_attempts=5)
     def _api_request(
         self,
         endpoint: str = "/search",

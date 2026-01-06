@@ -618,7 +618,7 @@ class BaseScraper(ABC):
                 self.logger.warning(f"Error closing driver: {e}")
             self.driver = None
 
-    @retry_on_error(exceptions=(NetworkError,), max_attempts=None)
+    @retry_on_error(exceptions=(NetworkError,), max_attempts=3)
     def _request_with_retry(
         self,
         session: requests.Session,
@@ -638,7 +638,6 @@ class BaseScraper(ABC):
                 scraper=self.name,
                 context={"url": url},
             ) from exc
-
     def _is_processed(self, url: str) -> bool:
         """Check if a URL has already been processed."""
         if self.force_redownload:

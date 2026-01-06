@@ -35,7 +35,7 @@ RUN mkdir -p /app/data /app/config /app/logs && \
     chown -R scraper:scraper /app
 
 # Copy Python packages from base (prod-only deps)
-COPY --from=base /root/.local /home/scraper/.local
+COPY --chown=scraper:scraper --from=base /root/.local /home/scraper/.local
 
 # Make sure scripts in .local are usable
 ENV PATH=/home/scraper/.local/bin:$PATH
@@ -65,4 +65,4 @@ CMD ["python", "app/main.py"]
 
 # Stage 2b: Runtime with dev/test deps (opt-in for local dev/CI)
 FROM runtime as dev-runtime
-COPY --from=dev /root/.local /home/scraper/.local
+COPY --chown=scraper:scraper --from=dev /root/.local /home/scraper/.local
