@@ -1,11 +1,36 @@
 # Changelog
 
-## 2026-01-06 – Phase 4.1 Configuration and Service Architecture
-- Service container (DI): Implemented ServiceContainer singleton with lazy-loaded services (SettingsManager, RAGFlowClient, FlareSolverrClient, StateTracker factory).
-- Configuration reference: CONFIG_AND_SERVICES.md documents three-layer config (env vars, per-scraper JSONs, runtime settings), service responsibilities, and dependency injection benefits.
-- Migration guide: SERVICE_CONTAINER_MIGRATION.md provides four-phase roadmap (create container, migrate scrapers, migrate routes, cleanup) with before/after code examples, testing strategy, and rollback plan.
-- Developer docs: CLAUDE.md Section 2 (Service Layer Architecture) with practical usage patterns, error handling for optional services, and links to detailed references.
-- Testing: Comprehensive test suite (268 lines) for container singleton, lazy-loading, state tracker factory, configuration validation, and integration scenarios.
+## 2026-01-06 – Phase 4.1 Configuration and Service Architecture (COMPLETE)
+
+**Documentation (1,503 lines):**
+- `CONFIG_AND_SERVICES.md` (800 lines): Complete reference for configuration sources (env vars → per-scraper JSONs → settings.json → defaults), service layer architecture, and dependency injection patterns. Covers SettingsManager (runtime config), StateTracker (URL deduplication), RAGFlowClient (document ingestion), FlareSolverrClient (Cloudflare bypass), and ServiceContainer proposal with benefits/drawbacks.
+- `SERVICE_CONTAINER_MIGRATION.md` (703 lines): Step-by-step four-phase migration guide (Weeks 1-4) from scattered service instantiation to centralized ServiceContainer. Includes current state analysis, before/after code examples, testing strategies with mocked containers, rollback procedures, and success criteria per phase.
+- `CLAUDE.md` Section 2 (Service Layer Architecture): New practical guide with usage patterns for all services, error handling for optional services (RAGFlow, FlareSolverr), and cross-references to detailed documentation. Section numbering updated (Sections 2-21).
+
+**Implementation (435 lines):**
+- `app/services/container.py` (167 lines): Working ServiceContainer with singleton pattern, lazy-loaded service properties (SettingsManager, RAGFlowClient, FlareSolverrClient), per-scraper StateTracker factory with caching, comprehensive error messages, and reset() for testing.
+- `tests/unit/test_service_container.py` (268 lines): Comprehensive test suite (15+ test cases) covering singleton pattern, lazy-loading behavior, factory pattern, configuration validation, integration scenarios, and error message clarity.
+
+**Key Design:**
+- Singleton pattern with global `get_container()` accessor for consistent service access
+- Lazy-loading: services initialized only on first access (zero overhead until used)
+- Factory pattern: StateTracker created per-scraper, cached by name for efficiency
+- Clear error handling: missing config raises ValueError with hints about required env vars
+- Test-friendly: `reset_container()` clears cache for isolated test runs
+- Backward compatible: old ad-hoc service creation still works during migration
+
+**Quality:**
+- Syntax validated with py_compile
+- No circular dependencies
+- Proper separation of concerns (singleton vs initialization logic)
+- Fixed __new__ method to avoid conflated class/instance state (2026-01-07)
+
+**Deliverables:**
+- All 5 Phase 4.1 tasks complete with checkmarks
+- 1,938 new lines of documentation and code
+- 3 commits (feat, docs, fix)
+- Ready for Docker integration testing
+- Migration roadmap for 8+ scrapers and web routes
 
 ## 2026-01-06 – Phase 2 Local Validation & Tooling
 - Docker/compose hardening: pinned Python and Chromium images, added OCI labels, resource limits, and no-new-privileges for services.
