@@ -27,7 +27,132 @@
 
 ---
 
-## 2. Deployment Context
+## 2. Service Layer Architecture
+
+The application uses a **dependency injection container** to manage external services (RAGFlow, FlareSolverr, state tracking).
+
+### Service Layer Components
+
+```
+┌─────────────────────────────────────┐
+│    ServiceContainer (app/services/container.py)
+├─────────────────────────────────────┤
+├─ SettingsManager        # Runtime settings (UI-modifiable)
+├─ RAGFlowClient          # Document upload & metadata
+├─ FlareSolverrClient     # Cloudflare bypass (optional)
+└─ StateTracker (factory) # URL deduplication per scraper
+```
+
+### Using Services in Your Code
+
+**Getting the Container (Single Point of Access):**
+
+```python
+from app.services.container import get_container
+
+container = get_container()
+settings = container.settings
+ragflow = container.ragflow_client  # May raise if not configured
+tracker = container.state_tracker("aemo")  # Factory per scraper
+```
+
+### Typical Service Usage Patterns
+
+#### SettingsManager (Runtime Configuration)
+
+```python
+container = get_container()
+settings = container.settings
+
+# Check if feature is enabled
+if settings.flaresolverr_enabled:
+    proxy = container.flaresolverr_client
+
+# Access RAGFlow settings
+dataset_id = settings.ragflow_default_dataset_id
+chunk_method = settings.ragflow_chunk_method  # "paper", "naive", etc.
+```
+
+#### StateTracker (Duplicate Prevention)
+
+```python
+container = get_container()
+tracker = container.state_tracker("aemo")
+
+# Check if URL already downloaded
+if tracker.is_processed(url):
+    logger.info("Already downloaded, skipping")
+    continue
+
+# Download document...
+document = download_pdf(url)
+
+# Mark as processed
+tracker.mark_processed(
+    url=url,
+    metadata={"filename": document.name, "size": len(document)},
+    status="downloaded"  # or "skipped", "failed"
+)
+tracker.save()  # Persist to data/state/aemo_state.json
+```
+
+#### RAGFlowClient (Document Ingestion)
+
+```python
+container = get_container()
+
+try:
+    ragflow = container.ragflow_client  # Raises if not configured
+except ValueError:
+    logger.warning("RAGFlow not configured, skipping upload")
+    ragflow = None
+
+if ragflow and settings.ragflow_auto_upload:
+    result = ragflow.upload_document(
+        dataset_id=settings.ragflow_default_dataset_id,
+        filepath="report.pdf",
+        metadata={
+            "title": "AEMO Annual Report",
+            "tags": ["aemo", "report"],
+            "organization": "AEMO"
+        }
+    )
+```
+
+### Error Handling
+
+```python
+from app.services.container import get_container
+
+container = get_container()
+
+# RAGFlow is optional - check configuration
+try:
+    client = container.ragflow_client
+    # Use client
+except ValueError as e:
+    logger.error(f"RAGFlow not configured: {e}")
+    # Gracefully degrade - skip upload
+
+# FlareSolverr is optional - check enabled setting
+if container.settings.flaresolverr_enabled:
+    proxy = container.flaresolverr_client
+    # Use proxy
+else:
+    # Fallback to direct Selenium
+```
+
+### For Detailed Configuration and Service Architecture
+
+👉 See [docs/CONFIG_AND_SERVICES.md](docs/CONFIG_AND_SERVICES.md) for:
+- Configuration sources (`.env`, `settings.json`, per-scraper JSONs)
+- Service lifecycle and lazy-loading
+- Full API reference for each service
+- Configuration flow diagrams
+
+---
+
+## 3. Deployment Context
 
 **Configuration:**
 
@@ -44,7 +169,7 @@
 
 ---
 
-## 3. Pre-Session Verification Checklist
+## 4. Pre-Session Verification Checklist
 
 **Before starting work on this project:**
 
@@ -82,7 +207,7 @@ docker compose build --no-cache scraper && docker compose up -d
 
 ---
 
-## 4. Critical File Storage Rules
+## 5. Critical File Storage Rules
 
 **CRITICAL:** Container filesystem is ephemeral. Wrong storage = data loss on restart.
 
@@ -108,7 +233,7 @@ volumes:
 
 ---
 
-## 5. Architecture Quick Reference
+## 6. Architecture Quick Reference
 
 ### Core Flow
 
@@ -287,7 +412,7 @@ class MyFeedScraper(BaseScraper):
 
 ---
 
-## 6. Base Scraper API
+## 7. Base Scraper API
 
 ### Key Methods Available
 
@@ -314,7 +439,7 @@ class MyFeedScraper(BaseScraper):
 
 ---
 
-## 7. Frontend Rules (HTMX)
+## 8. Frontend Rules (HTMX)
 
 **Stack:** HTMX + Pure JavaScript (NO Alpine.js, NO Vue, NO React)
 
@@ -346,7 +471,7 @@ class MyFeedScraper(BaseScraper):
 
 ---
 
-## 8. Testing Quick Reference
+## 9. Testing Quick Reference
 
 ### CRITICAL: Testing After Code Changes
 
@@ -394,7 +519,7 @@ docker logs pdf-scraper -f --tail=100
 
 ---
 
-## 9. Top 10 Critical Pitfalls
+## 10. Top 10 Critical Pitfalls
 
 ### 1. Edit Tool File Not Read
 
@@ -448,7 +573,7 @@ docker logs pdf-scraper -f --tail=100
 
 ---
 
-## 10. Verification Checklist
+## 11. Verification Checklist
 
 Before deploying changes:
 
@@ -473,7 +598,7 @@ Before deploying changes:
 
 ---
 
-## 11. CLI Interface
+## 12. CLI Interface
 
 ```bash
 # List available scrapers
@@ -500,7 +625,7 @@ python scripts/run_scraper.py --scraper aemo --upload-to-ragflow --dataset-id ab
 
 ---
 
-## 12. Quick Reference Commands
+## 13. Quick Reference Commands
 
 ```bash
 # Start/stop services
@@ -536,7 +661,7 @@ rm data/state/aemo_processed.json
 
 ---
 
-## 13. Environment Variables
+## 14. Environment Variables
 
 Key variables in `.env`:
 
@@ -552,7 +677,7 @@ Key variables in `.env`:
 
 ---
 
-## 14. Agent Communication Preferences
+## 15. Agent Communication Preferences
 
 **CRITICAL:** Respect these output preferences:
 
@@ -579,7 +704,7 @@ Key variables in `.env`:
 
 ---
 
-## 15. When Unsure
+## 16. When Unsure
 
 1. **Check project knowledge:** Search for patterns in existing scrapers
 2. **Inspect existing code:** Mimic structure from `aemo_scraper.py`
@@ -589,7 +714,7 @@ Key variables in `.env`:
 
 ---
 
-## 16. Periodic Re-Reading Requirement
+## 17. Periodic Re-Reading Requirement
 
 **When to Re-Read:**
 
@@ -607,7 +732,7 @@ Key variables in `.env`:
 
 ---
 
-## 17. Curl Timeout Policy
+## 18. Curl Timeout Policy
 
 All curl commands MUST include explicit timeouts:
 
@@ -624,7 +749,7 @@ curl -sS --fail --connect-timeout 5 --max-time 30 -X POST http://localhost:5050/
 
 ---
 
-## 18. Type Annotation Pitfalls (Pylance/Pyright)
+## 19. Type Annotation Pitfalls (Pylance/Pyright)
 
 ### Missing Future Import for Modern Type Syntax
 
@@ -673,7 +798,7 @@ from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 
 ---
 
-## 19. Markdown Linting Rules
+## 20. Markdown Linting Rules
 
 When creating or editing Markdown files, follow these rules to avoid linter warnings:
 
@@ -740,7 +865,7 @@ More text.
 
 ---
 
-## 20. RAGFlow Metadata Integration Patterns
+## 21. RAGFlow Metadata Integration Patterns
 
 ### Overview
 
