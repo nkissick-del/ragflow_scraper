@@ -15,6 +15,33 @@ A modular web scraping system that downloads PDFs and articles from multiple Aus
 
 ## Quick Start
 
+### Dev Workflow (Make + dev compose)
+
+These targets default to `docker-compose.dev.yml` and run everything inside the dev container.
+
+```bash
+# Build and run the dev stack
+make dev-build
+make dev-up
+
+# Logs and shell
+make logs
+make shell
+
+# Tests
+make test          # all tests
+make test-unit     # unit tests only
+make test-int      # integration tests only
+make test-file FILE=tests/unit/test_metadata_validation.py::TestClass::test_case
+
+# Optional: override compose file (defaults to docker-compose.dev.yml)
+make dev-up COMPOSE=docker-compose.yml
+```
+
+Notes:
+- Dev web UI: http://localhost:5001 (mapped from container 5000).
+- VS Code tasks mirror these targets (Terminal → Run Task).
+
 ### Local Development
 
 ```bash
@@ -45,7 +72,7 @@ python scripts/run_scraper.py --scraper aemo
 docker-compose up --build
 ```
 
-Access the web UI at http://localhost:5050
+Access the web UI at http://localhost:5000
 
 ## CLI Usage
 

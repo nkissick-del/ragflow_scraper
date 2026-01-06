@@ -120,16 +120,16 @@ class TestServiceContainer:
 
             mock_tracker_class.side_effect = [mock_tracker1, mock_tracker2]
 
-            # Get trackers
+            # Get trackers (same scraper twice)
             tracker1 = container.state_tracker("aemo")
             tracker2 = container.state_tracker("aemo")
-            tracker3 = container.state_tracker("aer")
 
             # Same scraper returns cached instance
             assert tracker1 is tracker2
             assert mock_tracker_class.call_count == 1
 
             # Different scraper returns new instance
+            tracker3 = container.state_tracker("aer")
             assert tracker1 is not tracker3
             assert mock_tracker_class.call_count == 2
 

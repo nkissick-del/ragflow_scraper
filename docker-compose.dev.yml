@@ -16,6 +16,8 @@ services:
       # Mount source code for live reloading
       - ./app:/app/app
       - ./scripts:/app/scripts
+      - ./docs:/app/docs
+      - ./tests:/app/tests
       - ./data:/app/data
       - ./config:/app/config
     env_file:
