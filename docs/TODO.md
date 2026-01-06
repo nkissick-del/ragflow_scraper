@@ -13,66 +13,31 @@ Legend: [Code] coding-only; [Local] requires local docker/compose; [External] ne
 
 ## Phase 4 – Documentation and ops maturity
 
-### 4.1 Configuration & Service Architecture Documentation [Code]
-**Goal:** Document patterns for reuse; make dependency injection explicit  
-**References:** [docs/ragflow_scraper_audit.md](docs/ragflow_scraper_audit.md#L347), [docs/ragflow_scraper_audit.md](docs/ragflow_scraper_audit.md#L390)
-
-**Tasks:**
-- [x] Create `docs/CONFIG_AND_SERVICES.md`:
-  - Configuration sources (`.env`, `settings.json`, per-scraper JSONs) and precedence rules
-  - Single source of truth principle and how to apply it
-  - SettingsManager pattern (lazy-load, validation, runtime updates)
-  - StateTracker lifecycle and persistence patterns
-  - Container/DI pattern proposal and implementation roadmap
-  - Code examples for each pattern
-- [x] Create `docs/SERVICE_CONTAINER_MIGRATION.md`:
-  - Step-by-step guide for moving to unified ServiceContainer
-  - Current state of `ragflow_client.py`, `state_tracker.py`, `settings_manager.py`, `flaresolverr_client.py`
-  - Testing strategy for service mocking
-  - Backward-compatibility approach during migration
-- [x] Update `CLAUDE.md` Section 2 (System Overview) with:
-  - Service layer architecture diagram (ASCII or reference to visual docs)
-  - Configuration flow and precedence
-  - Example: "How to add a new scraper service"
-- [x] **DONE:** Created working `app/services/container.py` with:
-  - ServiceContainer singleton class
-  - Lazy-loaded properties for services
-  - Factory pattern for StateTracker per-scraper
-  - reset() method for testing
-- [x] **DONE:** Created `tests/unit/test_service_container.py` with:
-  - Unit tests for singleton pattern
-  - Lazy-loading verification
-  - Factory pattern tests
-  - Integration tests with real services
-  - Error handling and clarity tests
-
-**Acceptance:** ✅ Docs created + implementation complete + tests ready for Docker environment
-
----
-
 ### 4.2 Metadata Schema & Logging Standards [Code]
 **Goal:** Make schema discoverable and logging consistent across scrapers  
 **References:** [docs/ragflow_scraper_audit.md](docs/ragflow_scraper_audit.md#L1205), [docs/ragflow_scraper_audit.md](docs/ragflow_scraper_audit.md#L1157)
 
-**Tasks:**
-- [ ] Create `docs/METADATA_SCHEMA.md`:
+**Sprint 1 (Week 1):**
+- [x] Create `docs/METADATA_SCHEMA.md`: (IN PROGRESS)
   - Full DocumentMetadata dataclass definition (fields, types, examples)
   - How metadata flows from scraper → StateTracker → RAGFlow API
   - Deduplication and hash logic (reference `article_converter.py`)
   - Flat metadata enforcement rule and validation
   - Example metadata payload for each scraper type (PDF, article)
   - Schema versioning strategy
-- [ ] Create `docs/LOGGING_AND_ERROR_STANDARDS.md`:
+- [x] Create `docs/LOGGING_AND_ERROR_STANDARDS.md`: (IN PROGRESS)
   - Log level mapping and when to use each (DEBUG/INFO/WARNING/ERROR/CRITICAL)
   - Structured logging format (example with scraper name, document count, duration, errors)
   - Log file rotation policy and retention
   - How to read logs via web UI (reference web/routes.py)
   - Error telemetry: error types to track, counts, alert thresholds
   - Common errors by scraper and troubleshooting flowchart
-- [ ] Add code examples to `CLAUDE.md`:
+- [x] Add code examples to `CLAUDE.md`: (IN PROGRESS)
   - "How to log a scraper lifecycle event" (start, fetch, store, error recovery)
   - "How to construct and validate metadata"
   - "How to interpret logs when debugging a failed scrape"
+
+**Remaining Tasks:**
 - [ ] Add tests `tests/unit/test_metadata_validation.py`:
   - Validate all required fields for each scraper type
   - Test deduplication hash consistency
