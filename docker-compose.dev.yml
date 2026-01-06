@@ -4,6 +4,10 @@ services:
       context: .
       dockerfile: Dockerfile
       target: dev-runtime
+      labels:
+        org.opencontainers.image.title: "pdf-scraper-dev"
+        org.opencontainers.image.description: "Dev runtime for PDF scraper"
+        org.opencontainers.image.revision: "local"
     container_name: pdf-scraper-dev
     restart: unless-stopped
     ports:
@@ -36,9 +40,14 @@ services:
         condition: service_healthy
     networks:
       - scraper-net
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "0.75"
 
   chrome:
-    image: seleniarm/standalone-chromium:latest
+    image: seleniarm/standalone-chromium:120.0
     platform: linux/arm64
     container_name: pdf-scraper-chrome-dev
     restart: unless-stopped
@@ -52,6 +61,8 @@ services:
       - SE_VNC_NO_PASSWORD=1
     networks:
       - scraper-net
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
       interval: 15s

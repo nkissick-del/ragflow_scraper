@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for PDF Scraper
 
 # Stage 1: Base dependencies (production runtime deps only)
-FROM python:3.11-slim as base
+FROM python:3.11.9-slim as base
 
 WORKDIR /app
 
@@ -11,16 +11,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install production Python dependencies
-COPY requirements.txt ./
+COPY requirements.txt constraints.txt ./
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Stage 1b: Development/Test dependencies (not copied into prod image)
 FROM base as dev
-COPY requirements-dev.txt ./
+COPY requirements-dev.txt constraints.txt ./
 RUN pip install --no-cache-dir --user -r requirements-dev.txt
 
 # Stage 2: Runtime (production)
-FROM python:3.11-slim as runtime
+FROM python:3.11.9-slim as runtime
 
 WORKDIR /app
 
@@ -42,6 +42,13 @@ ENV PATH=/home/scraper/.local/bin:$PATH
 
 # Copy application code
 COPY --chown=scraper:scraper . .
+
+# Image metadata
+LABEL org.opencontainers.image.title="pdf-scraper" \
+    org.opencontainers.image.description="PDF scraper with RAGFlow integration" \
+    org.opencontainers.image.licenses="MIT" \
+    org.opencontainers.image.source="https://example.com/pdf-scraper" \
+    org.opencontainers.image.version="local"
 
 # Switch to non-root user
 USER scraper

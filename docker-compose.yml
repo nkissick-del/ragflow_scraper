@@ -3,8 +3,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      labels:
+        org.opencontainers.image.title: "pdf-scraper"
+        org.opencontainers.image.description: "Local PDF scraper with RAGFlow upload"
+        org.opencontainers.image.revision: "local"
     container_name: pdf-scraper
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "${PORT:-5000}:5000"
     volumes:
@@ -42,6 +48,11 @@ services:
         condition: service_healthy
     networks:
       - scraper-net
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "0.75"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/"]
       interval: 30s
@@ -50,7 +61,7 @@ services:
       start_period: 10s
 
   chrome:
-    image: seleniarm/standalone-chromium:latest
+    image: seleniarm/standalone-chromium:120.0
     platform: linux/arm64
     container_name: pdf-scraper-chrome
     restart: unless-stopped
@@ -64,6 +75,8 @@ services:
       - SE_VNC_NO_PASSWORD=1
     networks:
       - scraper-net
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
       interval: 15s

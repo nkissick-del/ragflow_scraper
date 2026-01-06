@@ -1,4 +1,4 @@
-<span class="status-badge status-{{ status }}"
+<span class="status-badge status-{{ status }}" role="status" aria-live="polite"
       {% if scraper_name %}
       hx-get="{{ url_for('main.scraper_status', name=scraper_name) }}"
       hx-trigger="every 5s"

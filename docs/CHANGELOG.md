@@ -1,7 +1,12 @@
 # Changelog
 
-## 2026-01-06 – Phase 1 Completion
-- Centralized service container for shared dependencies (settings, RAGFlow, FlareSolverr, scheduler, state trackers).
+## 2026-01-06 – Phase 2 Local Validation & Tooling
+- Docker/compose hardening: pinned Python and Chromium images, added OCI labels, resource limits, and no-new-privileges for services.
+- New maintenance CLI: `scripts/run_scraper.py state validate|repair` (checksums, schema checks, optional repair/write) and `config validate|migrate` (JSON schema + defaults for settings/scraper configs).
+- Resilience: retry backoff now supports jitter and max delay; state and config validators reuse shared helpers.
+- Web UI polish: skip link, focus outlines, aria-live status/log widgets, and responsive nav/layout tweaks.
+- Build fixes: include `constraints.txt` in image builds for pinned installs.
+
 - Config/schema hardening: JSON schema validation for settings, clear env vs settings precedence, ensured directories and logging defaults.
 - Metadata pipeline: flat metadata validators, RAGFlow upload/parse structured events, duplicate handling, and metadata push coverage.
 - Observability: structured logging across pipeline/scheduler/web routes, FlareSolverr metrics/events, pipeline metrics endpoint, step timing capture.

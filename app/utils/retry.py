@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import logging
+import random
 from functools import wraps
 from typing import Callable, Iterable, Optional, Type
 
@@ -25,8 +26,10 @@ def retry_on_error(
     *,
     max_attempts: Optional[int] = None,
     backoff_factor: float = 2.0,
+    jitter: float = 0.25,
+    max_delay: Optional[float] = None,
     exceptions: Iterable[Type[BaseException]] = (ScraperError,),
-    on_retry: Optional[Callable[[BaseException, int], None]] = None,
+    on_retry: Optional[Callable[[BaseException, int, float], None]] = None,
 ):
     """Retry a callable on specified exceptions with exponential backoff.
 
@@ -34,8 +37,10 @@ def retry_on_error(
         max_attempts: Max attempts including the first call. Defaults to the callee's
             ``retry_attempts`` attribute when used on bound methods, otherwise 3.
         backoff_factor: Base for exponential backoff (seconds). Delay grows as factor**(attempt-1).
+        jitter: Max random seconds added to each delay to avoid thundering herds.
+        max_delay: Optional ceiling for any individual delay.
         exceptions: Exception types that trigger a retry.
-        on_retry: Optional callback invoked as ``on_retry(exc, attempt_number)``.
+        on_retry: Optional callback invoked as ``on_retry(exc, attempt_number, delay_seconds)``.
     """
 
     def decorator(func: Callable):
@@ -58,6 +63,10 @@ def retry_on_error(
                         raise
 
                     delay = backoff_factor ** (attempt - 1)
+                    if jitter:
+                        delay += random.uniform(0, max(jitter, 0))
+                    if max_delay is not None:
+                        delay = min(delay, max_delay)
                     logger.warning(
                         "Attempt %s/%s failed for %s: %s. Retrying in %.2fs",
                         attempt,
@@ -67,7 +76,7 @@ def retry_on_error(
                         delay,
                     )
                     if on_retry:
-                        on_retry(exc, attempt)
+                        on_retry(exc, attempt, delay)
                     time.sleep(delay)
 
             if last_exception:

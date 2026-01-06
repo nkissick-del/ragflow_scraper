@@ -21,14 +21,118 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.config import Config
+from app.config import CONFIG_DIR, Config
 from app.container import get_container
 from app.scrapers import ScraperRegistry
 from app.scrapers.base_scraper import DocumentMetadata
+from app.services.settings_manager import get_settings
 from app.utils import setup_logging, get_logger
+from app.utils.config_validation import (
+    migrate_settings,
+    validate_scraper,
+    validate_scraper_file,
+    validate_settings,
+    validate_settings_file,
+    write_json,
+)
+from app.utils.state_tools import build_state_report, scan_state_files
 from typing import Optional
 
 logger = get_logger("cli")
+
+
+def _print_state_reports(reports: list[dict], output_format: str) -> None:
+    if output_format == "json":
+        print(json.dumps({"states": reports}, indent=2))
+        return
+
+    for report in reports:
+        status = "ok" if not report["errors"] else "invalid"
+        print(f"- {report['scraper']}: {status} ({report['file']})")
+        if report["errors"]:
+            for err in report["errors"]:
+                print(f"    • {err}")
+        summary = report.get("summary", {})
+        stats = summary.get("statistics", {})
+        print(
+            f"    processed={summary.get('processed_count', 0)} "
+            f"downloaded={stats.get('total_downloaded', 0)} "
+            f"skipped={stats.get('total_skipped', 0)} "
+            f"failed={stats.get('total_failed', 0)}"
+        )
+        if report.get("repaired"):
+            print("    repaired: wrote sanitized state")
+
+
+def handle_state_command(args) -> int:
+    targets = scan_state_files(args.scraper)
+    if not targets:
+        print("No state files found.")
+        return 1
+
+    reports = [
+        build_state_report(path, repair=args.action == "repair", write=args.write)
+        for path in targets
+    ]
+
+    _print_state_reports(reports, getattr(args, "output_format", "text"))
+
+    has_errors = any(r["errors"] for r in reports)
+    return 1 if has_errors else 0
+
+
+def _print_config_reports(reports: list[dict], output_format: str) -> None:
+    if output_format == "json":
+        print(json.dumps({"configs": reports}, indent=2))
+        return
+
+    for report in reports:
+        status = "ok" if not report["errors"] else "invalid"
+        suffix = " (migrated)" if report.get("migrated") else ""
+        print(f"- {report['file']}: {status}{suffix}")
+        for err in report["errors"]:
+            print(f"    • {err}")
+
+
+def handle_config_command(args) -> int:
+    reports: list[dict] = []
+    settings_path = CONFIG_DIR / "settings.json"
+
+    settings_data, settings_errors = validate_settings_file(settings_path)
+    migrated = False
+    if args.action == "migrate":
+        settings_data = migrate_settings(settings_data)
+        migrated = True
+        settings_errors = validate_settings(settings_data)
+        if args.write:
+            write_json(settings_path, settings_data)
+
+    reports.append({"file": str(settings_path), "errors": settings_errors, "migrated": migrated})
+
+    scraper_paths: list[Path]
+    if args.scraper:
+        scraper_paths = [Config.get_scraper_config_path(args.scraper)]
+    else:
+        scraper_paths = sorted(Config.SCRAPERS_CONFIG_DIR.glob("*.json"))
+
+    for path in scraper_paths:
+        try:
+            data, errors = validate_scraper_file(path)
+        except FileNotFoundError:
+            reports.append({"file": str(path), "errors": ["File not found"], "migrated": False})
+            continue
+
+        migrated_scraper = False
+        if args.action == "migrate" and args.write:
+            write_json(path, data)
+            migrated_scraper = True
+
+        reports.append({"file": str(path), "errors": errors, "migrated": migrated_scraper})
+
+    _print_config_reports(reports, getattr(args, "output_format", "text"))
+
+    has_errors = any(r["errors"] for r in reports)
+    return 1 if has_errors else 0
 
 
 def parse_args():
@@ -44,6 +148,38 @@ Examples:
     %(prog)s --scraper aemo --output-format json
     %(prog)s --scraper aemo --dry-run
         """,
+    )
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    # State integrity tools
+    state_parser = subparsers.add_parser("state", help="Validate or repair state files")
+    state_parser.add_argument("action", choices=["validate", "repair"], help="Operation to perform")
+    state_parser.add_argument(
+        "--scraper",
+        type=str,
+        default=None,
+        help="Scraper name to target (default: all)",
+    )
+    state_parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Write repaired state back to disk (repair only)",
+    )
+
+    # Config validation/migration tools
+    config_parser = subparsers.add_parser("config", help="Validate or migrate JSON configs")
+    config_parser.add_argument("action", choices=["validate", "migrate"], help="Operation to perform")
+    config_parser.add_argument(
+        "--scraper",
+        type=str,
+        default=None,
+        help="Specific scraper config to validate (default: all)",
+    )
+    config_parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Write migrated settings.json and scraper configs back to disk",
     )
 
     # Scraper selection
@@ -403,6 +539,12 @@ def main():
     # Setup logging
     log_level = "WARNING" if args.quiet else Config.LOG_LEVEL
     setup_logging(level=log_level)
+
+    if args.command == "state":
+        return handle_state_command(args)
+
+    if args.command == "config":
+        return handle_config_command(args)
 
     # Handle list scrapers
     if args.list_scrapers:

@@ -63,6 +63,24 @@ python scripts/run_scraper.py --scraper aemo --max-pages 5 --output-format json
 python scripts/run_scraper.py --scraper aemo --upload-to-ragflow --dataset-id abc123
 ```
 
+### Validation and maintenance
+
+```bash
+# Validate state files (read-only)
+python scripts/run_scraper.py state validate
+
+# Repair state files and write sanitized copies
+python scripts/run_scraper.py state repair --write
+
+# Validate settings.json and scraper configs
+python scripts/run_scraper.py config validate
+
+# Migrate settings/scraper configs to defaults/schema and write back
+python scripts/run_scraper.py config migrate --write
+```
+
+> Tip: when running locally outside Docker, override dirs to avoid `/app` defaults, e.g. `DOWNLOAD_DIR=./data/scraped STATE_DIR=./data/state`.
+
 ## Project Structure
 
 ```
