@@ -1,0 +1,54 @@
+{
+  "flaresolverr": {
+    "enabled": true,
+    "timeout": 60,
+    "max_timeout": 120,
+    "url": "http://192.168.1.101:8191/"
+  },
+  "ragflow": {
+    "default_dataset_id": "",
+    "auto_upload": true,
+    "auto_create_dataset": true,
+    "default_embedding_model": "voyage-3-large@Voyage AI",
+    "default_chunk_method": "paper",
+    "wait_for_parsing": true,
+    "parser_config": {
+      "chunk_token_num": 128,
+      "layout_recognize": "DeepDOC"
+    },
+    "api_url": "",
+    "api_key": ""
+  },
+  "scraping": {
+    "default_request_delay": 2.0,
+    "default_timeout": 60,
+    "default_retry_attempts": 3,
+    "use_flaresolverr_by_default": false,
+    "max_concurrent_downloads": 3
+  },
+  "scrapers": {
+    "aemo": {
+      "cloudflare_enabled": true
+    },
+    "theenergy": {
+      "ragflow_dataset_id": "e8c8eb74e5d411f0955e0242ac120006"
+    },
+    "reneweconomy": {
+      "ragflow_dataset_id": "fa11e05de62211f0b7470242ac120006"
+    },
+    "guardian": {
+      "ragflow_dataset_id": "fe0ceb86e64411f085e60242ac120006"
+    },
+    "eca": {
+      "ragflow_dataset_id": "79571378e57111f0a8b30242ac120006"
+    }
+  },
+  "application": {
+    "name": "PDF Scraper",
+    "version": "0.1.0"
+  },
+  "scheduler": {
+    "enabled": false,
+    "run_on_startup": false
+  }
+}

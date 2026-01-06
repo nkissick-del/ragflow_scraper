@@ -1,0 +1,14 @@
+<div class="log-viewer"
+     hx-get="{{ url_for('main.log_stream') }}"
+     hx-trigger="every 2s"
+     hx-swap="innerHTML">
+    {% for entry in entries %}
+    <div class="log-entry log-{{ entry.level | lower }}">
+        <span class="log-time">{{ entry.time }}</span>
+        <span class="log-level">{{ entry.level }}</span>
+        <span class="log-message">{{ entry.message }}</span>
+    </div>
+    {% else %}
+    <p class="text-muted">No log entries</p>
+    {% endfor %}
+</div>

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - PDF Scraper{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <p>Overview of your PDF scrapers and recent activity</p>
+</div>
+
+<section class="section">
+    <h2>Scrapers</h2>
+    <div class="scraper-grid">
+        {% for scraper in scrapers %}
+        <div class="scraper-card"
+             id="scraper-{{ scraper.name }}"
+             hx-get="{{ url_for('main.scraper_card', name=scraper.name) }}"
+             hx-trigger="every 5s"
+             hx-swap="outerHTML">
+            <div class="scraper-header">
+                <h3>{{ scraper.name }}</h3>
+                <span class="status-badge status-{{ scraper.status }}">{{ scraper.status }}</span>
+            </div>
+            <p class="scraper-description">{{ scraper.description }}</p>
+            <div class="scraper-stats">
+                <span>Processed: {{ scraper.processed_count }}</span>
+                {% if scraper.last_run %}
+                <span>Last run: {{ scraper.last_run[:10] }}</span>
+                {% endif %}
+            </div>
+            <div class="scraper-actions">
+                <button class="btn btn-primary"
+                        hx-post="{{ url_for('main.run_scraper', name=scraper.name) }}"
+                        hx-target="#scraper-{{ scraper.name }}"
+                        hx-swap="outerHTML"
+                        {% if scraper.status == 'running' %}disabled{% endif %}>
+                    {% if scraper.status == 'running' %}Running...{% else %}Run Now{% endif %}
+                </button>
+                <a href="{{ url_for('main.scrapers') }}" class="btn btn-secondary">Configure</a>
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No scrapers found. Add a scraper module to get started.</p>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="section">
+    <h2>Recent Activity</h2>
+    <div class="log-viewer"
+         id="recent-logs"
+         hx-get="{{ url_for('main.log_stream') }}"
+         hx-trigger="load, every 5s"
+         hx-swap="innerHTML">
+        <p class="loading">Loading logs...</p>
+    </div>
+</section>
+{% endblock %}

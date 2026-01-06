@@ -1,0 +1,24 @@
+{
+  "name": "scraper-name",
+  "description": "Description of what this scraper does",
+  "enabled": true,
+  "base_url": "https://example.com/documents",
+  "settings": {
+    "documents_per_page": 10,
+    "total_pages": null,
+    "request_delay": 1.0,
+    "download_timeout": 60,
+    "retry_attempts": 3
+  },
+  "filters": {
+    "excluded_tags": [],
+    "include_extensions": [".pdf"],
+    "min_file_size": null,
+    "max_file_size": null
+  },
+  "schedule": {
+    "enabled": false,
+    "cron": "0 0 * * *",
+    "description": "Daily at midnight"
+  }
+}

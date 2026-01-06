@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Logs - PDF Scraper{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Logs</h1>
+    <p>View application logs and scraper activity</p>
+</div>
+
+<section class="section">
+    <div class="log-controls">
+        <h2>Live Log Viewer</h2>
+        <div class="log-filters">
+            <label>
+                <input type="checkbox" id="auto-scroll" checked> Auto-scroll
+            </label>
+        </div>
+    </div>
+
+    <div class="log-container" id="log-container">
+        <div class="log-viewer"
+             hx-get="{{ url_for('main.log_stream') }}"
+             hx-trigger="load, every 2s"
+             hx-swap="innerHTML">
+            <p class="loading">Loading logs...</p>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <h2>Log Files</h2>
+    <div class="log-files">
+        {% for log_file in log_files %}
+        <div class="log-file-item">
+            <span class="log-filename">{{ log_file.name }}</span>
+            <span class="log-size">{{ (log_file.stat().st_size / 1024) | round(1) }} KB</span>
+            <a href="{{ url_for('main.download_log', filename=log_file.name) }}"
+               class="btn btn-small">Download</a>
+        </div>
+        {% else %}
+        <p>No log files found.</p>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('htmx:afterSwap', function(event) {
+    if (document.getElementById('auto-scroll').checked) {
+        var container = document.getElementById('log-container');
+        container.scrollTop = container.scrollHeight;
+    }
+});
+</script>
+{% endblock %}

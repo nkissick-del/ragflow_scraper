@@ -1,0 +1,88 @@
+<div class="preview-results">
+    <div class="preview-header">
+        <h3>Preview Results for {{ scraper_name }}</h3>
+        <span class="status-badge status-{{ 'completed' if result.status == 'completed' else 'warning' }}">
+            {{ result.status }}
+        </span>
+    </div>
+
+    <div class="preview-stats">
+        <div class="stat">
+            <span class="stat-value">{{ result.scraped_count }}</span>
+            <span class="stat-label">Found</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">{{ result.skipped_count }}</span>
+            <span class="stat-label">Would Skip</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">{{ result.scraped_count - result.skipped_count }}</span>
+            <span class="stat-label">Would Download</span>
+        </div>
+        <div class="stat">
+            <span class="stat-value">{{ "%.1f"|format(result.duration_seconds) }}s</span>
+            <span class="stat-label">Duration</span>
+        </div>
+    </div>
+
+    {% if documents %}
+    <div class="preview-documents">
+        <h4>Documents Found ({{ documents|length }})</h4>
+        <div class="document-list">
+            {% for doc in documents[:20] %}
+            <div class="document-item">
+                <div class="document-title">{{ doc.title or doc.filename }}</div>
+                <div class="document-meta">
+                    {% if doc.publication_date %}
+                    <span class="meta-item">{{ doc.publication_date }}</span>
+                    {% endif %}
+                    {% if doc.file_size_str %}
+                    <span class="meta-item">{{ doc.file_size_str }}</span>
+                    {% endif %}
+                    {% if doc.tags %}
+                    <span class="meta-tags">
+                        {% for tag in doc.tags[:3] %}
+                        <span class="tag">{{ tag }}</span>
+                        {% endfor %}
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="document-url">
+                    <a href="{{ doc.url }}" target="_blank" rel="noopener">{{ doc.url[:80] }}{% if doc.url|length > 80 %}...{% endif %}</a>
+                </div>
+            </div>
+            {% endfor %}
+            {% if documents|length > 20 %}
+            <div class="document-more">
+                ... and {{ documents|length - 20 }} more documents
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="preview-empty">
+        <p>No documents found on the first page. Try increasing the number of pages to preview.</p>
+    </div>
+    {% endif %}
+
+    {% if result.errors %}
+    <div class="preview-errors">
+        <h4>Errors</h4>
+        {% for error in result.errors %}
+        <div class="error-item">{{ error }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="preview-actions">
+        <button class="btn btn-primary"
+                hx-post="{{ url_for('main.run_scraper', name=scraper_name) }}"
+                hx-target="#scraper-{{ scraper_name }}"
+                hx-swap="outerHTML">
+            Run Full Scrape
+        </button>
+        <button class="btn btn-secondary" onclick="this.closest('.preview-modal').remove()">
+            Close
+        </button>
+    </div>
+</div>

@@ -1,0 +1,449 @@
+{% extends "base.html" %}
+
+{% block title %}Scrapers - PDF Scraper{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Scrapers</h1>
+    <p>Configure and manage your PDF scrapers</p>
+</div>
+
+<section class="section">
+    {% for scraper in scrapers %}
+    <div class="card scraper-detail" id="scraper-{{ scraper.name }}">
+        <div class="card-header">
+            <h3>{{ scraper.name }}</h3>
+            <span class="status-badge status-{{ scraper.status }}"
+                  hx-get="{{ url_for('main.scraper_status', name=scraper.name) }}"
+                  hx-trigger="every 5s"
+                  hx-swap="outerHTML">
+                {{ scraper.status }}
+            </span>
+        </div>
+
+        <div class="card-body">
+            <p><strong>Description:</strong> {{ scraper.description }}</p>
+            <p><strong>Base URL:</strong> <a href="{{ scraper.base_url }}" target="_blank">{{ scraper.base_url }}</a></p>
+
+            {% if scraper.excluded_tags %}
+            <p><strong>Excluded Tags:</strong> {{ scraper.excluded_tags | join(', ') }}</p>
+            {% endif %}
+
+            <div class="stats-grid">
+                <div class="stat">
+                    <span class="stat-value">{{ scraper.state.processed_count or 0 }}</span>
+                    <span class="stat-label">Processed</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">{{ scraper.state.statistics.total_downloaded or 0 if scraper.state.statistics else 0 }}</span>
+                    <span class="stat-label">Downloaded</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">{{ scraper.state.statistics.total_skipped or 0 if scraper.state.statistics else 0 }}</span>
+                    <span class="stat-label">Skipped</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">{{ scraper.state.statistics.total_failed or 0 if scraper.state.statistics else 0 }}</span>
+                    <span class="stat-label">Failed</span>
+                </div>
+            </div>
+
+            {% if scraper.state.last_updated %}
+            <p class="last-updated">Last run: {{ scraper.state.last_updated }}</p>
+            {% endif %}
+        </div>
+
+        <!-- RAGFlow Settings (collapsible) -->
+        <details class="ragflow-settings-section">
+            <summary class="ragflow-settings-toggle">
+                <span class="toggle-icon">▶</span> RAGFlow Settings
+                <span id="ragflow-status-{{ scraper.name }}" class="setting-status"></span>
+            </summary>
+            <div class="ragflow-settings-content">
+                <!-- Ingestion Mode Toggle -->
+                <div class="ingestion-mode-toggle">
+                    <label class="toggle-label">
+                        <input type="radio"
+                               name="ingestion_mode_{{ scraper.name }}"
+                               value="builtin"
+                               {% if scraper.ragflow_settings.ingestion_mode != 'custom' %}checked{% endif %}
+                               hx-post="{{ url_for('main.save_scraper_ragflow_settings', name=scraper.name) }}"
+                               hx-trigger="change"
+                               hx-target="#ragflow-status-{{ scraper.name }}"
+                               hx-swap="innerHTML"
+                               onchange="toggleIngestionMode('{{ scraper.name }}', 'builtin')">
+                        Built-in
+                    </label>
+                    <label class="toggle-label">
+                        <input type="radio"
+                               name="ingestion_mode_{{ scraper.name }}"
+                               value="custom"
+                               {% if scraper.ragflow_settings.ingestion_mode == 'custom' %}checked{% endif %}
+                               hx-post="{{ url_for('main.save_scraper_ragflow_settings', name=scraper.name) }}"
+                               hx-trigger="change"
+                               hx-target="#ragflow-status-{{ scraper.name }}"
+                               hx-swap="innerHTML"
+                               onchange="toggleIngestionMode('{{ scraper.name }}', 'custom')">
+                        Custom Pipeline
+                    </label>
+                </div>
+
+                <!-- Built-in Mode Settings -->
+                <div id="builtin-settings-{{ scraper.name }}"
+                     class="ingestion-settings"
+                     {% if scraper.ragflow_settings.ingestion_mode == 'custom' %}style="display:none"{% endif %}>
+                    <div class="ragflow-settings-grid">
+                        <!-- Chunk Method (Template) -->
+                        <div class="setting-item">
+                            <label for="chunk-method-{{ scraper.name }}">Template:</label>
+                            <select id="chunk-method-{{ scraper.name }}"
+                                    name="chunk_method"
+                                    class="select-small"
+                                    hx-post="{{ url_for('main.save_scraper_ragflow_settings', name=scraper.name) }}"
+                                    hx-trigger="change"
+                                    hx-target="#ragflow-status-{{ scraper.name }}"
+                                    hx-swap="innerHTML">
+                                {% for method in ragflow_options.chunk_methods %}
+                                <option value="{{ method }}"
+                                    {% if method == scraper.ragflow_settings.chunk_method %}selected{% endif %}>
+                                    {{ method | title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- PDF Parser -->
+                        <div class="setting-item">
+                            <label for="parser-{{ scraper.name }}">Parser:</label>
+                            <select id="parser-{{ scraper.name }}"
+                                    name="pdf_parser"
+                                    class="select-small"
+                                    hx-post="{{ url_for('main.save_scraper_ragflow_settings', name=scraper.name) }}"
+                                    hx-trigger="change"
+                                    hx-target="#ragflow-status-{{ scraper.name }}"
+                                    hx-swap="innerHTML">
+                                {% for parser in ragflow_options.pdf_parsers %}
+                                <option value="{{ parser }}"
+                                    {% if parser == scraper.ragflow_settings.pdf_parser %}selected{% endif %}>
+                                    {{ parser }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- Embedding Provider + Model (if session auth configured) -->
+                        {% if ragflow_options.embedding_providers %}
+                        <div class="setting-item setting-item-wide">
+                            <label>Embed:</label>
+                            <select id="embed-provider-{{ scraper.name }}"
+                                    class="select-small"
+                                    onchange="updateScraperModelDropdown('{{ scraper.name }}')">
+                                <option value="">Default</option>
+                                {% for provider in ragflow_options.embedding_providers.keys() %}
+                                <option value="{{ provider }}"
+                                    {% if scraper.ragflow_settings.embedding_model and provider in scraper.ragflow_settings.embedding_model %}selected{% endif %}>
+                                    {{ provider }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <select id="embed-model-{{ scraper.name }}"
+                                    name="embedding_model"
+                                    class="select-small"
+                                    hx-post="{{ url_for('main.save_scraper_ragflow_settings', name=scraper.name) }}"
+                                    hx-trigger="change"
+                                    hx-target="#ragflow-status-{{ scraper.name }}"
+                                    hx-swap="innerHTML">
+                                <option value="">Default</option>
+                                {% for provider, models in ragflow_options.embedding_providers.items() %}
+                                {% for model in models %}
+                                <option value="{{ model.llm_name }}@{{ provider }}"
+                                        data-provider="{{ provider }}"
+                                        class="model-option model-option-{{ provider | replace(' ', '-') }}"
+                                        {% if model.llm_name ~ '@' ~ provider == scraper.ragflow_settings.embedding_model %}selected{% endif %}>
+                                    {{ model.llm_name }}
+                                </option>
+                                {% endfor %}
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Custom Pipeline Settings -->
+                <div id="custom-settings-{{ scraper.name }}"
+                     class="ingestion-settings"
+                     {% if scraper.ragflow_settings.ingestion_mode != 'custom' %}style="display:none"{% endif %}>
+                    <div class="ragflow-settings-grid">
+                        <div class="setting-item setting-item-wide">
+                            <label for="pipeline-{{ scraper.name }}">Pipeline:</label>
+                            <select id="pipeline-{{ scraper.name }}"
+                                    name="pipeline_id"
+                                    class="select-small"
+                                    hx-post="{{ url_for('main.save_scraper_ragflow_settings', name=scraper.name) }}"
+                                    hx-trigger="change"
+                                    hx-target="#ragflow-status-{{ scraper.name }}"
+                                    hx-swap="innerHTML">
+                                <option value="">Select a pipeline...</option>
+                                {% for pipeline in ragflow_options.pipelines %}
+                                <option value="{{ pipeline.id }}"
+                                    {% if pipeline.id == scraper.ragflow_settings.pipeline_id %}selected{% endif %}>
+                                    {{ pipeline.title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% if not ragflow_options.pipelines %}
+                        <p class="text-muted pipeline-notice">No custom pipelines found. Create dataflow canvases in RAGFlow first.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </details>
+
+        <div class="card-footer">
+            <div class="preview-controls">
+                <label for="preview-pages-{{ scraper.name }}">Pages to preview:</label>
+                <select id="preview-pages-{{ scraper.name }}" name="max_pages" class="select-small">
+                    <option value="1">1 page</option>
+                    <option value="2">2 pages</option>
+                    <option value="3">3 pages</option>
+                    <option value="5">5 pages</option>
+                </select>
+
+                <!-- FlareSolverr Toggle -->
+                <div class="cloudflare-toggle">
+                    <label class="toggle-switch" for="cloudflare-toggle-{{ scraper.name }}" title="{% if not config.FLARESOLVERR_URL %}FlareSolverr not configured{% else %}Enable Cloudflare bypass for this scraper{% endif %}">
+                        <input type="checkbox"
+                               id="cloudflare-toggle-{{ scraper.name }}"
+                               name="enabled"
+                               {% if scraper.cloudflare_enabled %}checked{% endif %}
+                               {% if not config.FLARESOLVERR_URL %}disabled{% endif %}
+                               hx-post="{{ url_for('main.toggle_scraper_cloudflare', name=scraper.name) }}"
+                               hx-trigger="change"
+                               hx-target="#cloudflare-status-{{ scraper.name }}"
+                               hx-swap="innerHTML"
+                               aria-label="Enable FlareSolverr for {{ scraper.name }}">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">FlareSolverr</span>
+                    <span id="cloudflare-status-{{ scraper.name }}" class="toggle-status-container"></span>
+                </div>
+
+                <button class="btn btn-secondary btn-with-loader"
+                        id="preview-btn-{{ scraper.name }}"
+                        hx-post="{{ url_for('main.preview_scraper', name=scraper.name) }}"
+                        hx-include="#preview-pages-{{ scraper.name }}"
+                        hx-target="#preview-container-{{ scraper.name }}"
+                        hx-swap="innerHTML"
+                        hx-disabled-elt="this"
+                        hx-indicator="#preview-btn-{{ scraper.name }}"
+                        hx-timeout="300000"
+                        {% if scraper.status == 'running' %}disabled{% endif %}>
+                    <span class="btn-text">Preview (Dry Run)</span>
+                    <span class="btn-loader"><span class="loading-spinner"></span></span>
+                </button>
+                {% if scraper.status == 'running' or scraper.status == 'cancelling' %}
+                <button class="btn btn-danger"
+                        hx-post="{{ url_for('main.cancel_scraper', name=scraper.name) }}"
+                        hx-target="#scraper-{{ scraper.name }} .status-badge"
+                        hx-swap="outerHTML"
+                        {% if scraper.status == 'cancelling' %}disabled{% endif %}>
+                    {% if scraper.status == 'cancelling' %}Cancelling...{% else %}Cancel{% endif %}
+                </button>
+                {% else %}
+                <button class="btn btn-primary"
+                        hx-post="{{ url_for('main.run_scraper', name=scraper.name) }}"
+                        hx-target="#scraper-{{ scraper.name }}"
+                        hx-swap="outerHTML">
+                    Run Scraper
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        <div id="preview-container-{{ scraper.name }}" class="preview-modal"></div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <h3>No Scrapers Found</h3>
+        <p>Add a scraper module to the <code>app/scrapers/</code> directory to get started.</p>
+        <p>Scrapers should inherit from <code>BaseScraper</code> and will be automatically discovered.</p>
+    </div>
+    {% endfor %}
+</section>
+
+<style>
+/* RAGFlow Settings Collapsible Section */
+.ragflow-settings-section {
+    border-top: 1px solid var(--border-color, #e0e0e0);
+    background: var(--bg-secondary, #f8f9fa);
+}
+
+.ragflow-settings-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-secondary, #666);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.ragflow-settings-toggle:hover {
+    background: var(--bg-hover, #f0f0f0);
+}
+
+.ragflow-settings-toggle .toggle-icon {
+    transition: transform 0.2s ease;
+    font-size: 0.8em;
+}
+
+.ragflow-settings-section[open] .toggle-icon {
+    transform: rotate(90deg);
+}
+
+.ragflow-settings-content {
+    padding: 0.5rem 1rem 1rem;
+}
+
+/* Ingestion Mode Toggle */
+.ingestion-mode-toggle {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.ingestion-mode-toggle .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-primary, #333);
+}
+
+.ingestion-mode-toggle input[type="radio"] {
+    margin: 0;
+}
+
+.ingestion-settings {
+    margin-top: 0.5rem;
+}
+
+.ragflow-settings-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+}
+
+.ragflow-settings-grid .setting-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.ragflow-settings-grid .setting-item label {
+    font-size: 0.85rem;
+    color: var(--text-secondary, #666);
+    white-space: nowrap;
+}
+
+.ragflow-settings-grid .setting-item-wide {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.setting-status {
+    margin-left: auto;
+    font-size: 0.85rem;
+}
+
+.setting-saved {
+    color: var(--success-color, #28a745);
+    font-size: 0.85rem;
+    animation: fadeInOut 2s ease-in-out;
+}
+
+@keyframes fadeInOut {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* Hide model options that don't match selected provider */
+.model-option-hidden {
+    display: none;
+}
+
+.pipeline-notice {
+    font-size: 0.85rem;
+    margin: 0;
+    padding: 0.25rem 0;
+}
+</style>
+
+<script>
+// Toggle between Built-in and Custom ingestion modes
+function toggleIngestionMode(scraperName, mode) {
+    const builtinSettings = document.getElementById('builtin-settings-' + scraperName);
+    const customSettings = document.getElementById('custom-settings-' + scraperName);
+
+    if (!builtinSettings || !customSettings) return;
+
+    if (mode === 'builtin') {
+        builtinSettings.style.display = 'block';
+        customSettings.style.display = 'none';
+    } else {
+        builtinSettings.style.display = 'none';
+        customSettings.style.display = 'block';
+    }
+}
+
+// Cascading provider/model dropdown for scrapers
+function updateScraperModelDropdown(scraperName) {
+    const providerSelect = document.getElementById('embed-provider-' + scraperName);
+    const modelSelect = document.getElementById('embed-model-' + scraperName);
+
+    if (!providerSelect || !modelSelect) return;
+
+    const selectedProvider = providerSelect.value;
+    const options = modelSelect.querySelectorAll('option');
+
+    // Show/hide options based on provider
+    options.forEach(option => {
+        if (option.value === '') {
+            // Always show "Default" option
+            option.classList.remove('model-option-hidden');
+        } else {
+            const optionProvider = option.dataset.provider;
+            if (!selectedProvider || optionProvider === selectedProvider) {
+                option.classList.remove('model-option-hidden');
+            } else {
+                option.classList.add('model-option-hidden');
+            }
+        }
+    });
+
+    // Reset selection if current selection doesn't match provider
+    const currentOption = modelSelect.options[modelSelect.selectedIndex];
+    if (currentOption && currentOption.classList.contains('model-option-hidden')) {
+        modelSelect.value = '';
+    }
+}
+
+// Initialize dropdowns on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Find all provider dropdowns and initialize them
+    document.querySelectorAll('[id^="embed-provider-"]').forEach(select => {
+        const scraperName = select.id.replace('embed-provider-', '');
+        updateScraperModelDropdown(scraperName);
+    });
+});
+</script>
+{% endblock %}

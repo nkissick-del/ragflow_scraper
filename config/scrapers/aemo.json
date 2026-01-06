@@ -1,0 +1,29 @@
+{
+  "name": "aemo",
+  "description": "AEMO Major Publications Scraper",
+  "enabled": true,
+  "base_url": "https://www.aemo.com.au/library/major-publications",
+  "settings": {
+    "documents_per_page": 10,
+    "total_pages": 22,
+    "request_delay": 2.0,
+    "download_timeout": 60,
+    "retry_attempts": 3
+  },
+  "filters": {
+    "excluded_tags": [
+      "Gas",
+      "Annual Report",
+      "Budget",
+      "Corporate publications"
+    ],
+    "include_extensions": [".pdf"],
+    "min_file_size": null,
+    "max_file_size": null
+  },
+  "schedule": {
+    "enabled": false,
+    "cron": "0 2 * * 0",
+    "description": "Weekly on Sunday at 2 AM"
+  }
+}

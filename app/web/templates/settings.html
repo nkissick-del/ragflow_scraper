@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - PDF Scraper{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Settings</h1>
+    <p>Configure application settings and connections</p>
+</div>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>FlareSolverr</h2>
+            <span class="status-badge status-{{ flaresolverr_status }}">{{ flaresolverr_status | replace('_', ' ') }}</span>
+        </div>
+        <form hx-post="{{ url_for('main.save_flaresolverr_settings') }}"
+              hx-target="#flaresolverr-message"
+              hx-swap="innerHTML">
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    FlareSolverr helps bypass Cloudflare and other anti-bot protections.
+                    <a href="https://github.com/FlareSolverr/FlareSolverr" target="_blank" rel="noopener">Learn more</a>
+                </p>
+
+                <div class="setting-group">
+                    <label>URL</label>
+                    <p class="setting-value">
+                        {% if config.FLARESOLVERR_URL %}
+                        <code>{{ config.FLARESOLVERR_URL }}</code>
+                        {% else %}
+                        <span class="text-warning">Not configured</span>
+                        <span class="text-muted text-small">(Set FLARESOLVERR_URL in .env)</span>
+                        {% endif %}
+                    </p>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="enabled"
+                               {% if settings.flaresolverr.enabled %}checked{% endif %}
+                               {% if not config.FLARESOLVERR_URL %}disabled{% endif %}>
+                        Enable FlareSolverr
+                    </label>
+                    {% if not config.FLARESOLVERR_URL %}
+                    <p class="text-muted text-small">Configure FLARESOLVERR_URL in .env to enable this option.</p>
+                    {% endif %}
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-group">
+                        <label for="flaresolverr-timeout">Timeout (seconds)</label>
+                        <input type="number" id="flaresolverr-timeout" name="timeout" class="input-field input-small"
+                               value="{{ settings.flaresolverr.timeout or 60 }}" min="10" max="300">
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="flaresolverr-max-timeout">Max Timeout (seconds)</label>
+                        <input type="number" id="flaresolverr-max-timeout" name="max_timeout" class="input-field input-small"
+                               value="{{ settings.flaresolverr.max_timeout or 120 }}" min="30" max="600">
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label>Connection Status</label>
+                    <div id="flaresolverr-status">
+                        <span class="status-badge status-{{ flaresolverr_status }}">{{ flaresolverr_status | replace('_', ' ') }}</span>
+                    </div>
+                </div>
+
+                <div id="flaresolverr-message"></div>
+            </div>
+            <div class="card-footer">
+                <button type="button" class="btn btn-secondary"
+                        hx-post="{{ url_for('main.test_flaresolverr') }}"
+                        hx-target="#flaresolverr-status"
+                        hx-swap="innerHTML"
+                        {% if not config.FLARESOLVERR_URL %}disabled{% endif %}>
+                    Test Connection
+                </button>
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>Scraping Defaults</h2>
+        </div>
+        <form hx-post="{{ url_for('main.save_scraping_settings') }}"
+              hx-target="#scraping-message"
+              hx-swap="innerHTML">
+            <div class="card-body">
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="use_flaresolverr_by_default"
+                               {% if settings.scraping.use_flaresolverr_by_default %}checked{% endif %}>
+                        Use FlareSolverr by default for all scrapers
+                    </label>
+                    <p class="text-muted text-small">When enabled, scrapers will use FlareSolverr to fetch pages by default.</p>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-group">
+                        <label for="request-delay">Request Delay (seconds)</label>
+                        <input type="number" id="request-delay" name="default_request_delay"
+                               class="input-field input-small" step="0.5"
+                               value="{{ settings.scraping.default_request_delay or 2.0 }}" min="0.5" max="30">
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="default-timeout">Request Timeout (seconds)</label>
+                        <input type="number" id="default-timeout" name="default_timeout"
+                               class="input-field input-small"
+                               value="{{ settings.scraping.default_timeout or 60 }}" min="10" max="300">
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="retry-attempts">Retry Attempts</label>
+                        <input type="number" id="retry-attempts" name="default_retry_attempts"
+                               class="input-field input-small"
+                               value="{{ settings.scraping.default_retry_attempts or 3 }}" min="0" max="10">
+                    </div>
+                </div>
+
+                <div id="scraping-message"></div>
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>RAGFlow Connection</h2>
+            <span class="status-badge status-{{ ragflow_status }}">{{ ragflow_status }}</span>
+        </div>
+        <div class="card-body">
+            <div class="setting-group">
+                <label>API URL</label>
+                <p class="setting-value">
+                    {% if config.RAGFLOW_API_URL %}
+                    <code>{{ config.RAGFLOW_API_URL }}</code>
+                    {% else %}
+                    <span class="text-warning">Not configured</span>
+                    <span class="text-muted text-small">(Set RAGFLOW_API_URL in .env)</span>
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="setting-group">
+                <label>API Key</label>
+                <p class="setting-value">
+                    {% if config.RAGFLOW_API_KEY %}
+                    <code>********{{ config.RAGFLOW_API_KEY[-4:] }}</code>
+                    {% else %}
+                    <span class="text-warning">Not configured</span>
+                    <span class="text-muted text-small">(Set RAGFLOW_API_KEY in .env)</span>
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="setting-group">
+                <label>Session Auth (Username)</label>
+                <p class="setting-value">
+                    {% if config.RAGFLOW_USERNAME %}
+                    <code>{{ config.RAGFLOW_USERNAME }}</code>
+                    {% else %}
+                    <span class="text-warning">Not configured</span>
+                    <span class="text-muted text-small">(Set RAGFLOW_USERNAME in .env for model listing)</span>
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="setting-group">
+                <label>Session Auth (Password)</label>
+                <p class="setting-value">
+                    {% if config.RAGFLOW_PASSWORD %}
+                    <code>********</code>
+                    {% else %}
+                    <span class="text-warning">Not configured</span>
+                    <span class="text-muted text-small">(Set RAGFLOW_PASSWORD in .env for model listing)</span>
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="setting-group">
+                <label>Connection Status</label>
+                <div id="ragflow-status">
+                    <span class="status-badge status-{{ ragflow_status }}">{{ ragflow_status }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <button type="button" class="btn btn-secondary"
+                    hx-post="{{ url_for('main.test_ragflow') }}"
+                    hx-target="#ragflow-status"
+                    hx-swap="innerHTML">
+                Test Connection
+            </button>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>RAGFlow Dataset Defaults</h2>
+        </div>
+        <form hx-post="{{ url_for('main.save_ragflow_settings') }}"
+              hx-target="#ragflow-settings-message"
+              hx-swap="innerHTML">
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Configure default settings for new datasets. Per-scraper overrides available on scraper pages.
+                </p>
+
+                <div class="setting-group">
+                    <label for="embedding-provider">Embedding Provider</label>
+                    {% if ragflow_providers %}
+                    {% set current_model = settings.ragflow.default_embedding_model or '' %}
+                    {% set current_provider = current_model.split('@')[1] if '@' in current_model else '' %}
+                    {% set current_model_name = current_model.split('@')[0] if '@' in current_model else current_model %}
+                    <select id="embedding-provider" class="input-field" onchange="updateModelDropdown()">
+                        <option value="">-- Select Provider --</option>
+                        {% for provider in ragflow_providers.keys() %}
+                        <option value="{{ provider }}"
+                                {% if provider == current_provider %}selected{% endif %}>
+                            {{ provider }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <input type="text" class="input-field" placeholder="No providers available" disabled>
+                    <p class="text-muted text-small">Configure RAGFLOW_USERNAME/PASSWORD in .env to populate dropdown</p>
+                    {% endif %}
+                </div>
+
+                <div class="setting-group">
+                    <label for="embedding-model">Embedding Model</label>
+                    {% if ragflow_providers %}
+                    <select id="embedding-model" name="default_embedding_model" class="input-field">
+                        <option value="">-- Select Provider First --</option>
+                        {% for provider, models in ragflow_providers.items() %}
+                        {% for model in models %}
+                        {% set model_name = model.llm_name if model.llm_name else model.name if model.name else model %}
+                        {% set model_value = model_name ~ '@' ~ provider %}
+                        <option value="{{ model_value }}" data-provider="{{ provider }}"
+                                {% if model_value == current_model %}selected{% endif %}
+                                class="model-option-hidden">
+                            {{ model_name }}
+                        </option>
+                        {% endfor %}
+                        {% endfor %}
+                    </select>
+                    <script>
+                    function updateModelDropdown() {
+                        const providerSelect = document.getElementById('embedding-provider');
+                        const modelSelect = document.getElementById('embedding-model');
+                        const selectedProvider = providerSelect.value;
+
+                        // Toggle visibility using CSS class
+                        for (let option of modelSelect.options) {
+                            if (option.dataset.provider) {
+                                if (option.dataset.provider === selectedProvider) {
+                                    option.classList.remove('model-option-hidden');
+                                } else {
+                                    option.classList.add('model-option-hidden');
+                                }
+                            }
+                        }
+
+                        // Reset selection if current selection doesn't match provider
+                        if (modelSelect.selectedIndex > 0) {
+                            const currentOption = modelSelect.options[modelSelect.selectedIndex];
+                            if (currentOption.dataset.provider !== selectedProvider) {
+                                modelSelect.selectedIndex = 0;
+                            }
+                        }
+
+                        // Update placeholder text
+                        modelSelect.options[0].text = selectedProvider ? '-- Select Model --' : '-- Select Provider First --';
+                    }
+
+                    // Initialize on page load
+                    document.addEventListener('DOMContentLoaded', function() {
+                        updateModelDropdown();
+                    });
+                    </script>
+                    {% else %}
+                    <input type="text" id="embedding-model" name="default_embedding_model"
+                           class="input-field" placeholder="e.g., model-name@Provider"
+                           value="{{ settings.ragflow.default_embedding_model or '' }}">
+                    <p class="text-muted text-small">Configure RAGFLOW_USERNAME/PASSWORD in .env to populate dropdown</p>
+                    {% endif %}
+                </div>
+
+                <div class="setting-group">
+                    <label for="chunk-method">Default Chunk Method</label>
+                    <select id="chunk-method" name="default_chunk_method" class="input-field">
+                        {% for method in ragflow_chunk_methods %}
+                        <option value="{{ method }}"
+                                {% if method == settings.ragflow.default_chunk_method %}selected{% endif %}>
+                            {{ method | title }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="auto_upload"
+                               {% if settings.ragflow.auto_upload %}checked{% endif %}>
+                        Auto-upload documents after scraping
+                    </label>
+                    <p class="text-muted text-small">When enabled, scraped documents will be automatically uploaded to RAGFlow.</p>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="auto_create_dataset"
+                               {% if settings.ragflow.auto_create_dataset %}checked{% endif %}>
+                        Auto-create dataset if not exists
+                    </label>
+                    <p class="text-muted text-small">Automatically create a dataset named after the scraper if one doesn't exist.</p>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="wait_for_parsing"
+                               {% if settings.ragflow.wait_for_parsing %}checked{% endif %}>
+                        Wait for parsing to complete after upload
+                    </label>
+                    <p class="text-muted text-small">Block until all documents finish parsing (can be slow for large uploads).</p>
+                </div>
+
+                <div id="ragflow-settings-message"></div>
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>Selenium Configuration</h2>
+        </div>
+        <div class="card-body">
+            <div class="setting-group">
+                <label>Remote URL</label>
+                <p class="setting-value"><code>{{ config.SELENIUM_REMOTE_URL }}</code></p>
+            </div>
+            <div class="setting-group">
+                <label>Headless Mode</label>
+                <p class="setting-value">{{ 'Enabled' if config.SELENIUM_HEADLESS else 'Disabled' }}</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>Directories</h2>
+        </div>
+        <div class="card-body">
+            <div class="setting-group">
+                <label>Download Directory</label>
+                <p class="setting-value"><code>{{ config.DOWNLOAD_DIR }}</code></p>
+            </div>
+            <div class="setting-group">
+                <label>Metadata Directory</label>
+                <p class="setting-value"><code>{{ config.METADATA_DIR }}</code></p>
+            </div>
+            <div class="setting-group">
+                <label>State Directory</label>
+                <p class="setting-value"><code>{{ config.STATE_DIR }}</code></p>
+            </div>
+            <div class="setting-group">
+                <label>Log Directory</label>
+                <p class="setting-value"><code>{{ config.LOG_DIR }}</code></p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

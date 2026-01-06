@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}PDF Scraper{% endblock %}</title>
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="{{ url_for('main.static', filename='css/styles.css') }}">
+
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="{{ url_for('main.index') }}">PDF Scraper</a>
+        </div>
+        <ul class="nav-links">
+            <li><a href="{{ url_for('main.index') }}" {% if request.endpoint == 'main.index' %}class="active"{% endif %}>Dashboard</a></li>
+            <li><a href="{{ url_for('main.scrapers') }}" {% if request.endpoint == 'main.scrapers' %}class="active"{% endif %}>Scrapers</a></li>
+            <li><a href="{{ url_for('main.logs') }}" {% if request.endpoint == 'main.logs' %}class="active"{% endif %}>Logs</a></li>
+            <li><a href="{{ url_for('main.settings') }}" {% if request.endpoint == 'main.settings' %}class="active"{% endif %}>Settings</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>PDF Scraper with RAGFlow Integration</p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('main.static', filename='js/utils.js') }}"></script>
+    <script src="{{ url_for('main.static', filename='js/components.js') }}"></script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

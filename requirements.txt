@@ -1,0 +1,24 @@
+# Web Framework
+flask>=3.0.0
+
+# Scraping
+selenium>=4.16.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+trafilatura>=1.12.0
+feedparser>=6.0.0
+
+# HTTP
+requests>=2.31.0
+
+# Cryptography (for RAGFlow RSA login)
+pycryptodome>=3.19.0
+
+# Configuration
+python-dotenv>=1.0.0
+
+# Scheduling
+schedule>=1.2.0
+
+# Development
+webdriver-manager>=4.0.0

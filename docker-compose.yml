@@ -1,0 +1,81 @@
+services:
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pdf-scraper
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5000}:5000"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      # Flask Configuration
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - FLASK_DEBUG=${FLASK_DEBUG:-0}
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - HOST=0.0.0.0
+      - PORT=5000
+      # RAGFlow Configuration
+      - RAGFLOW_API_URL=${RAGFLOW_API_URL:-http://localhost:9380}
+      - RAGFLOW_API_KEY=${RAGFLOW_API_KEY:-}
+      - RAGFLOW_DATASET_ID=${RAGFLOW_DATASET_ID:-}
+      # Selenium Configuration
+      - SELENIUM_REMOTE_URL=http://chrome:4444/wd/hub
+      - SELENIUM_HEADLESS=true
+      # Directories (inside container)
+      - DOWNLOAD_DIR=/app/data/scraped
+      - METADATA_DIR=/app/data/metadata
+      - STATE_DIR=/app/data/state
+      - LOG_DIR=/app/data/logs
+      # Scraper Configuration
+      - MAX_CONCURRENT_DOWNLOADS=${MAX_CONCURRENT_DOWNLOADS:-3}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-60}
+      - RETRY_ATTEMPTS=${RETRY_ATTEMPTS:-3}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Guardian API
+      - GUARDIAN_API_KEY=${GUARDIAN_API_KEY:-}
+    depends_on:
+      chrome:
+        condition: service_healthy
+    networks:
+      - scraper-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  chrome:
+    image: seleniarm/standalone-chromium:latest
+    platform: linux/arm64
+    container_name: pdf-scraper-chrome
+    restart: unless-stopped
+    ports:
+      - "${SELENIUM_PORT:-4444}:4444"
+      - "${VNC_PORT:-7900}:7900"  # VNC for debugging (password: secret)
+    shm_size: 2gb
+    environment:
+      - SE_NODE_MAX_SESSIONS=3
+      - SE_NODE_SESSION_TIMEOUT=300
+      - SE_VNC_NO_PASSWORD=1
+    networks:
+      - scraper-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  scraper-net:
+    driver: bridge
+
+volumes:
+  scraper-data:
+  scraper-config:
+  scraper-logs:
