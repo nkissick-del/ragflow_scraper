@@ -446,36 +446,12 @@ DocumentMetadata(
 
 ---
 
-## Schema Versioning
+## Schema Changes Policy (No Backward Compatibility)
 
-### Versioning Strategy
-
-To support future metadata schema evolution:
-
-1. **Current Version:** v1.0
-   - Required fields: url, title, filename, document_type, organization
-   - Flattening rule: Lists to CSV, nested dicts with dot notation
-   - RAGFlow submission: 4-phase process (dedup, upload, register, metadata push)
-
-2. **Future Versions** (planned, not implemented):
-   - **v1.1:** Add `confidence_score` field for scraper certainty
-   - **v2.0:** Store full DocumentMetadata objects in state (not just title)
-   - **v3.0:** Support structured extra fields with schema validation
-
-### Backward Compatibility
-
-- State files do not include a version field (always assumed current)
-- Scraper config can override metadata defaults per-source
-- RAGFlow metadata submission is lenient (ignores unknown fields)
-
-### Migration Path
-
-If metadata schema changes:
-1. Update `DocumentMetadata` dataclass in [app/services/container.py](../app/services/container.py)
-2. Add migration function in [app/utils/state_tools.py](../app/utils/state_tools.py)
-3. Update validation in [app/services/ragflow_metadata.py](../app/services/ragflow_metadata.py)
-4. Add test cases in [tests/unit/test_metadata_validation.py](../tests/unit/test_metadata_validation.py)
-5. Update this document with new version number and fields
+- State files do **not** carry a schema version and are assumed to match the current code at all times.
+- We do **not** provide migration or backward-compatibility layers for old state/metadata. Breaking changes require regenerating state (delete `data/state/{scraper}_state.json` and re-run the scraper).
+- If new fields are added to `DocumentMetadata`, update code/tests/docs in lockstep and rely on fresh state and re-scrapes rather than migrations.
+- Unknown fields sent to RAGFlow are ignored by the API, but local state must be recreated when schema changes.
 
 ---
 

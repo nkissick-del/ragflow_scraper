@@ -359,8 +359,8 @@ class TestMetadataFormatting:
         cleaned = prepare_metadata_for_ragflow(metadata)
 
         assert cleaned["extra.author"] == "Jane Doe"
-        assert cleaned["extra.published"] == "True"
-        assert cleaned["flags.reviewed"] == "False"
+        assert cleaned["extra.published"] == "true"
+        assert cleaned["flags.reviewed"] == "false"
         assert cleaned["feature_enabled"] == "true"
 
 

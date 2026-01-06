@@ -77,6 +77,14 @@ def prepare_metadata_for_ragflow(metadata: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Cleaned metadata ready for RAGFlow API
     """
+    def _normalize(value: Any) -> Any:
+        """Normalize values for RAGFlow: booleans to lowercase strings, scalars passthrough."""
+        if isinstance(value, bool):
+            return str(value).lower()
+        if isinstance(value, (str, int, float)):
+            return value
+        return str(value)
+
     cleaned = {}
 
     for key, value in metadata.items():
@@ -84,19 +92,17 @@ def prepare_metadata_for_ragflow(metadata: dict[str, Any]) -> dict[str, Any]:
             continue
         elif isinstance(value, (list, tuple)):
             # Convert lists to comma-separated strings
-            cleaned[key] = ", ".join(str(v) for v in value)
+            cleaned[key] = ", ".join(_normalize(v) for v in value)
         elif isinstance(value, bool):
-            # Convert booleans to strings
-            cleaned[key] = str(value).lower()
+            cleaned[key] = _normalize(value)
         elif isinstance(value, (str, int, float)):
-            # Keep as-is
             cleaned[key] = value
         elif isinstance(value, dict):
             # Flatten nested dicts with dot notation
             for nested_key, nested_value in value.items():
-                cleaned[f"{key}.{nested_key}"] = str(nested_value)
+                cleaned[f"{key}.{nested_key}"] = _normalize(nested_value)
         else:
             # Convert everything else to string
-            cleaned[key] = str(value)
+            cleaned[key] = _normalize(value)
 
     return cleaned
