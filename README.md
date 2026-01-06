@@ -1,13 +1,16 @@
 # Multi-Site PDF Scraper with RAGFlow Integration
 
-A modular web scraping system that downloads PDFs from multiple websites and integrates with RAGFlow for RAG ingestion.
+A modular web scraping system that downloads PDFs and articles from multiple Australian energy sector websites and integrates with RAGFlow for RAG ingestion.
 
 ## Features
 
+- **PDF Scrapers**: AEMO, AEMC, AER, ENA, ECA (Australian energy sector documents)
+- **Article Scrapers**: RenewEconomy, TheEnergy, Guardian Australia, The Conversation
 - Modular scraper architecture - easily add new scrapers
 - HTMX-based web interface for configuration and monitoring
-- RAGFlow integration for document ingestion
+- RAGFlow integration with metadata support for document ingestion
 - CLI interface for n8n integration
+- FlareSolverr support for Cloudflare bypass
 - Docker-ready for deployment on Unraid
 
 ## Quick Start
@@ -42,7 +45,7 @@ python scripts/run_scraper.py --scraper aemo
 docker-compose up --build
 ```
 
-Access the web UI at http://localhost:5000
+Access the web UI at http://localhost:5050
 
 ## CLI Usage
 
