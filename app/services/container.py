@@ -33,6 +33,10 @@ class ServiceContainer:
 
     def __init__(self):
         """Initialize service container (singleton)."""
+        # Skip re-initialization if already initialized
+        if hasattr(self, "logger"):
+            return
+
         self.logger = get_logger("container")
 
         # Service instances (lazy-loaded)
@@ -44,14 +48,9 @@ class ServiceContainer:
         self._state_trackers: dict[str, StateTracker] = {}
 
     def __new__(cls) -> ServiceContainer:
-        """Ensure singleton pattern."""
+        """Ensure singleton pattern (minimal implementation)."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance.__dict__["_instance"] = None
-            cls._instance.__dict__["_settings"] = None
-            cls._instance.__dict__["_ragflow_client"] = None
-            cls._instance.__dict__["_flaresolverr_client"] = None
-            cls._instance.__dict__["_state_trackers"] = {}
         return cls._instance
 
     @property
