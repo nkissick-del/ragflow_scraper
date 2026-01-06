@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-01-07 – Phase 4.2 Metadata Schema & Logging Standards (COMPLETE)
+
+**Documentation:**
+- `docs/METADATA_SCHEMA.md`: Aligned required fields with `validate_metadata()`/`prepare_metadata_for_ragflow()` (organization, source_url, scraped_at, document_type), updated flattening rules to match implementation, and refreshed PDF/Article payload examples.
+- `docs/LOGGING_AND_ERROR_STANDARDS.md`: Documented actual logging env vars (`LOG_JSON_FORMAT`, `LOG_TO_FILE`, `LOG_FILE_MAX_BYTES`, `LOG_FILE_BACKUP_COUNT`, `LOG_DIR`) and clarified default log directory/rotation behavior.
+
+**Tests:**
+- `tests/unit/test_metadata_validation.py`: Added coverage for boolean/dict flattening, incorrect optional-type rejection, hash consistency via `get_file_hash`, and `to_ragflow_metadata` default/abstract fallback behavior. Ran `make test-file FILE=tests/unit/test_metadata_validation.py` (pass).
+
+**Outcome:**
+- Metadata schema docs and logging standards are now in sync with code; validation/serialization edge cases covered by unit tests.
+
 ## 2026-01-06 – Phase 4.1 Configuration and Service Architecture (COMPLETE)
 
 **Documentation (1,503 lines):**

@@ -13,40 +13,6 @@ Legend: [Code] coding-only; [Local] requires local docker/compose; [External] ne
 
 ## Phase 4 – Documentation and ops maturity
 
-### 4.2 Metadata Schema & Logging Standards [Code]
-**Goal:** Make schema discoverable and logging consistent across scrapers  
-**References:** [docs/ragflow_scraper_audit.md](docs/ragflow_scraper_audit.md#L1205), [docs/ragflow_scraper_audit.md](docs/ragflow_scraper_audit.md#L1157)
-
-**Sprint 1 (Week 1):**
-- [x] Create `docs/METADATA_SCHEMA.md`: (IN PROGRESS)
-  - Full DocumentMetadata dataclass definition (fields, types, examples)
-  - How metadata flows from scraper → StateTracker → RAGFlow API
-  - Deduplication and hash logic (reference `article_converter.py`)
-  - Flat metadata enforcement rule and validation
-  - Example metadata payload for each scraper type (PDF, article)
-  - Schema versioning strategy
-- [x] Create `docs/LOGGING_AND_ERROR_STANDARDS.md`: (IN PROGRESS)
-  - Log level mapping and when to use each (DEBUG/INFO/WARNING/ERROR/CRITICAL)
-  - Structured logging format (example with scraper name, document count, duration, errors)
-  - Log file rotation policy and retention
-  - How to read logs via web UI (reference web/routes.py)
-  - Error telemetry: error types to track, counts, alert thresholds
-  - Common errors by scraper and troubleshooting flowchart
-- [x] Add code examples to `CLAUDE.md`: (IN PROGRESS)
-  - "How to log a scraper lifecycle event" (start, fetch, store, error recovery)
-  - "How to construct and validate metadata"
-  - "How to interpret logs when debugging a failed scrape"
-
-**Remaining Tasks:**
-- [ ] Add tests `tests/unit/test_metadata_validation.py`:
-  - Validate all required fields for each scraper type
-  - Test deduplication hash consistency
-  - Test metadata serialization to JSON for RAGFlow
-
-**Acceptance:** Docs + passing validation tests
-
----
-
 ### 4.3 Deployment & Connectivity Guide [Local/External]
 **Goal:** Enable operators to deploy in any environment (local, staging, prod) with clarity on optional services  
 **References:** [docs/ragflow_scraper_audit.md](docs/ragflow_scraper_audit.md#L757)
@@ -131,6 +97,30 @@ Legend: [Code] coding-only; [Local] requires local docker/compose; [External] ne
    → Reduce onboarding friction
 
 ---
+
+## Phase 5 - Refactor
+
+ragflow_client.py
+
+Slice into focused modules (auth/session, datasets, documents/upload, parsing/polling, metadata) or mixins; current single class mixes concerns (session login, dataset CRUD, uploads, polling, metadata push).
+Extract a small API wrapper with shared retry/backoff, headers, and error logging; reuse across session and API-key flows instead of per-method request scaffolding.
+Move static catalog data (chunk methods, PDF parsers, pipelines/models grouping) behind a “RagflowCatalog” helper so routes/templates can consume one normalized shape.
+Isolate duplicate/exists checks + wait_for_document_ready + metadata push into an “IngestionWorkflow” helper to keep the client lean.
+Consider a polling utility (status waiters) shared with routes/tests; reduces bespoke loops and makes timeouts/backoff configurable.
+base_scraper.py
+
+Split into mixins: WebDriverLifecycle, CloudflareBypass, HttpDownload, MetadataIO, ExclusionRules, IncrementalState. The base class currently owns all concerns, making it hard to reason about or extend.
+Move data classes (DocumentMetadata, ExcludedDocument, ScraperResult) to a lightweight models.py; this simplifies reuse by tests and Ragflow ingestion without importing the heavy base.
+Centralize fetch/save paths (download dir, metadata dir, hash computation) in a small storage helper to DRY across scrapers and decouple from Selenium concerns.
+Make the template method explicit: setup() -> scrape() -> teardown() with overridable hooks instead of embedding many side effects inside run().
+Encapsulate exclusion logic (should_exclude_document) and incremental date tracking into dedicated helpers; keeps scrape implementations focused on parsing.
+routes.py
+
+Split the blueprint into submodules: auth middleware, scraper control (run/cancel/preview), settings, metrics/logs, ragflow API. The single file holds UI, API, settings, and threading concerns.
+Wrap _running_scrapers + threads in a “ScraperJobManager” service (start/stop/status, error/result storage) to avoid scattered lock handling and repeated inline thread functions.
+DRY Ragflow option fetching/grouping (models, chunk methods) into a shared helper/service; currently repeated in scrapers/settings endpoints.
+Extract log streaming/download helpers and HTMX response builders into utilities to reduce inline string HTML and repeated file reads.
+Consider request/response schemas (pydantic-like or simple dataclasses) for settings/ragflow endpoints to validate inputs and shrink per-route boilerplate.
 
 ## Quick commands (when services are available)
 - RAGFlow health: `curl -sS --fail --connect-timeout 5 --max-time 10 http://localhost:9380/`
