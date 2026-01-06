@@ -15,6 +15,7 @@ import requests
 
 from app.config import Config
 from app.utils import get_logger
+from app.utils.logging_config import log_event, log_exception
 from app.services.settings_manager import get_settings
 
 
@@ -56,6 +57,9 @@ class FlareSolverrClient:
         self.timeout = timeout
         self.max_timeout = max_timeout
         self.logger = get_logger("flaresolverr")
+        self._success_count = 0
+        self._failure_count = 0
+        self._timeout_count = 0
 
         # Cache for sessions (cookies + user agent)
         self._session_cache: dict[str, dict] = {}
@@ -94,7 +98,7 @@ class FlareSolverrClient:
                 self.logger.warning(f"FlareSolverr health check returned {response.status_code}")
                 return False
         except Exception as e:
-            self.logger.error(f"FlareSolverr connection failed: {e}")
+            log_exception(self.logger, e, "flaresolverr.health.failed")
             return False
 
     def get_page(
@@ -133,6 +137,8 @@ class FlareSolverrClient:
             cached = self._session_cache[session_id]
             payload["cookies"] = cached.get("cookies", [])
 
+        start = time.time()
+
         try:
             # Request timeout should be longer than FlareSolverr's maxTimeout
             request_timeout = effective_timeout_seconds + 30  # Extra buffer for network latency
@@ -169,10 +175,39 @@ class FlareSolverrClient:
                     }
 
                 self.logger.info(f"FlareSolverr success: {len(result.html)} bytes")
+                self._success_count += 1
+                log_event(
+                    self.logger,
+                    "info",
+                    "flaresolverr.request.complete",
+                    duration_s=round(time.time() - start, 2),
+                    success=self._success_count,
+                    failure=self._failure_count,
+                    timeout=self._timeout_count,
+                    success_rate=self._compute_success_rate(),
+                )
                 return result
             else:
                 error_msg = data.get("message", "Unknown error")
-                self.logger.error(f"FlareSolverr failed: {error_msg}")
+                log_event(
+                    self.logger,
+                    "warning",
+                    "flaresolverr.request.backend_failed",
+                    status_code=response.status_code,
+                    error=error_msg,
+                )
+                self._failure_count += 1
+                log_event(
+                    self.logger,
+                    "warning",
+                    "flaresolverr.request.failed",
+                    duration_s=round(time.time() - start, 2),
+                    success=self._success_count,
+                    failure=self._failure_count,
+                    timeout=self._timeout_count,
+                    success_rate=self._compute_success_rate(),
+                    error=error_msg,
+                )
                 return FlareSolverResult(
                     success=False,
                     error=error_msg,
@@ -180,12 +215,35 @@ class FlareSolverrClient:
 
         except requests.Timeout:
             self.logger.error("FlareSolverr request timed out")
+            self._timeout_count += 1
+            log_event(
+                self.logger,
+                "warning",
+                "flaresolverr.request.timeout",
+                duration_s=round(time.time() - start, 2),
+                success=self._success_count,
+                failure=self._failure_count,
+                timeout=self._timeout_count,
+                success_rate=self._compute_success_rate(),
+            )
             return FlareSolverResult(
                 success=False,
                 error="Request timed out",
             )
         except Exception as e:
-            self.logger.error(f"FlareSolverr request failed: {e}")
+            log_exception(self.logger, e, "flaresolverr.request.exception_raw")
+            self._failure_count += 1
+            log_event(
+                self.logger,
+                "error",
+                "flaresolverr.request.exception",
+                duration_s=round(time.time() - start, 2),
+                success=self._success_count,
+                failure=self._failure_count,
+                timeout=self._timeout_count,
+                success_rate=self._compute_success_rate(),
+                error=str(e),
+            )
             return FlareSolverResult(
                 success=False,
                 error=str(e),
@@ -224,7 +282,7 @@ class FlareSolverrClient:
                 return False
 
         except Exception as e:
-            self.logger.error(f"Failed to create session: {e}")
+            log_exception(self.logger, e, "flaresolverr.session.create_failed", session_id=session_id)
             return False
 
     def destroy_session(self, session_id: str) -> bool:
@@ -261,7 +319,7 @@ class FlareSolverrClient:
             return False
 
         except Exception as e:
-            self.logger.warning(f"Failed to destroy session: {e}")
+            log_exception(self.logger, e, "flaresolverr.session.destroy_failed", session_id=session_id)
             return False
 
     def list_sessions(self) -> list[str]:
@@ -288,7 +346,7 @@ class FlareSolverrClient:
             return []
 
         except Exception as e:
-            self.logger.error(f"Failed to list sessions: {e}")
+            log_exception(self.logger, e, "flaresolverr.session.list_failed")
             return []
 
     def get_cookies_for_requests(self, session_id: str) -> dict:
@@ -320,3 +378,21 @@ class FlareSolverrClient:
         if session_id not in self._session_cache:
             return ""
         return self._session_cache[session_id].get("user_agent", "")
+
+    def get_metrics(self) -> dict[str, float | int]:
+        """Expose simple counters and success rate for observability."""
+        total = self._success_count + self._failure_count + self._timeout_count
+        success_rate = self._compute_success_rate()
+        return {
+            "success": self._success_count,
+            "failure": self._failure_count,
+            "timeout": self._timeout_count,
+            "total": total,
+            "success_rate": success_rate,
+        }
+
+    def _compute_success_rate(self) -> float:
+        total = self._success_count + self._failure_count + self._timeout_count
+        if total == 0:
+            return 0.0
+        return round(self._success_count / total, 3)

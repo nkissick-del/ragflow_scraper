@@ -11,6 +11,10 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+import jsonschema
+
+from app.utils.errors import ValidationError
+
 from app.config import Config, CONFIG_DIR
 from app.utils import get_logger
 
@@ -61,6 +65,71 @@ DEFAULT_SETTINGS = {
     },
 }
 
+SETTINGS_SCHEMA = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "flaresolverr": {
+            "type": "object",
+            "properties": {
+                "enabled": {"type": "boolean"},
+                "timeout": {"type": "integer", "minimum": 1},
+                "max_timeout": {"type": "integer", "minimum": 1},
+            },
+            "additionalProperties": False,
+        },
+        "ragflow": {
+            "type": "object",
+            "properties": {
+                "default_dataset_id": {"type": "string"},
+                "auto_upload": {"type": "boolean"},
+                "auto_create_dataset": {"type": "boolean"},
+                "default_embedding_model": {"type": "string"},
+                "default_chunk_method": {"type": "string"},
+                "wait_for_parsing": {"type": "boolean"},
+                "parser_config": {
+                    "type": "object",
+                    "properties": {
+                        "chunk_token_num": {"type": "integer", "minimum": 1},
+                        "layout_recognize": {"type": "string"},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            "additionalProperties": False,
+        },
+        "scraping": {
+            "type": "object",
+            "properties": {
+                "default_request_delay": {"type": "number", "minimum": 0},
+                "default_timeout": {"type": "integer", "minimum": 1},
+                "default_retry_attempts": {"type": "integer", "minimum": 0},
+                "use_flaresolverr_by_default": {"type": "boolean"},
+                "max_concurrent_downloads": {"type": "integer", "minimum": 1},
+            },
+            "additionalProperties": False,
+        },
+        "scrapers": {"type": "object"},
+        "application": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "version": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "scheduler": {
+            "type": "object",
+            "properties": {
+                "enabled": {"type": "boolean"},
+                "run_on_startup": {"type": "boolean"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    "additionalProperties": False,
+}
+
 
 class SettingsManager:
     """
@@ -90,9 +159,13 @@ class SettingsManager:
             try:
                 with open(SETTINGS_FILE, "r") as f:
                     self._settings = json.load(f)
+                self._validate(self._settings)
                 self.logger.debug("Settings loaded from file")
             except (json.JSONDecodeError, IOError) as e:
                 self.logger.warning(f"Failed to load settings: {e}")
+                self._settings = DEFAULT_SETTINGS.copy()
+            except jsonschema.ValidationError as e:
+                self.logger.warning(f"Settings validation failed; using defaults: {e.message}")
                 self._settings = DEFAULT_SETTINGS.copy()
         else:
             self._settings = DEFAULT_SETTINGS.copy()
@@ -113,6 +186,11 @@ class SettingsManager:
 
     def _save(self):
         """Save settings to file."""
+        try:
+            self._validate(self._settings)
+        except jsonschema.ValidationError as e:
+            self.logger.error(f"Refusing to save invalid settings: {e.message}")
+            raise ValidationError(f"Invalid settings: {e.message}") from e
         try:
             SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
             with open(SETTINGS_FILE, "w") as f:
@@ -190,6 +268,10 @@ class SettingsManager:
     def reload(self):
         """Reload settings from file."""
         self._load()
+
+    def _validate(self, settings: dict):
+        """Validate settings against JSON schema."""
+        jsonschema.validate(instance=settings, schema=SETTINGS_SCHEMA)
 
     # Convenience properties for commonly accessed settings
     @property

@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.config import Config
+from app.container import get_container
 from app.scrapers import ScraperRegistry
-from app.services import RAGFlowClient, StateTracker
 from app.utils import get_logger
+from app.utils.logging_config import log_exception, log_event
 
 
 @dataclass
@@ -71,6 +72,7 @@ class Pipeline:
         max_pages: Optional[int] = None,
         upload_to_ragflow: bool = True,
         wait_for_parsing: bool = True,
+        container=None,
     ):
         """
         Initialize the pipeline.
@@ -87,9 +89,11 @@ class Pipeline:
         self.max_pages = max_pages
         self.upload_to_ragflow = upload_to_ragflow
         self.wait_for_parsing = wait_for_parsing
+        self.container = container or get_container()
 
         self.logger = get_logger(f"pipeline.{scraper_name}")
-        self.ragflow = RAGFlowClient() if upload_to_ragflow else None
+        self.ragflow = self.container.get_ragflow_client() if upload_to_ragflow else None
+        self._step_times: dict[str, float] = {}
 
     def run(self) -> PipelineResult:
         """
@@ -99,7 +103,8 @@ class Pipeline:
             PipelineResult with statistics
         """
         import time
-        start_time = time.time()
+        start_time = time.perf_counter()
+        step_times: dict[str, float] = {}
 
         result = PipelineResult(
             status="running",
@@ -108,8 +113,11 @@ class Pipeline:
 
         try:
             # Step 1: Run scraper
-            self.logger.info("Step 1: Running scraper...")
+            log_event(self.logger, "info", "pipeline.scrape.start", scraper=self.scraper_name)
+            step_start = time.perf_counter()
             scraper_result = self._run_scraper()
+            step_times["scrape"] = time.perf_counter() - step_start
+            self._step_times = step_times
 
             result.scraped_count = scraper_result.scraped_count
             result.downloaded_count = scraper_result.downloaded_count
@@ -127,10 +135,23 @@ class Pipeline:
 
             # Step 2: Upload to RAGFlow
             if self.upload_to_ragflow and self.dataset_id:
-                self.logger.info("Step 2: Uploading to RAGFlow...")
+                upload_start = time.perf_counter()
+                log_event(
+                    self.logger,
+                    "info",
+                    "pipeline.upload.start",
+                    scraper=self.scraper_name,
+                    dataset_id=self.dataset_id,
+                    file_count=len(list((Config.DOWNLOAD_DIR / self.scraper_name).glob("*.pdf"))),
+                )
                 upload_result = self._upload_to_ragflow()
                 result.uploaded_count = upload_result["uploaded"]
                 result.failed_count += upload_result["failed"]
+                step_times["upload"] = time.perf_counter() - upload_start
+                self._step_times = step_times
+                self.logger.info(
+                    f"Upload step completed in {step_times['upload']:.2f}s"
+                )
 
                 if upload_result["failed"] > 0:
                     result.errors.append(
@@ -143,9 +164,19 @@ class Pipeline:
                     if self._trigger_parsing():
                         # Step 4: Wait for parsing
                         if self.wait_for_parsing:
+                            parse_start = time.time()
                             self.logger.info("Step 4: Waiting for parsing...")
                             if self._wait_for_parsing():
                                 result.parsed_count = result.uploaded_count
+                                step_times["parse_wait"] = time.time() - parse_start
+                                self._step_times = step_times
+                                log_event(
+                                    self.logger,
+                                    "info",
+                                    "pipeline.parse.wait.complete",
+                                    scraper=self.scraper_name,
+                                    duration_s=step_times["parse_wait"],
+                                )
                             else:
                                 result.errors.append("Parsing did not complete")
                     else:
@@ -158,10 +189,16 @@ class Pipeline:
                 result.status = "completed"
 
         except Exception as e:
-            self.logger.error(f"Pipeline failed: {e}")
+            log_exception(
+                self.logger,
+                e,
+                "pipeline.failed",
+                scraper=self.scraper_name,
+            )
             result.status = "failed"
             result.errors.append(str(e))
 
+        self._step_times = step_times
         return self._finalize_result(result, start_time)
 
     def _run_scraper(self):
@@ -219,7 +256,7 @@ class Pipeline:
     ) -> PipelineResult:
         """Finalize the result with timing information."""
         import time
-        result.duration_seconds = time.time() - start_time
+        result.duration_seconds = time.perf_counter() - start_time
         result.completed_at = datetime.now().isoformat()
 
         self.logger.info(
@@ -228,6 +265,20 @@ class Pipeline:
             f"{result.uploaded_count} uploaded, "
             f"{result.parsed_count} parsed, "
             f"{result.failed_count} failed"
+        )
+
+        log_event(
+            self.logger,
+            "info",
+            "pipeline.completed",
+            scraper=self.scraper_name,
+            status=result.status,
+            downloaded=result.downloaded_count,
+            uploaded=result.uploaded_count,
+            parsed=result.parsed_count,
+            failed=result.failed_count,
+            duration_s=result.duration_seconds,
+            step_times=self._step_times,
         )
 
         return result

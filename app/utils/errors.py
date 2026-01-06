@@ -69,3 +69,11 @@ class StateError(ScraperError):
     def __init__(self, message: str, **kwargs: Any) -> None:
         kwargs.setdefault("recoverable", False)
         super().__init__(message, **kwargs)
+
+
+class ValidationError(ScraperError):
+    """Validation failures for configuration or metadata."""
+
+    def __init__(self, message: str, **kwargs: Any) -> None:
+        kwargs.setdefault("recoverable", False)
+        super().__init__(message, **kwargs)

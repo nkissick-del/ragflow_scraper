@@ -1049,6 +1049,13 @@ RAGFLOW_CHECK_DUPLICATES = os.getenv("RAGFLOW_CHECK_DUPLICATES", "true").lower()
 6. **Document untested assumptions** extensively when APIs are unavailable
 7. **Graceful degradation is critical** - don't fail uploads due to metadata issues
 
+### Sprint Learnings (2026-01-06)
+
+- Added optional basic auth gate across web routes; when running tests on host, set DOWNLOAD_DIR/METADATA_DIR/STATE_DIR/LOG_DIR/CONFIG_DIR to writable paths to avoid read-only `/app` during Config.ensure_directories().
+- Logging now defaults to JSON lines with size-based rotation and backup retention; tune via LOG_JSON_FORMAT, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT, LOG_TO_FILE, LOG_LEVEL in [app/config.py](app/config.py) and ensure container rebuild after env/requirements changes.
+- Introduced [constraints.txt](constraints.txt) and linked requirements to it; resolved lxml pin to 5.2.2 to satisfy trafilatura. Use pip-compile or equivalent to refresh pins.
+- New auth smoke tests live in [tests/unit/test_basic_auth.py](tests/unit/test_basic_auth.py); they pass when env paths are overridden as above. pytest-asyncio emits deprecation warnings on Python 3.14—safe to ignore or pin once an updated release lands.
+
 ---
 
 ## Documentation Links

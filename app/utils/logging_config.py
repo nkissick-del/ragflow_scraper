@@ -4,13 +4,37 @@ Logging configuration for the PDF Scraper application.
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
-from datetime import datetime
-from pathlib import Path
-from typing import Optional
+from logging.handlers import RotatingFileHandler
+from typing import Any, Optional
 
 from app.config import Config
+
+
+class JsonFormatter(logging.Formatter):
+    """Simple JSON formatter for structured logs."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        log_entry = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "filename": record.filename,
+            "lineno": record.lineno,
+        }
+
+        # Include exception info when present
+        if record.exc_info:
+            log_entry["exc_info"] = self.formatException(record.exc_info)
+
+        # Preserve any structured extras on the record
+        if hasattr(record, "extra") and isinstance(record.extra, dict):
+            log_entry.update(record.extra)
+
+        return json.dumps(log_entry, ensure_ascii=True)
 
 
 def setup_logging(
@@ -37,7 +61,7 @@ def setup_logging(
     if logger.handlers:
         return logger
 
-    # Console handler
+    # Console handler (human-readable)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(getattr(logging, level.upper()))
     console_format = logging.Formatter(
@@ -47,16 +71,25 @@ def setup_logging(
     console_handler.setFormatter(console_format)
     logger.addHandler(console_handler)
 
-    # File handler
-    if log_to_file:
-        log_file = Config.LOG_DIR / f"{name}_{datetime.now():%Y%m%d}.log"
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(getattr(logging, level.upper()))
-        file_format = logging.Formatter(
-            "%(asctime)s | %(levelname)-8s | %(name)s | %(filename)s:%(lineno)d | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
+    # File handler with rotation and optional JSON format
+    if log_to_file and Config.LOG_TO_FILE:
+        log_file = Config.LOG_DIR / f"{name}.log"
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=Config.LOG_FILE_MAX_BYTES,
+            backupCount=Config.LOG_FILE_BACKUP_COUNT,
         )
-        file_handler.setFormatter(file_format)
+        file_handler.setLevel(getattr(logging, level.upper()))
+
+        if Config.LOG_JSON_FORMAT:
+            file_handler.setFormatter(JsonFormatter(datefmt="%Y-%m-%dT%H:%M:%S"))
+        else:
+            file_format = logging.Formatter(
+                "%(asctime)s | %(levelname)-8s | %(name)s | %(filename)s:%(lineno)d | %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+            file_handler.setFormatter(file_format)
+
         logger.addHandler(file_handler)
 
     return logger
@@ -80,3 +113,18 @@ def get_logger(name: str) -> logging.Logger:
         setup_logging()
 
     return logger
+
+
+def log_exception(logger: logging.Logger, exc: BaseException, message: str, **context: Any) -> None:
+    """Log exceptions with structured context and full traceback."""
+    logger.error(
+        message,
+        exc_info=exc,
+        extra={"extra": context} if context else None,
+    )
+
+
+def log_event(logger: logging.Logger, level: str, message: str, **context: Any) -> None:
+    """Emit a structured log event with optional context payload."""
+    log_fn = getattr(logger, level.lower(), logger.info)
+    log_fn(message, extra={"extra": context} if context else None)

@@ -19,6 +19,7 @@ from Crypto.Cipher import PKCS1_v1_5  # type: ignore[import-untyped]
 
 from app.config import Config
 from app.utils import get_logger
+from app.utils.logging_config import log_event, log_exception
 
 
 # RAGFlow default public key for password encryption
@@ -352,10 +353,10 @@ class RAGFlowClient:
         try:
             # Try to list datasets as a connection test
             self._make_request("GET", "/api/v1/datasets")
-            self.logger.info("RAGFlow connection successful")
+            log_event(self.logger, "info", "ragflow.connection.success")
             return True
         except Exception as e:
-            self.logger.error(f"RAGFlow connection failed: {e}")
+            log_exception(self.logger, e, "ragflow.connection.failed")
             return False
 
     def list_embedding_models(self) -> list[dict]:
@@ -679,7 +680,14 @@ class RAGFlowClient:
                 doc_id = response_data[0].get("id") if isinstance(response_data[0], dict) else None
 
             if doc_id:
-                self.logger.info(f"Uploaded: {file_path.name} (ID: {doc_id})")
+                log_event(
+                    self.logger,
+                    "info",
+                    "ragflow.upload.success",
+                    dataset_id=dataset_id,
+                    filename=file_path.name,
+                    document_id=doc_id,
+                )
                 return UploadResult(
                     success=True,
                     document_id=doc_id,
@@ -688,7 +696,13 @@ class RAGFlowClient:
 
             # Check if code=0 indicates success even without doc_id
             if data.get("code") == 0:
-                self.logger.info(f"Uploaded: {file_path.name}")
+                log_event(
+                    self.logger,
+                    "info",
+                    "ragflow.upload.success",
+                    dataset_id=dataset_id,
+                    filename=file_path.name,
+                )
                 return UploadResult(
                     success=True,
                     filename=file_path.name,
@@ -701,7 +715,13 @@ class RAGFlowClient:
             )
 
         except Exception as e:
-            self.logger.error(f"Failed to upload {file_path.name}: {e}")
+            log_exception(
+                self.logger,
+                e,
+                "ragflow.upload.failed",
+                dataset_id=dataset_id,
+                filename=file_path.name,
+            )
             return UploadResult(
                 success=False,
                 filename=file_path.name,
@@ -729,7 +749,14 @@ class RAGFlowClient:
             results.append(result)
 
         successful = sum(1 for r in results if r.success)
-        self.logger.info(f"Uploaded {successful}/{len(file_paths)} documents")
+        log_event(
+            self.logger,
+            "info",
+            "ragflow.upload.batch.complete",
+            dataset_id=dataset_id,
+            uploaded=successful,
+            failed=len(file_paths) - successful,
+        )
 
         return results
 
@@ -759,11 +786,22 @@ class RAGFlowClient:
                 json=payload,
             )
 
-            self.logger.info(f"Parsing triggered for dataset {dataset_id}")
+            log_event(
+                self.logger,
+                "info",
+                "ragflow.parse.triggered",
+                dataset_id=dataset_id,
+                document_ids=document_ids or "all",
+            )
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to trigger parsing: {e}")
+            log_exception(
+                self.logger,
+                e,
+                "ragflow.parse.trigger_failed",
+                dataset_id=dataset_id,
+            )
             return False
 
     def get_parsing_status(
@@ -808,7 +846,7 @@ class RAGFlowClient:
             return status
 
         except Exception as e:
-            self.logger.error(f"Failed to get parsing status: {e}")
+            log_exception(self.logger, e, "ragflow.parse.status_failed", dataset_id=dataset_id)
             return {}
 
     def wait_for_parsing(
@@ -846,16 +884,34 @@ class RAGFlowClient:
             # Check if all documents are processed
             if status["parsing"] == 0 and status["pending"] == 0:
                 if status["failed"] > 0:
-                    self.logger.warning(
-                        f"Parsing completed with {status['failed']} failures"
+                    log_event(
+                        self.logger,
+                        "warning",
+                        "ragflow.parse.completed_with_failures",
+                        dataset_id=dataset_id,
+                        failed=status["failed"],
+                        parsed=status["parsed"],
                     )
                 else:
-                    self.logger.info("All documents parsed successfully")
+                    log_event(
+                        self.logger,
+                        "info",
+                        "ragflow.parse.completed",
+                        dataset_id=dataset_id,
+                        parsed=status["parsed"],
+                        duration_s=time.time() - start_time,
+                    )
                 return status["failed"] == 0
 
             time.sleep(poll_interval)
 
-        self.logger.error(f"Parsing timed out after {timeout}s")
+        log_event(
+            self.logger,
+            "error",
+            "ragflow.parse.timeout",
+            dataset_id=dataset_id,
+            timeout_s=timeout,
+        )
         return False
 
     def check_document_exists(
@@ -889,7 +945,7 @@ class RAGFlowClient:
             return None
 
         except Exception as e:
-            self.logger.error(f"Failed to check document existence: {e}")
+            log_exception(self.logger, e, "ragflow.duplicate_check.failed", dataset_id=dataset_id)
             return None
 
     def get_document_status(
@@ -1031,7 +1087,7 @@ class RAGFlowClient:
         """
         from pathlib import Path
         from app.scrapers.base_scraper import DocumentMetadata
-        from app.services.ragflow_metadata import prepare_metadata_for_ragflow
+        from app.services.ragflow_metadata import prepare_metadata_for_ragflow, validate_metadata
 
         results = []
 
@@ -1078,7 +1134,8 @@ class RAGFlowClient:
                     )
 
                 # Phase 4: Set metadata
-                ragflow_metadata = prepare_metadata_for_ragflow(metadata.to_ragflow_metadata())
+                validated = validate_metadata(metadata.to_ragflow_metadata())
+                ragflow_metadata = prepare_metadata_for_ragflow(validated)
 
                 metadata_success = self.set_document_metadata(
                     dataset_id,

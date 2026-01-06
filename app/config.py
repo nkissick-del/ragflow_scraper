@@ -105,6 +105,15 @@ class Config:
             dir_path.mkdir(parents=True, exist_ok=True)
 
     @classmethod
+    def validate(cls):
+        """Validate config invariants and fail fast on misconfiguration."""
+        if cls.BASIC_AUTH_ENABLED:
+            if not cls.BASIC_AUTH_USERNAME or not cls.BASIC_AUTH_PASSWORD:
+                raise ValueError(
+                    "Invalid Config: BASIC_AUTH_ENABLED=true requires both BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD"
+                )
+
+    @classmethod
     def get_scraper_config_path(cls, scraper_name: str) -> Path:
         """Get the configuration file path for a scraper."""
         return cls.SCRAPERS_CONFIG_DIR / f"{scraper_name}.json"
@@ -112,3 +121,4 @@ class Config:
 
 # Ensure directories exist on import
 Config.ensure_directories()
+Config.validate()

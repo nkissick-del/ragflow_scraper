@@ -16,6 +16,7 @@ import schedule  # type: ignore[import-untyped]
 from app.config import Config
 from app.scrapers import ScraperRegistry
 from app.utils import get_logger
+from app.utils.logging_config import log_exception, log_event
 
 
 class Scheduler:
@@ -35,7 +36,7 @@ class Scheduler:
 
     def load_schedules(self):
         """Load schedules from scraper configuration files."""
-        self.logger.info("Loading scraper schedules...")
+        log_event(self.logger, "info", "scheduler.load.start")
 
         for config_file in Config.SCRAPERS_CONFIG_DIR.glob("*.json"):
             if config_file.name == "template.json":
@@ -53,7 +54,12 @@ class Scheduler:
                     self.add_scraper_schedule(scraper_name, cron)
 
             except Exception as e:
-                self.logger.error(f"Failed to load schedule from {config_file}: {e}")
+                log_exception(
+                    self.logger,
+                    e,
+                    "scheduler.load.error",
+                    config=str(config_file),
+                )
 
     def add_scraper_schedule(self, scraper_name: str, cron: str):
         """
@@ -75,7 +81,7 @@ class Scheduler:
         job = self._parse_cron_and_schedule(scraper_name, cron)
         if job:
             self._jobs[scraper_name] = job
-            self.logger.info(f"Scheduled {scraper_name}: {cron}")
+            log_event(self.logger, "info", "scheduler.job.scheduled", scraper=scraper_name, cron=cron)
 
     def _parse_cron_and_schedule(
         self,
@@ -140,21 +146,29 @@ class Scheduler:
 
     def _run_scraper(self, scraper_name: str):
         """Run a scraper (called by scheduler)."""
-        self.logger.info(f"Scheduled run starting: {scraper_name}")
+        log_event(self.logger, "info", "scheduler.run.start", scraper=scraper_name)
 
         try:
             scraper = ScraperRegistry.get_scraper(scraper_name)
             if scraper:
                 result = scraper.run()
-                self.logger.info(
-                    f"Scheduled run completed: {scraper_name} - "
-                    f"{result.downloaded_count} downloaded, "
-                    f"{result.failed_count} failed"
+                log_event(
+                    self.logger,
+                    "info",
+                    "scheduler.run.complete",
+                    scraper=scraper_name,
+                    downloaded=result.downloaded_count,
+                    failed=result.failed_count,
                 )
             else:
-                self.logger.error(f"Scraper not found: {scraper_name}")
+                log_event(self.logger, "error", "scheduler.run.not_found", scraper=scraper_name)
         except Exception as e:
-            self.logger.error(f"Scheduled run failed: {scraper_name} - {e}")
+            log_exception(
+                self.logger,
+                e,
+                "scheduler.run.failed",
+                scraper=scraper_name,
+            )
 
     def remove_schedule(self, scraper_name: str):
         """Remove a schedule for a scraper."""
@@ -178,7 +192,17 @@ class Scheduler:
         self._running = True
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
-        self.logger.info("Scheduler started")
+        log_event(self.logger, "info", "scheduler.started")
+
+    def run_now(self, scraper_name: str):
+        """Trigger a scraper immediately without waiting for its next schedule."""
+        thread = threading.Thread(
+            target=self._run_scraper,
+            args=(scraper_name,),
+            daemon=True,
+        )
+        thread.start()
+        return thread
 
     def stop(self):
         """Stop the scheduler."""
@@ -186,7 +210,7 @@ class Scheduler:
         if self._thread:
             self._thread.join(timeout=5)
             self._thread = None
-        self.logger.info("Scheduler stopped")
+        log_event(self.logger, "info", "scheduler.stopped")
 
     def _run_loop(self):
         """Main scheduler loop."""

@@ -22,10 +22,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from app.config import Config
+from app.container import get_container
 from app.scrapers import ScraperRegistry
 from app.scrapers.base_scraper import DocumentMetadata
-from app.services.ragflow_client import RAGFlowClient
-from app.services.settings_manager import get_settings
 from app.utils import setup_logging, get_logger
 from typing import Optional
 
@@ -154,7 +153,8 @@ def upload_to_ragflow(
     Returns:
         Dict with upload statistics
     """
-    settings = get_settings()
+    container = get_container()
+    settings = container.get_settings_manager()
 
     # Get scraper class to access default settings
     scraper_class = ScraperRegistry.get_scraper_class(scraper_name)
@@ -168,7 +168,7 @@ def upload_to_ragflow(
     target_dataset_id = dataset_id or ragflow_settings.get("dataset_id")
 
     # Initialize RAGFlow client
-    client = RAGFlowClient()
+    client = container.get_ragflow_client()
 
     if not client.test_connection():
         logger.error("RAGFlow connection failed")

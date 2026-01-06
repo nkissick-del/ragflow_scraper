@@ -1,24 +1,30 @@
+# Pin via shared constraints for reproducibility
+-c constraints.txt
+
 # Web Framework
-flask>=3.0.0
+flask
 
 # Scraping
-selenium>=4.16.0
-beautifulsoup4>=4.12.0
-lxml>=5.0.0
-trafilatura>=1.12.0
-feedparser>=6.0.0
+selenium
+beautifulsoup4
+lxml
+trafilatura
+feedparser
 
 # HTTP
-requests>=2.31.0
+requests
 
 # Cryptography (for RAGFlow RSA login)
-pycryptodome>=3.19.0
+pycryptodome
 
 # Configuration
-python-dotenv>=1.0.0
+python-dotenv
+
+# Validation
+jsonschema
 
 # Scheduling
-schedule>=1.2.0
+schedule
 
 # Development
-webdriver-manager>=4.0.0
+webdriver-manager
