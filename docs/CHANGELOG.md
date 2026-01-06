@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-01-06 – Phase 4.1 Configuration and Service Architecture
+- Service container (DI): Implemented ServiceContainer singleton with lazy-loaded services (SettingsManager, RAGFlowClient, FlareSolverrClient, StateTracker factory).
+- Configuration reference: CONFIG_AND_SERVICES.md documents three-layer config (env vars, per-scraper JSONs, runtime settings), service responsibilities, and dependency injection benefits.
+- Migration guide: SERVICE_CONTAINER_MIGRATION.md provides four-phase roadmap (create container, migrate scrapers, migrate routes, cleanup) with before/after code examples, testing strategy, and rollback plan.
+- Developer docs: CLAUDE.md Section 2 (Service Layer Architecture) with practical usage patterns, error handling for optional services, and links to detailed references.
+- Testing: Comprehensive test suite (268 lines) for container singleton, lazy-loading, state tracker factory, configuration validation, and integration scenarios.
+
 ## 2026-01-06 – Phase 2 Local Validation & Tooling
 - Docker/compose hardening: pinned Python and Chromium images, added OCI labels, resource limits, and no-new-privileges for services.
 - New maintenance CLI: `scripts/run_scraper.py state validate|repair` (checksums, schema checks, optional repair/write) and `config validate|migrate` (JSON schema + defaults for settings/scraper configs).
