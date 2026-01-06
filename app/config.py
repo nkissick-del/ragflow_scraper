@@ -25,6 +25,9 @@ class Config:
     HOST = os.getenv("HOST", "0.0.0.0")
     PORT = int(os.getenv("PORT", 5000))
     DEBUG = os.getenv("FLASK_DEBUG", "0") == "1"
+    BASIC_AUTH_ENABLED = os.getenv("BASIC_AUTH_ENABLED", "false").lower() == "true"
+    BASIC_AUTH_USERNAME = os.getenv("BASIC_AUTH_USERNAME", "")
+    BASIC_AUTH_PASSWORD = os.getenv("BASIC_AUTH_PASSWORD", "")
 
     # RAGFlow
     RAGFLOW_API_URL = os.getenv("RAGFLOW_API_URL", "http://localhost:9380")
@@ -66,6 +69,13 @@ class Config:
 
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    LOG_JSON_FORMAT = os.getenv("LOG_JSON_FORMAT", "true").lower() == "true"
+    LOG_FILE_MAX_BYTES = int(os.getenv("LOG_FILE_MAX_BYTES", 10 * 1024 * 1024))
+    LOG_FILE_BACKUP_COUNT = int(os.getenv("LOG_FILE_BACKUP_COUNT", 5))
+    LOG_TO_FILE = os.getenv("LOG_TO_FILE", "true").lower() == "true"
+
+    # Proxy handling (for correct host/proto when behind reverse proxies)
+    TRUST_PROXY_COUNT = int(os.getenv("TRUST_PROXY_COUNT", 0))
 
     @classmethod
     def ensure_directories(cls):

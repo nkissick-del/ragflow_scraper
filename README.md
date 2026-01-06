@@ -101,6 +101,50 @@ class MyScraper(BaseScraper):
 
 See `.env.example` for all configuration options.
 
+### Authentication (optional)
+
+- Enable basic auth on the web UI by setting `BASIC_AUTH_ENABLED=true` and providing `BASIC_AUTH_USERNAME` / `BASIC_AUTH_PASSWORD`.
+- Leave disabled for local development (default).
+
+### Logging
+
+- File logs default to JSON lines with size-based rotation (10 MB, 5 backups). Configure via:
+    - `LOG_JSON_FORMAT` (true/false)
+    - `LOG_FILE_MAX_BYTES` (bytes)
+    - `LOG_FILE_BACKUP_COUNT` (files to keep)
+    - `LOG_TO_FILE` (toggle file output)
+    - `LOG_LEVEL` (INFO, DEBUG, etc.)
+
+### Config precedence
+
+- Secrets and endpoints come from `.env` (environment variables).
+- Runtime-tunable behavior (timeouts, defaults, per-scraper overrides) lives in `config/settings.json` and is validated against an internal JSON schema at load/save time.
+- When in doubt: `.env` wins for secrets/URLs; `settings.json` wins for UI-tuned behavior.
+
+### Security/HTTPS
+
+- Always terminate TLS in front of the app (e.g., nginx/Traefik with valid certs) when exposed off-LAN.
+- Enable `BASIC_AUTH_ENABLED` + credentials for the UI whenever it is reachable outside trusted networks.
+- Keep secrets in `.env` (not in `settings.json`); rotate keys regularly and scope API keys per-environment.
+- If running behind a proxy, set forwarded headers correctly (X-Forwarded-Proto/Host) and prefer HSTS at the proxy layer.
+- When behind a reverse proxy, set `TRUST_PROXY_COUNT` (e.g., 1 for a single proxy hop) so Flask respects forwarded host/proto via ProxyFix.
+- Quick checklist: TLS terminated at proxy with HSTS; `BASIC_AUTH_ENABLED=true` with strong creds if exposed; `TRUST_PROXY_COUNT` set when proxied; secrets only in `.env`; restrict writeable volumes (`config/`, `data/`, `logs/`) to trusted hosts.
+- Restrict write volumes (`config/`, `data/`, `logs/`) to least privilege; avoid sharing these into untrusted containers.
+- Example Traefik snippet (secure headers + forwarded proto):
+    ```yaml
+    labels:
+        - traefik.enable=true
+        - traefik.http.routers.scraper.rule=Host(`scraper.example.com`)
+        - traefik.http.routers.scraper.entrypoints=websecure
+        - traefik.http.routers.scraper.tls.certresolver=letsencrypt
+        - traefik.http.middlewares.scraper-headers.headers.stsSeconds=31536000
+        - traefik.http.middlewares.scraper-headers.headers.forceSTSHeader=true
+        - traefik.http.middlewares.scraper-headers.headers.stsIncludeSubdomains=true
+        - traefik.http.middlewares.scraper-headers.headers.stsPreload=true
+        - traefik.http.middlewares.scraper-headers.headers.referrerPolicy=same-origin
+        - traefik.http.routers.scraper.middlewares=scraper-headers
+    ```
+
 ## Running Tests
 
 ```bash
@@ -110,6 +154,13 @@ pytest tests/unit -v --cov=app
 ```
 
 Integration tests are skipped by default; set `RUN_INTEGRATION_TESTS=1` to enable them. Integration runs may require network access and Selenium services.
+
+Security scan:
+
+```bash
+pip install -r requirements-dev.txt
+pip-audit
+```
 
 ## License
 

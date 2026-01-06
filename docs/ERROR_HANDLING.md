@@ -31,3 +31,4 @@ Backoff: `backoff_factor ** (attempt-1)` with max attempts from `self.retry_atte
 - Extend retry coverage to uploads and Selenium navigation paths.
 - Add jitter to backoff for high-concurrency runs.
 - Emit structured error metrics once telemetry target is chosen.
+- When deployed behind a proxy, ensure forwarded headers (X-Forwarded-Proto/Host) are set and configure `TRUST_PROXY_COUNT` so Flask/ProxyFix logs accurate scheme/host for error context.

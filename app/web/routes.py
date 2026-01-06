@@ -4,6 +4,7 @@ Flask routes for the web interface.
 
 from __future__ import annotations
 
+import base64
 import json
 import threading
 from datetime import datetime
@@ -11,13 +12,56 @@ from pathlib import Path
 from flask import Blueprint, render_template, request, jsonify, Response
 
 from app.config import Config
+from app.container import get_container
 from app.scrapers import ScraperRegistry
-from app.services import StateTracker, RAGFlowClient, FlareSolverrClient
-from app.services.settings_manager import get_settings
+from app.services import FlareSolverrClient
 from app.utils import get_logger
+from app.utils.logging_config import log_event, log_exception
 
 bp = Blueprint("main", __name__, static_folder="static", static_url_path="/static")
 logger = get_logger("web")
+container = get_container()
+def _auth_failed() -> Response:
+    """Return a basic-auth challenge response."""
+    return Response(
+        "Authentication required",
+        401,
+        {"WWW-Authenticate": "Basic realm=\"PDF Scraper\""},
+    )
+
+
+@bp.before_request
+def enforce_basic_auth():
+    """Apply optional basic auth to all routes except static assets."""
+    if not Config.BASIC_AUTH_ENABLED:
+        return None
+
+    # Skip auth for static assets
+    endpoint = (request.endpoint or "").split(".")[-1]
+    if endpoint == "static":
+        return None
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Basic "):
+        return _auth_failed()
+
+    try:
+        decoded = base64.b64decode(auth_header.split(" ", 1)[1]).decode("utf-8")
+        username, password = decoded.split(":", 1)
+    except Exception:
+        return _auth_failed()
+
+    if (
+        username == Config.BASIC_AUTH_USERNAME
+        and password == Config.BASIC_AUTH_PASSWORD
+        and username
+        and password
+    ):
+        return None
+
+    log_event(logger, "warning", "auth.failure", endpoint=request.endpoint)
+    return _auth_failed()
+
 
 # Track running scrapers
 _running_scrapers: dict[str, dict] = {}
@@ -31,12 +75,13 @@ def index():
 
     # Add status info to each scraper
     for scraper in scrapers:
-        state = StateTracker(scraper["name"])
+        state = container.get_state_tracker(scraper["name"])
         info = state.get_last_run_info()
         scraper["last_run"] = info.get("last_updated")
         scraper["processed_count"] = info.get("processed_count", 0)
         scraper["status"] = _get_scraper_status(scraper["name"])
 
+    log_event(logger, "info", "ui.page.index", scraper_count=len(scrapers))
     return render_template("index.html", scrapers=scrapers)
 
 
@@ -44,10 +89,10 @@ def index():
 def scrapers():
     """Scrapers configuration page."""
     scrapers = ScraperRegistry.list_scrapers()
-    settings_mgr = get_settings()
+    settings_mgr = container.get_settings_manager()
 
     # Initialize RAGFlow client for dynamic options
-    ragflow_client = RAGFlowClient()
+    ragflow_client = container.get_ragflow_client()
 
     # Build ragflow_options dict with all dynamic data
     ragflow_options = {
@@ -68,7 +113,7 @@ def scrapers():
                     ragflow_options["embedding_providers"][provider] = []
                 ragflow_options["embedding_providers"][provider].append(model)
         except Exception as e:
-            logger.warning(f"Failed to fetch RAGFlow models for scrapers page: {e}")
+            log_exception(logger, e, "ragflow.models.fetch_failed", page="scrapers")
 
     for scraper in scrapers:
         # Load scraper config if exists
@@ -80,7 +125,7 @@ def scrapers():
             scraper["config"] = {}
 
         # Get state info
-        state = StateTracker(scraper["name"])
+        state = container.get_state_tracker(scraper["name"])
         scraper["state"] = state.get_last_run_info()
         scraper["status"] = _get_scraper_status(scraper["name"])
 
@@ -99,6 +144,13 @@ def scrapers():
             scraper_defaults=scraper_defaults,
         )
 
+    log_event(
+        logger,
+        "info",
+        "ui.page.scrapers",
+        scraper_count=len(scrapers),
+        ragflow_models=len(ragflow_options.get("embedding_providers", {})),
+    )
     return render_template(
         "scrapers.html",
         scrapers=scrapers,
@@ -112,6 +164,7 @@ def scraper_status(name):
     """Get scraper status (for HTMX polling)."""
     scraper_class = ScraperRegistry.get_scraper_class(name)
     if not scraper_class:
+        log_event(logger, "warning", "scraper.status.unknown", scraper=name)
         return render_template(
             "components/status-badge.html",
             status="unknown",
@@ -157,17 +210,35 @@ def run_scraper(name):
             "scraper": scraper,  # Store instance for cancellation
         }
 
+    log_event(
+        logger,
+        "info",
+        "scraper.run.requested",
+        scraper=name,
+        dry_run=dry_run,
+        max_pages=max_pages,
+    )
+
     # Run in background thread
     def run_in_thread():
         try:
+            log_event(logger, "info", "scraper.run.start", scraper=name, dry_run=dry_run)
             result = scraper.run()
-            logger.info(f"Scraper {name} {'(dry run) ' if dry_run else ''}completed: {result.status}")
+            log_event(
+                logger,
+                "info",
+                "scraper.run.complete",
+                scraper=name,
+                status=result.status,
+                downloaded=result.downloaded_count,
+                failed=result.failed_count,
+            )
             # Store result for display
             with _scraper_lock:
                 if name in _running_scrapers:
                     _running_scrapers[name]["result"] = result
         except Exception as e:
-            logger.error(f"Scraper {name} failed: {e}")
+            log_exception(logger, e, "scraper.run.error", scraper=name)
         finally:
             with _scraper_lock:
                 _running_scrapers.pop(name, None)
@@ -180,7 +251,7 @@ def run_scraper(name):
 
     # Return updated card
     metadata = ScraperRegistry.get_scraper_class(name).get_metadata()
-    state = StateTracker(name)
+    state = container.get_state_tracker(name)
     metadata["state"] = state.get_last_run_info()
     metadata["status"] = "running"
     metadata["dry_run"] = dry_run
@@ -205,7 +276,7 @@ def cancel_scraper(name):
 
         if scraper:
             scraper.cancel()
-            logger.info(f"Cancellation requested for scraper: {name}")
+            log_event(logger, "warning", "scraper.cancel.requested", scraper=name)
 
     # Return cancelling status badge
     return render_template(
@@ -240,16 +311,19 @@ def preview_scraper(name):
             "result": None,
         }
 
+    log_event(logger, "info", "scraper.preview.requested", scraper=name, max_pages=max_pages)
+
     # Run in background thread
     def run_preview():
         try:
+            log_event(logger, "info", "scraper.preview.start", scraper=name)
             result = scraper.run()
-            logger.info(f"Preview for {name} completed: {result.status}")
+            log_event(logger, "info", "scraper.preview.complete", scraper=name, status=result.status)
             with _scraper_lock:
                 if name in _running_scrapers:
                     _running_scrapers[name]["result"] = result
         except Exception as e:
-            logger.error(f"Preview {name} failed: {e}")
+            log_exception(logger, e, "scraper.preview.error", scraper=name)
             with _scraper_lock:
                 if name in _running_scrapers:
                     _running_scrapers[name]["error"] = str(e)
@@ -310,7 +384,7 @@ def scraper_card(name):
         return "Not found", 404
 
     metadata = scraper_class.get_metadata()
-    state = StateTracker(name)
+    state = container.get_state_tracker(name)
     metadata["state"] = state.get_last_run_info()
     metadata["status"] = _get_scraper_status(name)
 
@@ -327,7 +401,66 @@ def logs():
         reverse=True,
     )[:10]  # Last 10 log files
 
+    log_event(logger, "info", "ui.page.logs", file_count=len(log_files))
     return render_template("logs.html", log_files=log_files)
+
+
+@bp.route("/metrics/flaresolverr")
+def flaresolverr_metrics():
+    """Expose FlareSolverr client metrics for observability panels."""
+    container.get_ragflow_client()  # ensures container is initialized
+    # FlareSolverr metrics come from the dedicated client to avoid side effects
+    try:
+        flaresolverr = container.get_flaresolverr_client()
+        metrics = flaresolverr.get_metrics()
+        log_event(logger, "info", "metrics.flaresolverr.success", metrics=metrics)
+        return jsonify(metrics)
+    except Exception as exc:
+        log_exception(logger, exc, "metrics.flaresolverr.error")
+        # Keep metric endpoint resilient; return empty metrics on error
+        return jsonify({"success": 0, "failure": 0, "timeout": 0, "total": 0, "success_rate": 0.0})
+
+
+@bp.route("/metrics/pipeline")
+def pipeline_metrics():
+    """Expose last-run pipeline stats per scraper using state tracker snapshots."""
+    metrics: list[dict] = []
+    total_processed = 0
+    total_failed = 0
+
+    for scraper in ScraperRegistry.list_scrapers():
+        name = scraper.get("name")
+        state = container.get_state_tracker(name)
+        last_run = state.get_last_run_info() or {}
+        processed = last_run.get("processed_count", 0)
+        failed = last_run.get("failed_count", 0)
+        total_processed += processed
+        total_failed += failed
+        metrics.append(
+            {
+                "scraper": name,
+                "last_run": last_run.get("last_updated"),
+                "processed_count": processed,
+                "failed_count": failed,
+                "status": last_run.get("status", "unknown"),
+            }
+        )
+
+    log_event(
+        logger,
+        "info",
+        "metrics.pipeline.snapshot",
+        scraper_count=len(metrics),
+        total_processed=total_processed,
+        total_failed=total_failed,
+    )
+    return jsonify({
+        "scrapers": metrics,
+        "totals": {
+            "processed": total_processed,
+            "failed": total_failed,
+        },
+    })
 
 
 @bp.route("/logs/stream")
@@ -358,6 +491,7 @@ def log_stream():
 
         return html
     except Exception as e:
+        log_exception(logger, e, "logs.stream.error")
         return f'<div class="log-entry log-error">Error reading logs: {e}</div>'
 
 
@@ -368,8 +502,12 @@ def download_log(filename):
     if not log_path.exists() or not log_path.is_file():
         return "Not found", 404
 
-    with open(log_path) as f:
-        content = f.read()
+    try:
+        with open(log_path) as f:
+            content = f.read()
+    except Exception as exc:
+        log_exception(logger, exc, "logs.download.error", filename=filename)
+        return "Not found", 404
 
     return Response(
         content,
@@ -381,7 +519,7 @@ def download_log(filename):
 @bp.route("/settings")
 def settings():
     """Settings page."""
-    settings_mgr = get_settings()
+    settings_mgr = container.get_settings_manager()
     current_settings = settings_mgr.get_all()
 
     # Test RAGFlow connection
@@ -391,12 +529,13 @@ def settings():
     ragflow_client = None
 
     try:
-        ragflow_client = RAGFlowClient()
+        ragflow_client = container.get_ragflow_client()
         if ragflow_client.test_connection():
             ragflow_status = "connected"
         else:
             ragflow_status = "disconnected"
-    except Exception:
+    except Exception as exc:
+        log_exception(logger, exc, "ragflow.connection.error", page="settings")
         ragflow_status = "error"
 
     # Fetch RAGFlow models if session auth is configured
@@ -412,7 +551,7 @@ def settings():
                     ragflow_providers[provider] = []
                 ragflow_providers[provider].append(model)
         except Exception as e:
-            logger.warning(f"Failed to fetch RAGFlow models: {e}")
+            log_exception(logger, e, "ragflow.models.fetch_failed", page="settings")
 
     # If we couldn't fetch models dynamically, use static chunk methods list
     if not ragflow_chunk_methods:
@@ -423,16 +562,24 @@ def settings():
     flaresolverr_status = "unknown"
     if Config.FLARESOLVERR_URL:
         try:
-            client = FlareSolverrClient()
+            client = container.get_flaresolverr_client()
             if client.test_connection():
                 flaresolverr_status = "connected"
             else:
                 flaresolverr_status = "disconnected"
-        except Exception:
+        except Exception as exc:
+            log_exception(logger, exc, "flaresolverr.connection.error", page="settings")
             flaresolverr_status = "error"
     else:
         flaresolverr_status = "not_configured"
 
+    log_event(
+        logger,
+        "info",
+        "ui.page.settings",
+        ragflow_status=ragflow_status,
+        flaresolverr_status=flaresolverr_status,
+    )
     return render_template(
         "settings.html",
         settings=current_settings,
@@ -449,7 +596,7 @@ def settings():
 def test_ragflow():
     """Test RAGFlow connection (HTMX endpoint)."""
     try:
-        client = RAGFlowClient()
+        client = container.get_ragflow_client()
         if client.test_connection():
             datasets = client.list_datasets()
             return f'''
@@ -481,7 +628,7 @@ def test_flaresolverr():
 @bp.route("/settings/flaresolverr", methods=["POST"])
 def save_flaresolverr_settings():
     """Save FlareSolverr settings (HTMX endpoint)."""
-    settings_mgr = get_settings()
+    settings_mgr = container.get_settings_manager()
 
     enabled = request.form.get("enabled") == "on"
     timeout = request.form.get("timeout", 60, type=int)
@@ -507,7 +654,7 @@ def save_flaresolverr_settings():
 @bp.route("/settings/scraping", methods=["POST"])
 def save_scraping_settings():
     """Save scraping settings (HTMX endpoint)."""
-    settings_mgr = get_settings()
+    settings_mgr = container.get_settings_manager()
 
     use_flaresolverr = request.form.get("use_flaresolverr_by_default") == "on"
     request_delay = request.form.get("default_request_delay", 2.0, type=float)
@@ -533,7 +680,7 @@ def save_scraping_settings():
 @bp.route("/settings/ragflow", methods=["POST"])
 def save_ragflow_settings():
     """Save RAGFlow dataset settings (HTMX endpoint)."""
-    settings_mgr = get_settings()
+    settings_mgr = container.get_settings_manager()
 
     default_embedding_model = request.form.get("default_embedding_model", "")
     default_chunk_method = request.form.get("default_chunk_method", "paper")
@@ -562,7 +709,7 @@ def save_ragflow_settings():
 def get_ragflow_models():
     """API endpoint to fetch available RAGFlow embedding models."""
     try:
-        client = RAGFlowClient()
+        client = container.get_ragflow_client()
         models = client.list_embedding_models()
         return jsonify({"success": True, "models": models})
     except Exception as e:
@@ -583,7 +730,7 @@ def get_ragflow_chunk_methods():
 @bp.route("/scrapers/<name>/ragflow", methods=["POST"])
 def save_scraper_ragflow_settings(name):
     """Save per-scraper RAGFlow settings (HTMX endpoint)."""
-    settings_mgr = get_settings()
+    settings_mgr = container.get_settings_manager()
     settings = {}
 
     # Check for ingestion mode (radio button name includes scraper name)
@@ -619,7 +766,7 @@ def save_scraper_ragflow_settings(name):
 @bp.route("/scrapers/<name>/cloudflare", methods=["POST"])
 def toggle_scraper_cloudflare(name):
     """Toggle FlareSolverr/Cloudflare bypass for a specific scraper."""
-    settings_mgr = get_settings()
+    settings_mgr = container.get_settings_manager()
 
     # Check if global FlareSolverr is configured and enabled
     if not Config.FLARESOLVERR_URL:
@@ -676,7 +823,7 @@ def _get_scraper_status(name: str) -> str:
         if name in _running_scrapers:
             return "running"
 
-    state = StateTracker(name)
+    state = container.get_state_tracker(name)
     info = state.get_last_run_info()
 
     if not info.get("last_updated"):
