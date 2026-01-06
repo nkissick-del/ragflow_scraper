@@ -54,3 +54,7 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Random
+/docs/TODO.md
+docs/TODO.md
