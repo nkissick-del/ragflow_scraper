@@ -16,16 +16,19 @@ This implementation resolves a comprehensive Pylance type checking audit and ach
 ## Key Achievements
 
 ### Test Coverage
+
 - **Before:** 147 passing, 34 failing, process hangs
 - **After:** 181 passing, 2 skipped, 0 failing
 - **Improvement:** +34 tests fixed, 100% pass rate achieved
 
-### Type Checking
+### Type Checking Verification
+
 - ✅ All Pylance/Pyright diagnostics resolved
 - ✅ Full type hint coverage for scrapers, services, utilities
 - ✅ Automated checking via `test_pylance.py`
 
 ### Process Management
+
 - ✅ Fixed JobQueue daemon thread hang
 - ✅ Added orderly shutdown handlers
 - ✅ Implemented proper resource cleanup in tests
@@ -35,6 +38,7 @@ This implementation resolves a comprehensive Pylance type checking audit and ach
 ### 1. Type System Fixes (19 files)
 
 #### Scraper Package
+
 - **mixins.py**: Added `_close_driver()` method to WebDriverLifecycleMixin
   - Proper cleanup semantics for Selenium WebDriver
   - Guards against multiple close attempts
@@ -49,6 +53,7 @@ This implementation resolves a comprehensive Pylance type checking audit and ach
   - Used by blueprint routes for scraper enumeration
 
 #### Services Package
+
 - **ragflow_ingestion.py** (6 tests fixed)
   - Normalized tuple/UploadResult response handling
   - Fixed file_hash dict key lookup in metadata
@@ -62,13 +67,16 @@ This implementation resolves a comprehensive Pylance type checking audit and ach
   - Container property typing
 
 #### Utilities Package
+
 - **article_converter.py**: Added type hints and fixed imports
 - **file_utils.py**: Type improvements and error handling
 - **errors.py**: Proper exception type definitions
 - **logging_config.py**: Import fixes (markupsafe.escape)
 
 #### Web Blueprint Routes
+
 All blueprints updated with:
+
 - Import fixes (flask.escape → markupsafe.escape for Python 3.11+ compatibility)
 - Proper type hints
 - Container property access patterns
@@ -76,9 +84,11 @@ All blueprints updated with:
 ### 2. Process Management Fixes
 
 #### JobQueue (`app/web/job_queue.py`)
+
 **Problem:** Test suite hung indefinitely after completion due to non-daemon worker thread.
 
 **Solution:**
+
 ```python
 # Made worker thread daemon
 self.worker = threading.Thread(target=self._worker_loop, daemon=True)
@@ -93,7 +103,9 @@ raise ValueError(f"Scraper '{scraper_name}' is already running")
 **Result:** Tests complete cleanly, no resource leaks.
 
 #### Test Configuration (`tests/conftest.py`)
+
 **Added:** `ensure_job_queue_shutdown()` autouse fixture
+
 - Forcefully shuts down JobQueue after each test
 - Ensures clean state between test runs
 - Prevents interference from previous tests
@@ -101,6 +113,7 @@ raise ValueError(f"Scraper '{scraper_name}' is already running")
 ### 3. Blueprint Route Tests (31 tests fixed)
 
 #### Root Cause Analysis
+
 Tests were failing due to three categories of issues:
 
 1. **Mock Patch Location Mismatch**
@@ -119,15 +132,18 @@ Tests were failing due to three categories of issues:
    - Solution: Verified actual routes and updated tests
 
 #### Settings Endpoint Fixes (7 tests)
-```
+
+list
 /settings/test/ragflow         → /settings/test-ragflow
 /settings/test/flaresolverr    → /settings/test-flaresolverr
 /settings/flaresolverr/save    → /settings/flaresolverr
 /settings/scraping/save        → /settings/scraping
 /settings/ragflow/save         → /settings/ragflow
-```
+
+```list
 
 **Container property changes:**
+
 ```python
 # Before (incorrect)
 mock_container.settings_manager.return_value = mock_settings
@@ -137,12 +153,14 @@ mock_container.settings = mock_settings
 ```
 
 #### Scraper Endpoint Fixes (5 tests)
+
 - Corrected routes to use per-scraper paths
 - Fixed route: `/scrapers/<name>/ragflow` (POST)
 - Fixed route: `/scrapers/<name>/cloudflare` (POST)
 - Added proper Config.FLARESOLVERR_URL mocking
 
 #### Other Blueprint Tests (19 tests)
+
 - Updated index route expectations (302 redirect)
 - Fixed API response format expectations
 - Corrected metadata dict structures
@@ -151,7 +169,8 @@ mock_container.settings = mock_settings
 ### 4. Documentation Reorganization
 
 #### New Structure
-```
+
+```tree
 docs/
 ├── development/
 │   ├── CONFIG_AND_SERVICES.md
@@ -169,6 +188,7 @@ docs/
 ```
 
 #### Cleanup
+
 - Removed obsolete documents
 - Consolidated API references
 - Updated CHANGELOG.md
@@ -176,6 +196,7 @@ docs/
 ### 5. Automated Type Checking
 
 #### New File: `tests/unit/test_pylance.py`
+
 ```python
 def test_pyright_diagnostics():
     """Verify no Pyright type checking errors in app/ package."""
@@ -192,7 +213,9 @@ def test_pyright_diagnostics():
 ## Implementation Details
 
 ### Pattern 1: Blueprint Mock Patching
+
 **Correct Pattern:**
+
 ```python
 with patch("app.web.blueprints.scrapers.container") as mock_container:
     mock_settings = MagicMock()
@@ -200,12 +223,15 @@ with patch("app.web.blueprints.scrapers.container") as mock_container:
 ```
 
 **Key Points:**
+
 - Patch at blueprint module import location
 - Assign mocks to attributes (not as return values)
 - Patch Config class when needed in the blueprint
 
 ### Pattern 2: Optional Type Narrowing
+
 **Correct Pattern:**
+
 ```python
 from typing import Optional
 
@@ -217,6 +243,7 @@ def process(value: Optional[str]) -> str:
 ```
 
 **Alternative with assert:**
+
 ```python
 def process(value: Optional[str]) -> str:
     assert value is not None, "Value cannot be None"
@@ -224,7 +251,9 @@ def process(value: Optional[str]) -> str:
 ```
 
 ### Pattern 3: RAGFlow Response Normalization
+
 **Correct Pattern:**
+
 ```python
 def ingest_document(self, file_path: str) -> UploadResult:
     response = self.client.upload_document(file_path)
@@ -239,7 +268,9 @@ def ingest_document(self, file_path: str) -> UploadResult:
 ```
 
 ### Pattern 4: Daemon Thread Management
+
 **Correct Pattern:**
+
 ```python
 import atexit
 import threading
@@ -260,19 +291,22 @@ class JobQueue:
 ## Testing & Verification
 
 ### Test Execution
+
 ```bash
 $ make test
 ======================= 181 passed, 2 skipped in 13.60s ========================
 ```
 
 ### Type Checking
+
 ```bash
 $ python -m pylance check app/
 # Zero errors reported
 ```
 
-### Process Management
-```
+### Testing Process Management
+
+```list
 Threads at exit:
 ✓ MainThread (daemon=False) - only thread remaining
 ✓ JobQueue worker threads (daemon=True) - exit cleanly
@@ -282,6 +316,7 @@ Threads at exit:
 ## Files Modified (47 total)
 
 ### Core Application (26 files)
+
 - app/config.py
 - app/scrapers/ (11 scraper modules)
 - app/scrapers/mixins.py
@@ -294,6 +329,7 @@ Threads at exit:
 - app/web/routes.py
 
 ### Configuration & Documentation (6 files)
+
 - pyrightconfig.json
 - README.md
 - CLAUDE.md
@@ -302,6 +338,7 @@ Threads at exit:
 - docs/LOGGING_AND_ERROR_STANDARDS.md
 
 ### Tests (7 files)
+
 - tests/conftest.py
 - tests/unit/test_pylance.py (new)
 - tests/unit/test_scraper_mixins.py
@@ -310,6 +347,7 @@ Threads at exit:
 - tests/integration/test_web_integration.py
 
 ### Documentation Reorganization
+
 - 14 files reorganized into subdirectories
 - 8 obsolete files removed
 - New structure: development/, operations/, reference/
@@ -317,21 +355,25 @@ Threads at exit:
 ## Lessons Learned
 
 ### 1. Mock Patching in Python
+
 - Always patch at the location where the object is imported, not where it's defined
 - For module-level imports in blueprints, must patch the blueprint module
 - Return value setup vs. direct attribute assignment matters
 
 ### 2. Daemon Threads in Testing
+
 - Non-daemon threads prevent process termination
 - Always use `daemon=True` for worker threads in services
 - Provide explicit shutdown mechanisms via atexit
 
 ### 3. Type Checking with Optional
+
 - Always narrow Optional types with guards before use
 - Both `if x is None:` and `assert x is not None:` work
 - Type narrowing provides IDE support and prevents runtime errors
 
 ### 4. API Response Handling
+
 - Document response format variations
 - Always normalize responses to consistent types
 - Test both possible response formats
@@ -339,16 +381,19 @@ Threads at exit:
 ## Next Steps & Recommendations
 
 ### Short Term
+
 1. ✅ Commit and push all changes to main
 2. ✅ Create implementation documentation (this file)
 3. Verify CI/CD pipeline passes
 
 ### Medium Term
+
 1. Consider adding type stubs for external libraries
 2. Increase test coverage beyond current scope
 3. Document remaining test skips (if any)
 
 ### Long Term
+
 1. Move to dataclass-based configuration
 2. Consider async/await for long-running operations
 3. Implement comprehensive error recovery tests
@@ -356,6 +401,7 @@ Threads at exit:
 ## Conclusion
 
 All objectives have been successfully achieved:
+
 - ✅ **Pylance Audit**: Eliminated all type checking violations
 - ✅ **Test Suite**: Achieved 100% pass rate (181/181 tests)
 - ✅ **Process Management**: Fixed resource cleanup and shutdown

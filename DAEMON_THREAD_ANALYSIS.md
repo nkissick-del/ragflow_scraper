@@ -19,6 +19,7 @@ atexit.register(_shutdown_all_queues)
 ```
 
 ### What daemon=False Means
+
 - The process **will NOT exit** until all non-daemon threads have terminated
 - The atexit handler is responsible for shutting down all JobQueue instances
 - If shutdown() is not called explicitly, the process will hang indefinitely
@@ -26,7 +27,9 @@ atexit.register(_shutdown_all_queues)
 ## Verification Results
 
 ### ✅ Test Coverage: GOOD
+
 Tests have explicit shutdown handling via autouse fixture:
+
 ```python
 # conftest.py line 85-99
 @pytest.fixture(autouse=True)
@@ -42,11 +45,13 @@ def ensure_job_queue_shutdown():
 **Impact:** Tests will not hang; fixture ensures cleanup after each test.
 
 ### ✅ Production Initialization: SAFE
+
 - app/main.py creates app but doesn't explicitly manage JobQueue shutdown
 - atexit handler (_shutdown_all_queues) will be invoked at process exit
 - Handler gracefully shuts down all instances with 1.0 second timeout
 
 **Flow:**
+
 1. Main creates Flask app → imports job_queue from runtime.py
 2. job_queue module loads → registers atexit handler (line 252)
 3. Process runs normally with non-daemon worker thread active
@@ -55,42 +60,52 @@ def ensure_job_queue_shutdown():
 ### ⚠️ Edge Cases & Risks
 
 #### 1. **Abnormal Process Termination**
+
 **Risk:** If process receives SIGKILL or crashes, atexit won't run
 
 **Current Status:** ACCEPTABLE
+
 - SIGKILL (signal 9) cannot be caught; process dies immediately regardless
 - SIGTERM (signal 15) → Python signal handler → atexit → safe shutdown
 - Normal exceptions → atexit → safe shutdown
 - No mitigation needed; this is inherent to non-daemon threads
 
 #### 2. **Signal Handler Bypass**
+
 **Risk:** Custom signal handlers that bypass atexit
 
 **Current Status:** NOT A CONCERN
+
 - No custom signal handlers registered in codebase
 - Flask doesn't register handlers that bypass atexit
 - If users add signal handlers, they should explicitly shutdown
 
 #### 3. **Exception During shutdown()**
+
 **Risk:** If shutdown() raises exception, atexit handler silently swallows it
 
 **Current Status:** SAFE
+
 - atexit handler has try/except around entire shutdown logic (line 245-251)
 - shutdown() has internal try/except blocks (line 165-174)
 - Exceptions are logged/swallowed appropriately
 
 #### 4. **Multiple Instances**
+
 **Risk:** WeakSet could miss instances if garbage collected early
 
 **Current Status:** SAFE
+
 - Instances are strongly referenced by callers (e.g., `job_queue` global in runtime.py)
 - WeakSet is only for diagnostic purposes
 - shutdown() is called on all live references
 
 #### 5. **Timeout During shutdown()**
+
 **Risk:** If join(timeout=1.0) times out, worker thread remains alive → process may still hang
 
 **Current Status:** ACCEPTABLE
+
 - atexit handler uses 1.0 second timeout for each queue
 - If worker doesn't exit in 1.0 sec, thread remains non-daemon
 - **Process will hang** waiting for thread
@@ -101,6 +116,7 @@ def ensure_job_queue_shutdown():
 The current implementation is **functionally correct** but should be more explicitly documented. Suggest adding comments to highlight the semantic change:
 
 ### Change 1: Clarify daemon=False requirement (Line 98)
+
 ```python
 # Worker thread set to daemon=False to ensure graceful shutdown:
 # - Process will block at exit until this thread terminates
@@ -110,6 +126,7 @@ self._worker = threading.Thread(target=self._worker_loop, daemon=False)
 ```
 
 ### Change 2: Add process exit behavior documentation (Line 89-90)
+
 ```python
 class JobQueue:
     """Single-worker job queue with per-scraper exclusivity.
@@ -127,6 +144,7 @@ class JobQueue:
 ```
 
 ### Change 3: Enhance shutdown() docstring (Line 162-169)
+
 ```python
 def shutdown(self, wait: bool = True, timeout: Optional[float] = None) -> None:
     """Gracefully shutdown the worker thread.
@@ -148,17 +166,20 @@ def shutdown(self, wait: bool = True, timeout: Optional[float] = None) -> None:
 **The current implementation is SAFE for production use** with these caveats:
 
 ✅ **What works well:**
+
 - atexit handler provides automatic cleanup for normal process exit
 - Tests explicitly shutdown via fixture
 - Exception handling prevents crashes during shutdown
 - WeakSet tracks instances reliably
 
 ⚠️ **Trade-offs:**
+
 - Process will hang if shutdown() doesn't succeed within timeout
 - Non-daemon thread blocks process exit (visible to users, not silent failure)
 - Relies on atexit which doesn't run for SIGKILL
 
 ✅ **Recommendation:**
+
 - Keep daemon=False (safer than daemon=True which caused hangs)
 - Add documentation comments as shown above
 - No code changes needed; only documentation enhancements
@@ -166,6 +187,7 @@ def shutdown(self, wait: bool = True, timeout: Optional[float] = None) -> None:
 ## Related Changes
 
 These changes complement the daemon=False semantics:
+
 - **conftest.py fixture:** Ensures test cleanup (handles test-specific shutdown)
 - **atexit registration:** Provides process-level cleanup (handles production)
 - **shutdown() implementation:** Offers explicit caller control (handles custom needs)

@@ -412,6 +412,7 @@ class ENAScraper(BaseScraper):
                     scraper=self.name,
                     context={"url": article_url, "operation": "head_request", "article_title": article_title}
                 )
+            head_response.raise_for_status()
             content_type = head_response.headers.get("Content-Type", "").lower()
 
             # If the article URL itself is a PDF, treat it as a direct download

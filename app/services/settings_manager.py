@@ -162,9 +162,11 @@ class SettingsManager:
                     raise ValueError("settings JSON is null or empty")
                 self._validate(cast(dict, self._settings))
                 self.logger.debug("Settings loaded from file")
-            except (json.JSONDecodeError, IOError) as e:
+            except (json.JSONDecodeError, IOError, ValueError) as e:
                 self.logger.warning(f"Failed to load settings: {e}")
                 self._settings = DEFAULT_SETTINGS.copy()
+                self._validate(cast(dict, self._settings))
+                self.logger.debug("Settings loaded from file")
             except jsonschema.ValidationError as e:
                 self.logger.warning(f"Settings validation failed; using defaults: {e.message}")
                 self._settings = DEFAULT_SETTINGS.copy()
