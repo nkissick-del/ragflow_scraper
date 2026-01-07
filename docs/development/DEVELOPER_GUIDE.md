@@ -198,6 +198,8 @@ Create `app/scrapers/my_scraper.py`:
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ScraperResult
 
@@ -211,7 +213,7 @@ class MyScraperImplementation(BaseScraper):
     
     def scrape(self) -> ScraperResult:
         """Main scraping logic."""
-        self.log_event("scrape_started", scraper=self.NAME)
+        self.logger.info("Scrape started", extra={"scraper": self.NAME})
         
         try:
             # Your scraping logic here
@@ -241,7 +243,7 @@ class MyScraperImplementation(BaseScraper):
             )
         
         except Exception as e:
-            self.log_exception("scrape_failed", e, scraper=self.NAME)
+            self.logger.error("Scrape failed", exc_info=e, extra={"scraper": self.NAME})
             return ScraperResult(
                 status="failed",
                 scraper=self.NAME,
@@ -354,7 +356,7 @@ grep "my-scraper" data/logs/scraper.log
 
 **IncrementalStateMixin** - Track processed URLs:
 ```python
-class MyS craper(BaseScraper, IncrementalStateMixin):
+class MyScraper(BaseScraper, IncrementalStateMixin):
     def scrape(self):
         if self.should_exclude_url(url):
             continue  # Already processed
@@ -392,21 +394,19 @@ class MyScraper(BaseScraper, CloudflareBypassMixin):
 
 ### Structured Logging
 
-Use `log_event()` and `log_exception()`:
+Use `self.logger` methods with `extra` dict for structured context:
 
 ```python
-from app.utils.logging_config import log_event, log_exception
-
-# Log events
-log_event("scrape_started", scraper=self.NAME)
-log_event("document_downloaded", url=url, size_bytes=file_size)
-log_event("scrape_completed", documents=count)
+# Log events with context
+self.logger.info("Scrape started", extra={"scraper": self.name})
+self.logger.info("Document downloaded", extra={"url": url, "size_bytes": file_size})
+self.logger.info("Scrape completed", extra={"documents": count})
 
 # Log exceptions with context
 try:
     download_file(url)
 except Exception as e:
-    log_exception("download_failed", e, url=url, scraper=self.NAME)
+    self.logger.error("Download failed", exc_info=e, extra={"url": url, "scraper": self.name})
 ```
 
 ### Error Handling
@@ -437,7 +437,7 @@ def scrape(self):
     for url in urls:
         # Skip if already processed
         if self.should_exclude_url(url):
-            self.log_event("skipped_duplicate", url=url)
+            self.logger.info("Skipped duplicate", extra={"url": url})
             continue
         
         # Process new document
@@ -666,13 +666,6 @@ response = flaresolverr.solve(url)
 
 Services are initialized on first access:
 
-```python
-# No initialization yet
-container = container
-
-# Initializes RAGFlowClient on first access
-client = container.ragflow_client
-```
 
 ### See Also
 

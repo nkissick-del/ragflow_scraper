@@ -28,6 +28,7 @@ from selenium.common.exceptions import TimeoutException
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
+from app.utils.errors import ScraperError
 
 
 # Resource sections to scrape - both follow the same page structure
@@ -86,6 +87,9 @@ class ECAScraper(BaseScraper):
     def _wait_for_content(self, timeout: int = 15):
         """Wait for the research cards to load."""
         try:
+            if not self.driver:
+                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            assert self.driver is not None
             WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located(
                     (By.CSS_SELECTOR, ".image-card, .main-content")
@@ -194,9 +198,12 @@ class ECAScraper(BaseScraper):
 
                 # Step 1: Fetch first page
                 self.logger.info(f"Fetching first page: {section_url}")
+                if not self.driver:
+                    raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+                assert self.driver is not None
                 self.driver.get(section_url)
                 self._wait_for_content()
-                page_html = self.driver.page_source
+                page_html = self.get_page_source()
 
                 # Step 2: Detect total pages
                 total_pages = self._detect_total_pages(page_html)
@@ -224,9 +231,12 @@ class ECAScraper(BaseScraper):
                     self.logger.info(f"Fetching page {page_num + 1}/{pages_to_scrape}")
 
                     try:
+                        if not self.driver:
+                            raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+                        assert self.driver is not None
                         self.driver.get(page_url)
                         self._wait_for_content()
-                        page_html = self.driver.page_source
+                        page_html = self.get_page_source()
                         self._process_page(page_html, result, section_category)
                     except Exception as e:
                         self.logger.warning(f"Failed to fetch page {page_num}: {e}")
@@ -457,10 +467,13 @@ class ECAScraper(BaseScraper):
         """
         try:
             self.logger.debug(f"Fetching detail page: {detail_url}")
+            if not self.driver:
+                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            assert self.driver is not None
             self.driver.get(detail_url)
             self._wait_for_content(timeout=10)
 
-            soup = BeautifulSoup(self.driver.page_source, "lxml")
+            soup = BeautifulSoup(self.get_page_source(), "lxml")
             document_urls = []
 
             # Find all document links by extension

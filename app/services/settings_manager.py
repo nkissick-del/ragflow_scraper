@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import jsonschema
 
@@ -139,13 +139,12 @@ class SettingsManager:
     """
 
     _instance: Optional["SettingsManager"] = None
-    _settings: dict = None
+    _settings: dict = DEFAULT_SETTINGS.copy()
 
     def __new__(cls) -> "SettingsManager":
         """Singleton pattern."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._settings = None
         return cls._instance
 
     def __init__(self):
@@ -159,7 +158,8 @@ class SettingsManager:
             try:
                 with open(SETTINGS_FILE, "r") as f:
                     self._settings = json.load(f)
-                self._validate(self._settings)
+                assert self._settings is not None
+                self._validate(cast(dict, self._settings))
                 self.logger.debug("Settings loaded from file")
             except (json.JSONDecodeError, IOError) as e:
                 self.logger.warning(f"Failed to load settings: {e}")
@@ -172,11 +172,12 @@ class SettingsManager:
             self._save()
 
         # Merge with defaults to ensure all keys exist
-        self._settings = self._merge_defaults(self._settings, DEFAULT_SETTINGS)
+        self._settings = self._merge_defaults(cast(dict, self._settings or {}), DEFAULT_SETTINGS)
 
-    def _merge_defaults(self, settings: dict, defaults: dict) -> dict:
+    def _merge_defaults(self, settings: Optional[dict], defaults: dict) -> dict:
         """Merge settings with defaults, adding missing keys."""
         result = defaults.copy()
+        settings = settings or {}
         for key, value in settings.items():
             if key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = self._merge_defaults(value, result[key])
@@ -186,6 +187,7 @@ class SettingsManager:
 
     def _save(self):
         """Save settings to file."""
+        assert self._settings is not None
         try:
             self._validate(self._settings)
         except jsonschema.ValidationError as e:
@@ -210,6 +212,7 @@ class SettingsManager:
         Returns:
             Setting value
         """
+        assert self._settings is not None
         keys = key.split(".")
         value = self._settings
         for k in keys:
@@ -227,6 +230,7 @@ class SettingsManager:
             key: Setting key (e.g., "flaresolverr.url")
             value: Value to set
         """
+        assert self._settings is not None
         keys = key.split(".")
         target = self._settings
         for k in keys[:-1]:
@@ -246,6 +250,7 @@ class SettingsManager:
         Returns:
             Dict of settings in the section
         """
+        assert self._settings is not None
         return self._settings.get(section, {}).copy()
 
     def update_section(self, section: str, values: dict):
@@ -256,6 +261,7 @@ class SettingsManager:
             section: Section name
             values: Dict of key-value pairs to update
         """
+        assert self._settings is not None
         if section not in self._settings:
             self._settings[section] = {}
         self._settings[section].update(values)
@@ -263,6 +269,7 @@ class SettingsManager:
 
     def get_all(self) -> dict:
         """Get all settings."""
+        assert self._settings is not None
         return self._settings.copy()
 
     def reload(self):
@@ -271,7 +278,7 @@ class SettingsManager:
 
     def _validate(self, settings: dict):
         """Validate settings against JSON schema."""
-        jsonschema.validate(instance=settings, schema=SETTINGS_SCHEMA)
+        jsonschema.validate(instance=(settings or {}), schema=SETTINGS_SCHEMA)
 
     # Convenience properties for commonly accessed settings
     @property
@@ -315,6 +322,7 @@ class SettingsManager:
             scraper_name: Name of the scraper (e.g., "aemo")
             enabled: Whether to enable cloudflare bypass
         """
+        assert self._settings is not None
         # Ensure scrapers section exists
         if "scrapers" not in self._settings:
             self._settings["scrapers"] = {}
@@ -339,9 +347,10 @@ class SettingsManager:
     @property
     def ragflow_session_configured(self) -> bool:
         """Check if RAGFlow session auth is configured."""
-        return bool(Config.RAGFLOW_USERNAME and Config.RAGFLOW_PASSWORD)
+        # Config values may be None at import-time; coerce to bool safely.
+        return bool(Config.RAGFLOW_USERNAME and Config.RAGFLOW_PASSWORD)  # type: ignore
 
-    def get_scraper_ragflow_settings(self, scraper_name: str, scraper_defaults: dict = None) -> dict:
+    def get_scraper_ragflow_settings(self, scraper_name: str, scraper_defaults: Optional[dict] = None) -> dict:
         """
         Get RAGFlow settings for a scraper (with fallback to defaults).
 
@@ -353,9 +362,9 @@ class SettingsManager:
             Dict with ingestion_mode, dataset_id, embedding_model, chunk_method, pdf_parser,
             pipeline_id, auto_upload, auto_create_dataset, wait_for_parsing
         """
-        scraper_settings = self.get(f"scrapers.{scraper_name}", {})
-        defaults = self.get_section("ragflow")
-        scraper_defaults = scraper_defaults or {}
+        scraper_settings = cast(dict, self.get(f"scrapers.{scraper_name}", {}))
+        defaults = cast(dict, self.get_section("ragflow"))
+        scraper_defaults = dict(scraper_defaults or {})
 
         # Determine chunk_method default: scraper-specific > global > "naive"
         default_chunk_method = scraper_defaults.get("default_chunk_method") or defaults.get("default_chunk_method", "naive")
@@ -384,6 +393,7 @@ class SettingsManager:
             settings: Dict with ingestion_mode, dataset_id, embedding_model, chunk_method,
                       pdf_parser, pipeline_id
         """
+        assert self._settings is not None
         # Ensure scrapers section exists
         if "scrapers" not in self._settings:
             self._settings["scrapers"] = {}

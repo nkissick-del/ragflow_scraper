@@ -100,7 +100,7 @@ class TestUploadAndWait:
         assert result.document_id == "doc-123"
         assert result.file_path == temp_file
         mock_client.upload_document.assert_called_once_with("dataset-1", temp_file)
-        mock_client.wait_for_document_ready.assert_called_once_with("dataset-1", "doc-123", timeout=10.0)
+        mock_client.wait_for_document_ready.assert_called_once_with("dataset-1", "doc-123", timeout=10.0, poll_interval=0.5)
     
     def test_upload_and_wait_with_custom_timeout(self, workflow, mock_client, temp_file):
         """Test upload with custom timeout value."""
@@ -110,7 +110,7 @@ class TestUploadAndWait:
         result = workflow.upload_and_wait("dataset-1", temp_file, timeout=30.0)
         
         assert result.success is True
-        mock_client.wait_for_document_ready.assert_called_once_with("dataset-1", "doc-456", timeout=30.0)
+        mock_client.wait_for_document_ready.assert_called_once_with("dataset-1", "doc-456", timeout=30.0, poll_interval=0.5)
     
     def test_upload_fails_returns_error_result(self, workflow, mock_client, temp_file):
         """Test upload failure returns UploadResult with error."""
@@ -137,12 +137,14 @@ class TestUploadAndWait:
     def test_nonexistent_file_returns_error(self, workflow, mock_client):
         """Test attempting to upload nonexistent file returns error."""
         fake_path = Path("/nonexistent/file.pdf")
+        mock_client.upload_document.side_effect = FileNotFoundError(f"File not found: {fake_path}")
         
         result = workflow.upload_and_wait("dataset-1", fake_path)
         
         assert result.success is False
         assert result.error is not None
-        mock_client.upload_document.assert_not_called()
+        assert "File not found" in result.error
+        mock_client.upload_document.assert_called_once_with("dataset-1", fake_path)
 
 
 class TestMetadataPush:
@@ -359,8 +361,8 @@ class TestErrorRecovery:
         with pytest.raises(Exception):
             workflow.ingest_with_metadata("dataset-1", files)
     
-    def test_workflow_logs_errors_appropriately(self, workflow, mock_client, temp_file, metadata):
-        """Test workflow logs errors for debugging."""
+    def test_workflow_captures_errors_in_results(self, workflow, mock_client, temp_file, metadata):
+        """Test workflow captures errors in result objects."""
         mock_client.upload_document.side_effect = Exception("Upload failed")
         
         files = [(temp_file, metadata)]

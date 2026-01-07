@@ -160,6 +160,11 @@ class ScraperRegistry:
         return list(cls._registry.keys())
 
     @classmethod
+    def get_all_scrapers(cls) -> list[str]:
+        """Alias for get_scraper_names() for backwards compatibility."""
+        return cls.get_scraper_names()
+
+    @classmethod
     def register(cls, scraper_class: Type["BaseScraper"]):  # type: ignore[name-defined]
         """
         Manually register a scraper class.

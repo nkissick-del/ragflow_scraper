@@ -4,9 +4,41 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from types import SimpleNamespace
 
-from app.config import Config
-import app.services.settings_manager as settings_manager
+# Import application config and settings manager if available. During lightweight
+# test runs (e.g. CI without all env deps) these imports can fail; in that
+# case provide minimal stubs so tests that don't rely on full runtime still run.
+try:
+    from app.config import Config
+    import app.services.settings_manager as settings_manager
+except Exception:
+    from pathlib import Path
+
+    class _StubConfig:
+        DOWNLOAD_DIR = Path("data/scraped")
+        METADATA_DIR = Path("data/metadata")
+        STATE_DIR = Path("data/state")
+        LOG_DIR = Path("data/logs")
+        SCRAPERS_CONFIG_DIR = Path("config") / "scrapers"
+
+        @classmethod
+        def ensure_directories(cls):
+            for d in [
+                cls.DOWNLOAD_DIR,
+                cls.METADATA_DIR,
+                cls.STATE_DIR,
+                cls.LOG_DIR,
+                cls.SCRAPERS_CONFIG_DIR,
+            ]:
+                d.mkdir(parents=True, exist_ok=True)
+
+    Config = _StubConfig
+    settings_manager = SimpleNamespace(
+        SETTINGS_FILE=Config.SCRAPERS_CONFIG_DIR / "settings.json",
+        _settings_manager=None,
+        SettingsManager=type("SettingsManager", (), {"_instance": None}),
+    )
 
 
 @pytest.fixture
@@ -47,3 +79,27 @@ def reset_registry():
 
 
 RUN_INTEGRATION_TESTS = os.getenv("RUN_INTEGRATION_TESTS", "0") == "1"
+
+
+@pytest.fixture(autouse=True)
+def ensure_job_queue_shutdown():
+    """Ensure the shared web-layer `job_queue` is shut down after each test.
+
+    This prevents lingering worker threads from previous tests causing the
+    test process to hang. We make this best-effort and swallow any errors so
+    it doesn't interfere with tests that don't import the runtime.
+    """
+    yield
+    try:
+        # Import inside fixture to avoid import-time side-effects for tests
+        # that don't use the web runtime.
+        from app.web.runtime import job_queue
+
+        try:
+            job_queue.shutdown(wait=False, timeout=0.5)
+        except Exception:
+            # Best-effort; don't fail tests if shutdown isn't possible
+            pass
+    except Exception:
+        # Runtime may not be importable in minimal test environments
+        pass

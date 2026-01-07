@@ -3,6 +3,7 @@
 Legend: [Code] coding-only; [Local] requires local docker/compose; [External] needs RAGFlow/FlareSolverr or other outside services.
 
 ## 0) Completed
+
 - **Phase 1 (2026-01-07):** All critical refactors complete with test coverage.
   - ✅ ServiceContainer: property-only API (removed all backward-compatible getters).
   - ✅ BaseScraper: mixins extracted (IncrementalStateMixin, ExclusionRulesMixin, WebDriverLifecycleMixin, CloudflareBypassMixin, MetadataIOMixin, HttpDownloadMixin).
@@ -30,6 +31,7 @@ Legend: [Code] coding-only; [Local] requires local docker/compose; [External] ne
   - ✅ Test coverage: **140 tests passing** (no code changes in Phase 3, documentation only)
 
 ## 0.5) Phase 1.5 - Integration Test Coverage (COMPLETE) [Code]
+
 - ✅ Web integration tests created (test_web_integration.py) covering:
   - App creation and configuration
   - Blueprint registration verification
@@ -38,6 +40,7 @@ Legend: [Code] coding-only; [Local] requires local docker/compose; [External] ne
 - Note: Detailed blueprint route testing deferred - requires complex mocking of container/job_queue dependencies.
 
 ## 1) Critical Refactors (COMPLETE) [Code]
+
 **Status:** Phase 2 complete! All major refactorings done.
 
 - ✅ ragflow_client.py: RAGFlowIngestionWorkflow extracted with 14 unit tests covering upload/poll/metadata workflows.
@@ -46,6 +49,7 @@ Legend: [Code] coding-only; [Local] requires local docker/compose; [External] ne
 - ✅ container wiring: ServiceContainer consolidated with property-only API.
 
 ## 2) Ops & Deployment Readiness ✅ COMPLETE [Local/External]
+
 **Status:** Phase 3 Track A complete - all operations documentation delivered.
 
 - ✅ DEPLOYMENT_GUIDE.md: Environment setup, platform notes, .env configuration, compose profiles (base/full/flaresolverr-only), connectivity tests, deployment scenarios, troubleshooting matrix, production checklist
@@ -54,6 +58,7 @@ Legend: [Code] coding-only; [Local] requires local docker/compose; [External] ne
 - ✅ README.md updates: Deployment section with link to guide, operations section with RUNBOOK link, enhanced project structure
 
 ## 3) Contributor Enablement ✅ COMPLETE [Code]
+
 **Status:** Phase 3 Track B complete - all developer documentation delivered.
 
 - ✅ DEVELOPER_GUIDE.md: Project structure, add-scraper workflow (5 steps), debugging with Chrome VNC/logs/state inspection/pdb, error-handling patterns, testing approach, code standards, service container usage
@@ -61,6 +66,7 @@ Legend: [Code] coding-only; [Local] requires local docker/compose; [External] ne
 - ✅ CLAUDE.md enhancements: "Common Tasks for AI Assistants" section with 5 task templates (adding scraper, debugging, web UI, RAGFlow, documentation lookup), updated references with all Phase 3 docs
 
 ## 4) External/RAGFlow-Dependent Validation [External]
+
 Status: Awaiting live services; keep after refactors unless blocking release.
 
 - RAGFlow metadata end-to-end validation (API assumptions, status polling, hash/dedup, flat meta) per docs/ragflow_scraper_audit.md.
@@ -68,20 +74,24 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 - Production security hardening (TLS termination, UI auth, secrets rotation) validated against live stack.
 
 ## Quick commands (when services are available)
+
 - RAGFlow health: `curl -sS --fail --connect-timeout 5 --max-time 10 http://localhost:9380/`
 - Auth check: `curl -sS --fail -H "Authorization: Bearer $RAGFLOW_API_KEY" http://localhost:9380/api/v1/datasets`
 - Scraper dry-run example: `docker compose exec scraper python scripts/run_scraper.py --scraper aemo --max-pages 1 --dry-run`
 
 ## Next Steps
+
 **Phase 3 Complete!** All operations and developer documentation delivered. System is now fully documented for production deployment and developer onboarding.
 
 **Potential Future Work:**
+
 - External validation with live RAGFlow/FlareSolverr services
 - Performance benchmarking and optimization
 - Security hardening validation
 - Additional scraper implementations
 
 ## Notes
+
 - Testing harness is in place with 140 passing tests
 - Documentation complete with 7 comprehensive guides (~1,700 lines)
 - System ready for production deployment and contributor onboarding

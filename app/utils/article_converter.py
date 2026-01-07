@@ -93,7 +93,7 @@ class ArticleConverter:
 
         return markdown.strip()
 
-    def extract_metadata(self, html: str) -> dict[str, Optional[str]]:
+    def extract_metadata(self, html: str) -> dict[str, object]:
         """
         Extract article metadata using trafilatura.
 

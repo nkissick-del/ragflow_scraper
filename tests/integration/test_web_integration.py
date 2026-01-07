@@ -1,6 +1,7 @@
 """Integration tests for web interface."""
 
 import pytest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from app.web import create_app
@@ -42,15 +43,29 @@ class TestBlueprintRegistration:
         assert "api_scrapers" in blueprint_names
     
     def test_root_renders(self, client):
-        """Test root route renders."""
-        with patch("app.web.blueprints.scrapers.ScraperRegistry") as mock_registry:
-            mock_registry.list_scrapers.return_value = []
-            response = client.get("/", follow_redirects=False)
-            assert response.status_code == 200
+        """Test root route redirects to scrapers."""
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code == 302
+        assert "/scrapers" in response.location
     
-    def test_static_files_accessible(self, client):
+    def test_static_files_accessible(self, app, client):
         """Test static file serving works."""
-        # Just verify the static folder is configured
-        from app.web import create_app
-        app = create_app()
-        assert app.static_folder is not None
+        # Create a temporary test file in the static folder
+        static_folder = Path(app.static_folder)
+        test_file = static_folder / "test_file.txt"
+        test_content = "test static content"
+        
+        try:
+            # Write test file
+            test_file.write_text(test_content, encoding="utf-8")
+            
+            # Request the file via the client
+            response = client.get("/static/test_file.txt")
+            
+            # Verify successful response and correct content
+            assert response.status_code == 200
+            assert response.data.decode("utf-8") == test_content
+        finally:
+            # Clean up test file
+            if test_file.exists():
+                test_file.unlink()

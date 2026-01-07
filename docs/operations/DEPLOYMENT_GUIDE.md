@@ -477,6 +477,8 @@ docker compose logs -f scraper  # Monitor logs
    - Generate new key if expired
 
 3. **Network connectivity:**
+   
+   **Docker Desktop (macOS/Windows):**
    ```bash
    docker compose exec scraper curl -I http://host.docker.internal:9380
    ```
@@ -485,6 +487,43 @@ docker compose logs -f scraper  # Monitor logs
    ```dotenv
    RAGFLOW_API_URL=http://host.docker.internal:9380
    ```
+   
+   **Linux:**
+   `host.docker.internal` is not available on Linux. Use one of these alternatives:
+   
+   - **Option 1: Use Docker bridge gateway IP (usually 172.17.0.1):**
+     ```bash
+     docker compose exec scraper curl -I http://172.17.0.1:9380
+     ```
+     ```dotenv
+     RAGFLOW_API_URL=http://172.17.0.1:9380
+     ```
+   
+   - **Option 2: Use host machine's actual IP:**
+     ```bash
+     # Find your host IP
+     ip addr show docker0 | grep inet
+     # Or use your machine's network IP
+     hostname -I | awk '{print $1}'
+     
+     # Test connectivity (replace <HOST_IP> with actual IP)
+     docker compose exec scraper curl -I http://<HOST_IP>:9380
+     ```
+     ```dotenv
+     RAGFLOW_API_URL=http://<HOST_IP>:9380
+     ```
+   
+   - **Option 3: Use host network mode (simplest for local development):**
+     In `docker-compose.yml`, change:
+     ```yaml
+     services:
+       scraper:
+         network_mode: "host"
+     ```
+     Then use:
+     ```dotenv
+     RAGFLOW_API_URL=http://localhost:9380
+     ```
 
 4. **Firewall rules:**
    - Ensure RAGFlow port (9380) is accessible
@@ -684,4 +723,4 @@ Before deploying to production:
 For issues not covered in this guide:
 - Check `data/logs/scraper.log` for detailed error messages
 - Review [ERROR_HANDLING.md](ERROR_HANDLING.md) for error types
-- Consult [docs/ragflow_scraper_audit.md](ragflow_scraper_audit.md) for RAGFlow-specific issues
+- Consult [ragflow_scraper_audit.md](ragflow_scraper_audit.md) for RAGFlow-specific issues

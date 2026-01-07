@@ -264,6 +264,21 @@ class TestBaseScrapeTemplate:
 
     def test_run_calls_template_methods_in_order(self):
         """Should call setup, scrape, teardown in sequence."""
+        call_order = []
+        
+        original_setup = self.scraper.setup
+        original_teardown = self.scraper.teardown
+        
+        def tracked_setup():
+            call_order.append('setup')
+            original_setup()
+        
+        def tracked_teardown():
+            call_order.append('teardown')
+            original_teardown()
+        
+        self.scraper.setup = tracked_setup
+        self.scraper.teardown = tracked_teardown
         self.scraper.setup_called = False
         self.scraper.teardown_called = False
 
@@ -271,4 +286,5 @@ class TestBaseScrapeTemplate:
 
         assert self.scraper.setup_called is True
         assert self.scraper.teardown_called is True
+        assert call_order == ['setup', 'teardown']
         assert result is not None

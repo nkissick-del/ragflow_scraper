@@ -127,14 +127,13 @@ class GuardianScraper(BaseScraper):
             params=request_params,
             timeout=30,
         )
-
+        assert response is not None
         try:
             return response.json()
         except ValueError as exc:
             raise ParsingError(
-                # No change needed—already imports from models; skipping
+                f"Failed to parse Guardian API response for {url}",
                 scraper=self.name,
-                recoverable=False,
                 context={"url": url},
             ) from exc
 
@@ -264,6 +263,7 @@ class GuardianScraper(BaseScraper):
             try:
                 params = self._build_search_params(tag, page, self._from_date)
                 response = self._api_request(params=params)
+                assert response is not None
 
                 api_data = response.get("response", {})
 

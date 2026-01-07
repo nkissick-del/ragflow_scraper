@@ -21,6 +21,7 @@ logger.debug(f"Retrying request (attempt {attempt}/{max_attempts}, backoff={dela
 ```
 
 **When to use:**
+
 - Function entry/exit (with parameters)
 - Loop iterations over large datasets
 - Conditional branch selection logic
@@ -41,6 +42,7 @@ logger.info(f"RAGFlow metadata push completed: 25 docs")
 ```
 
 **When to use:**
+
 - Scraper start/stop
 - Documents downloaded, skipped, or failed
 - Major milestone completions
@@ -61,6 +63,7 @@ logger.warning(f"HTML parsing failed for {url}, using fallback title extraction"
 ```
 
 **When to use:**
+
 - Missing optional metadata (recovered with default)
 - Retries triggered (will continue)
 - Service timeouts with fallback (e.g., FlareSolverr → direct)
@@ -80,6 +83,7 @@ logger.error(f"RAGFlow upload failed for {filename}: dataset not found (will ret
 ```
 
 **When to use:**
+
 - Document download failed (but will retry or skip)
 - Required metadata missing (document skipped)
 - API call failed (will retry)
@@ -99,6 +103,7 @@ logger.critical(f"Disk full: cannot write to {data_dir}")
 ```
 
 **When to use:**
+
 - Configuration or secrets missing
 - External service permanently unreachable
 - Filesystem errors (no write permission, disk full)
@@ -113,11 +118,12 @@ logger.critical(f"Disk full: cannot write to {data_dir}")
 
 All log messages should include:
 
-```
+```logs
 <action>: <resource> | <context> | <result>
 ```
 
 **Parts:**
+
 - **Action:** Verb (Downloaded, Parsed, Validated, Failed, Started, etc.)
 - **Resource:** Object being acted upon (filename, URL, dataset_id, document count)
 - **Context:** Relevant details (size, duration, attempt number, reason)
@@ -126,6 +132,7 @@ All log messages should include:
 ### Examples
 
 ✅ **Good:**
+
 ```python
 logger.info(f"Downloaded: aemo_2025_q1.pdf (2.0 MB, 1.2s)")
 logger.warning(f"FlareSolverr timeout: {url} (60s limit), retrying with direct request")
@@ -133,6 +140,7 @@ logger.error(f"Parse failed: {filename} (missing title, skipping)")
 ```
 
 ❌ **Poor:**
+
 ```python
 logger.info("Done")  # No context
 logger.error("Error")  # No details
@@ -216,7 +224,7 @@ LOG_DIR=/app/data/logs        # Optional override for log directory
 
 By default logs are written under `data/logs` (from `Config.LOG_DIR`). When the logger name is `scraper`, the primary file is `data/logs/scraper.log` with rotated siblings.
 
-```
+```tree
 data/logs/
 ├── scraper.log              # Current log file
 ├── scraper.log.1            # Previous rotation
@@ -236,10 +244,13 @@ data/logs/
 ### Archival Strategy
 
 For long-term retention:
+
 1. Copy logs to external storage before rotation:
+
    ```bash
    gsutil cp logs/scraper.log.* gs://archive-bucket/logs/$(date +%Y-%m-%d)/
    ```
+
 2. Or use a monitoring service (e.g., Splunk, Datadog) to ingest logs before rotation.
 
 ---
@@ -252,12 +263,14 @@ The web dashboard exposes logs for operators without SSH access.
 
 **[GET /](../app/web/routes.py)**  
 Dashboard homepage. Shows:
+
 - List of all configured scrapers
 - Last run timestamp per scraper
 - Next scheduled run (if applicable)
 
 **[GET /scraper/{scraper_name}](../app/web/routes.py)**  
 Scraper detail page. Shows:
+
 - Current configuration (filters, tags, dataset_id)
 - Recent logs (last 50 lines from `logs/scraper.log`)
 - Run history and statistics
@@ -289,7 +302,7 @@ export WEB_AUTH_PASSWORD=secret123
 Track these error types for metrics and alerts:
 
 | Error Type | Code | Count In | Alert Threshold |
-|------------|------|----------|-----------------|
+| ---------- | ---- | -------- | --------------- |
 | Network timeout | NET_TIMEOUT | `logs/` | 5+ in single run |
 | HTTP 403/401 | AUTH_ERROR | `logs/` | Any (likely credentials expired) |
 | Parsing failure | PARSE_ERROR | `logs/` | 20%+ of documents |
@@ -330,7 +343,7 @@ grep "scraper.aemo" logs/scraper.log | grep "ERROR" | wc -l
 
 **Automatic alerts** (if using Splunk/DataDog integration):
 
-```
+```alerts
 - Alert: CRITICAL logs found
   Condition: count(level=CRITICAL) >= 1
   Action: Email ops@example.com
@@ -350,7 +363,7 @@ grep "scraper.aemo" logs/scraper.log | grep "ERROR" | wc -l
 
 ### Troubleshooting Flowchart
 
-```
+```tree
 SCRAPER RUN FAILED
 │
 ├─ Check last 10 lines of logs/scraper.log
@@ -376,6 +389,7 @@ SCRAPER RUN FAILED
 **Error:** `NET_TIMEOUT` or `connect timed out`  
 **Cause:** Network unreachable or host slow  
 **Fix:**
+
 1. Check network: `ping <host>`
 2. Increase timeout: `SCRAPER_REQUEST_TIMEOUT=30`
 3. Check firewall rules (port 80, 443)
@@ -383,6 +397,7 @@ SCRAPER RUN FAILED
 **Error:** `HTTP 403 Forbidden` or `HTTP 401 Unauthorized`  
 **Cause:** Credentials expired or missing  
 **Fix:**
+
 1. Verify API keys in `.env`
 2. Re-authenticate with service (login page)
 3. Check if IP is blocklisted (contact support)
@@ -390,6 +405,7 @@ SCRAPER RUN FAILED
 **Error:** `SSL_ERROR` or `certificate verify failed`  
 **Cause:** TLS certificate invalid or expired  
 **Fix:**
+
 1. Update CA bundle: `pip install --upgrade certifi`
 2. Check system clock is accurate
 3. If on custom network, check corporate proxy config
@@ -399,6 +415,7 @@ SCRAPER RUN FAILED
 **Error:** `FlareSolverr timeout` or `no response from FlareSolverr`  
 **Cause:** FlareSolverr service down or slow  
 **Fix:**
+
 1. Check FlareSolverr status: `docker compose ps flaresolverr`
 2. Restart: `docker compose restart flaresolverr`
 3. Check logs: `docker compose logs flaresolverr | tail -20`
@@ -407,6 +424,7 @@ SCRAPER RUN FAILED
 **Error:** `FlareSolverr max retries exceeded`  
 **Cause:** Page contains anti-bot challenges FlareSolverr cannot solve  
 **Fix:**
+
 1. Try manual inspection of page in browser
 2. Check if CloudFlare rules have changed
 3. Report to FlareSolverr project if consistently failing
@@ -416,6 +434,7 @@ SCRAPER RUN FAILED
 **Error:** `RAGFLOW_UNREACHABLE` or `Connection refused`  
 **Cause:** RAGFlow server not running  
 **Fix:**
+
 1. Start services: `docker compose --profile full up -d`
 2. Verify RAGFlow: `curl http://localhost:9380/`
 3. Check logs: `docker compose logs ragflow | tail -30`
@@ -423,6 +442,7 @@ SCRAPER RUN FAILED
 **Error:** `Authentication failed` or `Bearer token invalid`  
 **Cause:** API key expired or missing  
 **Fix:**
+
 1. Regenerate API key in RAGFlow UI
 2. Update `.env` with new key: `RAGFLOW_API_KEY=<key>`
 3. Restart scraper: `docker compose restart scraper`
@@ -430,6 +450,7 @@ SCRAPER RUN FAILED
 **Error:** `Dataset not found` or `404`  
 **Cause:** Dataset ID is wrong or deleted  
 **Fix:**
+
 1. List datasets: `curl -H "Authorization: Bearer $RAGFLOW_API_KEY" http://localhost:9380/api/v1/datasets`
 2. Update config with correct dataset_id
 3. Or create new dataset: `RAGFLOW_AUTO_CREATE_DATASET=true`
@@ -437,6 +458,7 @@ SCRAPER RUN FAILED
 **Error:** `Document parse timeout` or `parsing stuck`  
 **Cause:** RAGFlow overloaded or document very large  
 **Fix:**
+
 1. Wait (parsing can take minutes for large files)
 2. Check RAGFlow status: `docker compose logs ragflow | grep -i "parse\|timeout"`
 3. Reduce `RAGFLOW_PARSER_CHUNK_TOKEN_NUM` (default 128) to 64
@@ -447,6 +469,7 @@ SCRAPER RUN FAILED
 **Error:** `PARSE_ERROR: failed to extract title`  
 **Cause:** Page HTML structure changed or page is broken  
 **Fix:**
+
 1. Inspect page: `curl -s <url> | head -50`
 2. Update scraper CSS selectors in [config/scrapers/{scraper}.json](../config/scrapers/)
 3. Test locally with single page: `python scripts/run_scraper.py --scraper <name> --max-pages 1`
@@ -454,6 +477,7 @@ SCRAPER RUN FAILED
 **Error:** `VALIDATION_ERROR: missing required field 'title'`  
 **Cause:** Scraper extracted empty or malformed title  
 **Fix:**
+
 1. Check HTML structure: does page have a title?
 2. Enable DEBUG logs: `LOG_LEVEL=DEBUG`
 3. Add fallback logic in scraper (e.g., use URL as title)
@@ -461,10 +485,13 @@ SCRAPER RUN FAILED
 **Error:** `VALIDATION_ERROR: publication_date not ISO 8601`  
 **Cause:** Date format wrong (e.g., "Jan 7, 2026" instead of "2026-01-07")  
 **Fix:**
+
 1. Normalize date in scraper before creating metadata:
+
    ```python
    publication_date = datetime.strptime(date_str, "%b %d, %Y").isoformat().split('T')[0]
    ```
+
 2. Update date extraction regex in scraper
 
 #### State & Deduplication Errors
@@ -472,6 +499,7 @@ SCRAPER RUN FAILED
 **Error:** `STATE_ERROR: state file corrupted`  
 **Cause:** Interrupted write or filesystem corruption  
 **Fix:**
+
 1. Inspect state file: `cat data/state/{scraper}_state.json | jq .`
 2. If invalid JSON, delete it: `rm data/state/{scraper}_state.json`
 3. Restart scraper (will recreate from scratch)
@@ -479,6 +507,7 @@ SCRAPER RUN FAILED
 **Error:** `Duplicate detected (hash match)` but document is new  
 **Cause:** Hash algorithm gave false positive or document content didn't change  
 **Fix:**
+
 1. Use `--force` flag to re-process: `python scripts/run_scraper.py --scraper {name} --force`
 2. Or delete state and re-run: `rm data/state/{scraper}_state.json` (loses history)
 3. If document is already in RAGFlow, manually delete and re-upload
@@ -489,6 +518,7 @@ SCRAPER RUN FAILED
 **Error:** `Disk full` or `No space left on device`  
 **Cause:** `/data` or `/logs` directories full  
 **Fix:**
+
 1. Check disk: `df -h`
 2. Clean up old files: `rm -rf data/scraped/*/older_than_30_days`
 3. Compress logs: `gzip logs/scraper.log.*`
@@ -497,6 +527,7 @@ SCRAPER RUN FAILED
 **Error:** `Out of memory` or `OOMKilled`  
 **Cause:** Too many concurrent downloads or Chrome memory leak  
 **Fix:**
+
 1. Reduce concurrency: `MAX_CONCURRENT_DOWNLOADS=1` (in env)
 2. Restart Chrome container: `docker compose restart chrome`
 3. Increase container memory limit in `docker-compose.yml`
@@ -526,4 +557,3 @@ When adding a new scraper or feature:
 - [AEMO Scraper](../app/scrapers/aemo_scraper.py) – Concrete logging examples
 - [Pipeline](../app/orchestrator/pipeline.py) – Pipeline-level structured logging
 - [Web Routes](../app/web/routes.py) – Log exposure via web UI
-

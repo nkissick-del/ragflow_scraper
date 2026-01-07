@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for
+from markupsafe import escape
 
 from app.config import Config
 from app.scrapers import ScraperRegistry
@@ -23,16 +24,7 @@ logger = get_logger("web.scrapers")
 
 @bp.route("/")
 def index():
-    scrapers = ScraperRegistry.list_scrapers()
-    for scraper in scrapers:
-        state = container.state_tracker(scraper["name"])
-        info = state.get_last_run_info()
-        scraper["last_run"] = info.get("last_updated") if info else None
-        scraper["processed_count"] = info.get("processed_count", 0) if info else 0
-        scraper["status"] = get_scraper_status(scraper["name"])
-
-    log_event(logger, "info", "ui.page.index", scraper_count=len(scrapers))
-    return render_template("index.html", scrapers=scrapers)
+    return redirect(url_for("scrapers.scrapers_page"))
 
 
 @bp.route("/scrapers")
@@ -171,7 +163,9 @@ def preview_status(name):
 
     if job.error:
         job_queue.drop(name)
-        return f'<div class="preview-error">Preview failed: {job.error}</div>'
+        # Escape error message to prevent XSS
+        safe_error = escape(str(job.error))
+        return f'<div class="preview-error">Preview failed: {safe_error}</div>'
 
     if job.is_finished and job.result is None:
         job_queue.drop(name)

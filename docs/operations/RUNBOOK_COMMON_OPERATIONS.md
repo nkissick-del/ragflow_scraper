@@ -234,7 +234,29 @@ grep "WARNING" data/logs/scraper.log
 ### Chrome VNC Monitoring
 
 **Access:** http://localhost:7900  
-**Password:** `secret`
+**Password:** `<stored in team password manager>`
+
+> ⚠️ **SECURITY WARNING:**  
+> The default VNC password is `secret` and **MUST be changed before production use**.  
+> Never commit passwords to documentation or version control.
+
+**Setting/Changing VNC Password:**
+
+1. Set the VNC password via environment variable in `docker-compose.yml`:
+   ```yaml
+   services:
+     chrome:
+       environment:
+         - VNC_PASSWORD=<your-secure-password>
+   ```
+
+2. Or set it directly in the Chrome container:
+   ```bash
+   docker compose exec chrome sh -c "echo '<your-secure-password>' | x11vnc -storepasswd /home/seluser/.vnc/passwd"
+   docker compose restart chrome
+   ```
+
+3. **Store the actual password** in your team's password manager (e.g., 1Password, LastPass, HashiCorp Vault)
 
 **Use Cases:**
 - Debug scraper browser interactions

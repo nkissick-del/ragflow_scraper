@@ -8,20 +8,20 @@ import base64
 import json
 from datetime import datetime
 from pathlib import Path
-from flask import Blueprint, render_template, request, jsonify, Response
+from flask import Blueprint, render_template, request, jsonify, Response  # type: ignore[import]
 
 from app.config import Config
 from app.container import get_container
 from app.scrapers import ScraperRegistry
 from app.services import FlareSolverrClient
 from app.utils import get_logger
+from app.utils.errors import ScraperAlreadyRunningError
 from app.utils.logging_config import log_event, log_exception
-from app.web.job_queue import JobQueue
+from app.web.runtime import job_queue
 
 bp = Blueprint("main", __name__, static_folder="static", static_url_path="/static")
 logger = get_logger("web")
 container = get_container()
-job_queue = JobQueue()
 def _auth_failed() -> Response:
     """Return a basic-auth challenge response."""
     return Response(
@@ -72,7 +72,7 @@ def index():
     # Add status info to each scraper
     for scraper in scrapers:
         state = container.state_tracker(scraper["name"])
-        info = state.get_last_run_info()
+        info = (state.get_last_run_info() if state is not None else {}) or {}
         scraper["last_run"] = info.get("last_updated")
         scraper["processed_count"] = info.get("processed_count", 0)
         scraper["status"] = _get_scraper_status(scraper["name"])
@@ -122,7 +122,7 @@ def scrapers():
 
         # Get state info
         state = container.state_tracker(scraper["name"])
-        scraper["state"] = state.get_last_run_info()
+        scraper["state"] = (state.get_last_run_info() if state is not None else {}) or {}
         scraper["status"] = _get_scraper_status(scraper["name"])
 
         # Get per-scraper cloudflare setting
@@ -190,10 +190,12 @@ def run_scraper(name):
 
     try:
         job_queue.enqueue(name, scraper, dry_run=dry_run, max_pages=max_pages)
-    except ValueError:
+    except ScraperAlreadyRunningError:
+        scraper_class = ScraperRegistry.get_scraper_class(name)
+        metadata = scraper_class.get_metadata() if scraper_class is not None else {"name": name}
         return render_template(
             "components/scraper-card.html",
-            scraper=ScraperRegistry.get_scraper_class(name).get_metadata(),
+            scraper=metadata,
             status="running",
             message="Already queued or running",
         )
@@ -208,9 +210,10 @@ def run_scraper(name):
     )
 
     # Return updated card
-    metadata = ScraperRegistry.get_scraper_class(name).get_metadata()
+    scraper_class = ScraperRegistry.get_scraper_class(name)
+    metadata = scraper_class.get_metadata() if scraper_class is not None else {"name": name}
     state = container.state_tracker(name)
-    metadata["state"] = state.get_last_run_info()
+    metadata["state"] = (state.get_last_run_info() if state is not None else {}) or {}
     metadata["status"] = job_queue.status(name)
     metadata["dry_run"] = dry_run
 
@@ -250,7 +253,7 @@ def preview_scraper(name):
 
     try:
         job_queue.enqueue(name, scraper, preview=True, dry_run=True, max_pages=max_pages)
-    except ValueError:
+    except ScraperAlreadyRunningError:
         return '<div class="preview-error">Scraper is currently running. Please wait.</div>'
 
     log_event(logger, "info", "scraper.preview.requested", scraper=name, max_pages=max_pages)
@@ -349,8 +352,10 @@ def pipeline_metrics():
 
     for scraper in ScraperRegistry.list_scrapers():
         name = scraper.get("name")
+        if not isinstance(name, str):
+            continue
         state = container.state_tracker(name)
-        last_run = state.get_last_run_info() or {}
+        last_run = (state.get_last_run_info() if state is not None else {}) or {}
         processed = last_run.get("processed_count", 0)
         failed = last_run.get("failed_count", 0)
         total_processed += processed
@@ -639,7 +644,7 @@ def get_ragflow_models():
 def get_ragflow_chunk_methods():
     """API endpoint to fetch available chunk methods."""
     try:
-        client = RAGFlowClient()
+        client = container.ragflow_client
         methods = client.list_chunk_methods()
         return jsonify({"success": True, "methods": methods})
     except Exception as e:
@@ -743,7 +748,7 @@ def _get_scraper_status(name: str) -> str:
         return in_flight
 
     state = container.state_tracker(name)
-    info = state.get_last_run_info()
+    info = (state.get_last_run_info() if state is not None else {}) or {}
 
     if not info.get("last_updated"):
         return "idle"

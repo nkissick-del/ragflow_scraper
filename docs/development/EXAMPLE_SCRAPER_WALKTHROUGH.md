@@ -470,4 +470,4 @@ while True:
 - [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - Full development guide
 - [METADATA_SCHEMA.md](METADATA_SCHEMA.md) - Metadata requirements
 - [LOGGING_AND_ERROR_STANDARDS.md](LOGGING_AND_ERROR_STANDARDS.md) - Logging patterns
-- [BASE_SCRAPER.md](SCRAPER_TEMPLATE.md) - Base scraper documentation
+- [SCRAPER_TEMPLATE.md](SCRAPER_TEMPLATE.md) - Base scraper documentation

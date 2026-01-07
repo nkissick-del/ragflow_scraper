@@ -28,6 +28,7 @@ from selenium.common.exceptions import TimeoutException
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename, ArticleConverter
+from app.utils.errors import ScraperError
 
 
 class RenewEconomyScraper(BaseScraper):
@@ -141,6 +142,9 @@ class RenewEconomyScraper(BaseScraper):
     def _wait_for_content(self, timeout: int = 10) -> None:
         """Wait for article content to load."""
         try:
+            if not self.driver:
+                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            assert self.driver is not None
             WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, ".post, article"))
             )
@@ -385,6 +389,9 @@ class RenewEconomyScraper(BaseScraper):
                 self.logger.info(f"Scraping {category} page {page_num}")
 
             try:
+                if not self.driver:
+                    raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+                assert self.driver is not None
                 self.driver.get(page_url)
 
                 # Check for redirect (end of pagination)
@@ -399,7 +406,7 @@ class RenewEconomyScraper(BaseScraper):
                     break
 
                 self._wait_for_content()
-                page_html = self.driver.page_source
+                page_html = self.get_page_source()
 
                 # On first page, try to get max pages from pagination
                 if page_num == 1:
@@ -490,6 +497,9 @@ class RenewEconomyScraper(BaseScraper):
             self.logger.info(f"Scraping homepage page {page_num}")
 
             try:
+                if not self.driver:
+                    raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+                assert self.driver is not None
                 self.driver.get(page_url)
 
                 # Check for redirect (end of pagination)
@@ -499,7 +509,7 @@ class RenewEconomyScraper(BaseScraper):
                     break
 
                 self._wait_for_content()
-                page_html = self.driver.page_source
+                page_html = self.get_page_source()
 
                 # Parse articles from listing page
                 articles = self.parse_page(page_html)
@@ -688,9 +698,12 @@ class RenewEconomyScraper(BaseScraper):
         # Stage 2: Fetch article page for JSON-LD dates and content
         try:
             self.logger.debug(f"Fetching article: {article.url}")
+            if not self.driver:
+                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            assert self.driver is not None
             self.driver.get(article.url)
             self._wait_for_content(timeout=10)
-            article_html = self.driver.page_source
+            article_html = self.get_page_source()
 
             # Extract JSON-LD dates
             dates = self._extract_jsonld_dates(article_html)

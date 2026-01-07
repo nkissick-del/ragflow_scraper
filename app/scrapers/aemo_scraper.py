@@ -25,6 +25,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ScraperResult, ExcludedDocument
 from app.utils import sanitize_filename, parse_file_size
+from app.utils.errors import ScraperError
 
 
 class AEMOScraper(BaseScraper):
@@ -137,9 +138,15 @@ class AEMOScraper(BaseScraper):
 
         if page_num == 0:
             # First page - just load the base URL
+            if not self.driver:
+                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            assert self.driver is not None
             self.driver.get(self.base_url)
         else:
             # Subsequent pages - update hash fragment
+            if not self.driver:
+                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            assert self.driver is not None
             self.driver.execute_script(f"window.location.hash = 'e={offset}'")
 
         # Wait for content to load
@@ -149,6 +156,9 @@ class AEMOScraper(BaseScraper):
         """Wait for the document list to load."""
         try:
             # Wait for the search result list to be present
+            if not self.driver:
+                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            assert self.driver is not None
             WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located(
                     (By.CSS_SELECTOR, ".search-result-list, .search-result-list-item")
@@ -158,9 +168,10 @@ class AEMOScraper(BaseScraper):
             time.sleep(1.5)
         except TimeoutException:
             self.logger.warning("Timeout waiting for content to load")
-            # Debug: log page info
-            self.logger.debug(f"Page title: {self.driver.title}")
-            if "Just a moment" in self.driver.page_source:
+            # Debug: log page info if driver available
+            if self.driver:
+                self.logger.debug(f"Page title: {self.driver.title}")
+            if "Just a moment" in self.get_page_source():
                 self.logger.warning("Cloudflare challenge detected - FlareSolverr may be needed")
 
     def _get_page_url(self, page_num: int) -> str:

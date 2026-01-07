@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, render_template, Response
+from markupsafe import escape
 
 from app.config import Config
 from app.scrapers import ScraperRegistry
@@ -40,23 +41,39 @@ def log_stream():
         html = ""
         for line in lines:
             css_class = "log-info"
-            if "ERROR" in line:
+            # More robust: check log level at expected position (after timestamp/delimiters)
+            if " ERROR" in line or line.startswith("ERROR"):
                 css_class = "log-error"
-            elif "WARNING" in line:
+            elif " WARNING" in line or line.startswith("WARNING"):
                 css_class = "log-warning"
-            elif "DEBUG" in line:
+            elif " DEBUG" in line or line.startswith("DEBUG"):
                 css_class = "log-debug"
-            html += f'<div class="log-entry {css_class}">{line.strip()}</div>'
+            # Escape HTML to prevent XSS
+            html += f'<div class="log-entry {css_class}">{escape(line.strip())}</div>'
 
         return html
     except Exception as exc:
         log_exception(logger, exc, "logs.stream.error")
-        return f'<div class="log-entry log-error">Error reading logs: {exc}</div>'
-
+        return f'<div class="log-entry log-error">Error reading logs: {escape(str(exc))}</div>'
+from pathlib import Path
 
 @bp.route("/logs/download/<filename>")
 def download_log(filename):
+    # Validate filename to prevent path traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        return "Invalid filename", 400
+    
     log_path = Config.LOG_DIR / filename
+    
+    # Additional check: ensure resolved path is still within LOG_DIR
+    try:
+        log_path = log_path.resolve()
+        Config.LOG_DIR.resolve().relative_to(Config.LOG_DIR.resolve())
+        if not str(log_path).startswith(str(Config.LOG_DIR.resolve())):
+            return "Invalid filename", 400
+    except (ValueError, OSError):
+        return "Invalid filename", 400
+    
     if not log_path.exists() or not log_path.is_file():
         return "Not found", 404
 
@@ -70,7 +87,7 @@ def download_log(filename):
     return Response(
         content,
         mimetype="text/plain",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

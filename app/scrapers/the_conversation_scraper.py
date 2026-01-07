@@ -170,6 +170,7 @@ class TheConversationScraper(BaseScraper):
             raise RuntimeError("HTTP session not initialized")
 
         response = self._request_with_retry(self._session, "get", url, timeout=30)
+        assert response is not None
         feed = feedparser.parse(response.content)
 
         if feed.bozo and not feed.entries:

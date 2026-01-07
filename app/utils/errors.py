@@ -77,3 +77,11 @@ class ValidationError(ScraperError):
     def __init__(self, message: str, **kwargs: Any) -> None:
         kwargs.setdefault("recoverable", False)
         super().__init__(message, **kwargs)
+
+
+class ScraperAlreadyRunningError(ScraperError):
+    """Raised when attempting to start a scraper that is already running."""
+
+    def __init__(self, message: str, **kwargs: Any) -> None:
+        kwargs.setdefault("recoverable", False)
+        super().__init__(message, **kwargs)

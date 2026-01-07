@@ -32,6 +32,33 @@ def _parse_proxy_count(raw: str) -> int:
     return value
 
 
+def _parse_timeout(raw: str, param_name: str, min_val: int = 1, max_val: int = 600) -> int:
+    """Validate timeout parameter as a bounded positive integer.
+    
+    Args:
+        raw: Raw value from environment variable
+        param_name: Name of the parameter for error messages
+        min_val: Minimum allowed value (default 1)
+        max_val: Maximum allowed value (default 600)
+        
+    Returns:
+        Validated integer timeout value
+        
+    Raises:
+        ValueError: If value is not an integer or out of range
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid Config.{param_name}: must be an integer, got '{raw}'")
+
+    if value < min_val or value > max_val:
+        raise ValueError(
+            f"Invalid Config.{param_name}: must be between {min_val} and {max_val} inclusive, got '{value}'"
+        )
+    return value
+
+
 class Config:
     """Application configuration."""
 
@@ -66,8 +93,18 @@ class Config:
 
     # FlareSolverr (enabled/disabled is controlled via UI settings, not env)
     FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "")
-    FLARESOLVERR_TIMEOUT = int(os.getenv("FLARESOLVERR_TIMEOUT", 60))
-    FLARESOLVERR_MAX_TIMEOUT = int(os.getenv("FLARESOLVERR_MAX_TIMEOUT", 120))
+    FLARESOLVERR_TIMEOUT = _parse_timeout(
+        os.getenv("FLARESOLVERR_TIMEOUT", "60"),
+        "FLARESOLVERR_TIMEOUT",
+        min_val=1,
+        max_val=600
+    )
+    FLARESOLVERR_MAX_TIMEOUT = _parse_timeout(
+        os.getenv("FLARESOLVERR_MAX_TIMEOUT", "120"),
+        "FLARESOLVERR_MAX_TIMEOUT",
+        min_val=1,
+        max_val=600
+    )
 
     # Guardian Open Platform API
     GUARDIAN_API_KEY = os.getenv("GUARDIAN_API_KEY", "")
@@ -114,6 +151,12 @@ class Config:
                 raise ValueError(
                     "Invalid Config: BASIC_AUTH_ENABLED=true requires both BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD"
                 )
+        
+        if cls.FLARESOLVERR_MAX_TIMEOUT < cls.FLARESOLVERR_TIMEOUT:
+            raise ValueError(
+                f"Invalid Config: FLARESOLVERR_MAX_TIMEOUT ({cls.FLARESOLVERR_MAX_TIMEOUT}) "
+                f"must be greater than or equal to FLARESOLVERR_TIMEOUT ({cls.FLARESOLVERR_TIMEOUT})"
+            )
 
     @classmethod
     def get_scraper_config_path(cls, scraper_name: str) -> Path:

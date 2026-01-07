@@ -17,9 +17,10 @@ A modular web scraping system that downloads PDFs and articles from multiple Aus
 
 ### Production Deployment
 
-For detailed deployment instructions, see **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)**.
+For detailed deployment instructions, see **[DEPLOYMENT_GUIDE.md](docs/operations/DEPLOYMENT_GUIDE.md)**.
 
 **Quick setup:**
+
 ```bash
 # 1. Clone and configure
 git clone <repository-url>
@@ -36,6 +37,7 @@ open http://localhost:5000
 ```
 
 **Docker Compose Profiles:**
+
 ```bash
 # Default: All services (scraper + Chrome)
 docker compose up -d
@@ -45,17 +47,19 @@ docker compose up -d
 # docker compose --profile minimal up -d   # Scraper only
 ```
 
-See [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for:
+See [DEPLOYMENT_GUIDE.md](docs/operations/DEPLOYMENT_GUIDE.md) for:
+
 - Environment configuration
 - Service connectivity tests
 - Troubleshooting guide
 - Production best practices
 
-### Operations
+### Day-to-Day Operations
 
-For day-to-day operations, see **[RUNBOOK_COMMON_OPERATIONS.md](docs/RUNBOOK_COMMON_OPERATIONS.md)**.
+For day-to-day operations, see **[RUNBOOK_COMMON_OPERATIONS.md](docs/operations/RUNBOOK_COMMON_OPERATIONS.md)**.
 
 **Common commands:**
+
 ```bash
 # Start/stop services
 docker compose up -d
@@ -95,7 +99,8 @@ make dev-up COMPOSE=docker-compose.yml
 ```
 
 Notes:
-- Dev web UI: http://localhost:5001 (mapped from container 5000).
+
+- Dev web UI: <http://localhost:5001> (mapped from container 5000).
 - VS Code tasks mirror these targets (Terminal → Run Task).
 
 ### Local Development
@@ -128,7 +133,7 @@ python scripts/run_scraper.py --scraper aemo
 docker-compose up --build
 ```
 
-Access the web UI at http://localhost:5000
+Access the web UI at <http://localhost:5000>
 
 ## CLI Usage
 
@@ -166,7 +171,7 @@ python scripts/run_scraper.py config migrate --write
 
 ## Project Structure
 
-```
+```tree
 scraper/
 ├── app/
 │   ├── scrapers/       # Scraper modules
@@ -222,11 +227,33 @@ class MyScraper(BaseScraper):
         }
 ```
 
-See [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for:
+See [DEVELOPER_GUIDE.md](docs/development/DEVELOPER_GUIDE.md) for:
+
 - Development setup
 - Scraper best practices
 - Testing and debugging
 - Architecture overview
+
+## Documentation
+
+### Operations
+
+- **[Deployment Guide](docs/operations/DEPLOYMENT_GUIDE.md)** - Production deployment, Docker setup, service configuration
+- **[Runbook - Common Operations](docs/operations/RUNBOOK_COMMON_OPERATIONS.md)** - Daily operations, troubleshooting, maintenance tasks
+- **[Migration & State Repair](docs/operations/MIGRATION_AND_STATE_REPAIR.md)** - State file management, recovery procedures
+- **[Troubleshooting: RAGFlow](docs/operations/troubleshooting/ragflow_scraper_audit.md)** - RAGFlow integration issues and fixes
+
+### Development
+
+- **[Developer Guide](docs/development/DEVELOPER_GUIDE.md)** - Development setup, scraper architecture, best practices
+- **[Example Scraper Walkthrough](docs/development/EXAMPLE_SCRAPER_WALKTHROUGH.md)** - Step-by-step guide to creating a new scraper
+- **[Configuration & Services](docs/development/CONFIG_AND_SERVICES.md)** - Configuration system, service integration patterns
+- **[Error Handling & Logging](docs/development/ERROR_HANDLING.md)** - Exception hierarchy, retry patterns, logging standards
+
+### Reference
+
+- **[Metadata Schema](docs/reference/METADATA_SCHEMA.md)** - Document metadata structure and validation
+- **[Changelog](docs/CHANGELOG.md)** - Version history and release notes
 
 ## Environment Variables
 
@@ -240,11 +267,11 @@ See `.env.example` for all configuration options.
 ### Logging
 
 - File logs default to JSON lines with size-based rotation (10 MB, 5 backups). Configure via:
-    - `LOG_JSON_FORMAT` (true/false)
-    - `LOG_FILE_MAX_BYTES` (bytes)
-    - `LOG_FILE_BACKUP_COUNT` (files to keep)
-    - `LOG_TO_FILE` (toggle file output)
-    - `LOG_LEVEL` (INFO, DEBUG, etc.)
+  - `LOG_JSON_FORMAT` (true/false)
+  - `LOG_FILE_MAX_BYTES` (bytes)
+  - `LOG_FILE_BACKUP_COUNT` (files to keep)
+  - `LOG_TO_FILE` (toggle file output)
+  - `LOG_LEVEL` (INFO, DEBUG, etc.)
 
 ### Config precedence
 
@@ -262,6 +289,7 @@ See `.env.example` for all configuration options.
 - Quick checklist: TLS terminated at proxy with HSTS; `BASIC_AUTH_ENABLED=true` with strong creds if exposed; `TRUST_PROXY_COUNT` set when proxied; secrets only in `.env`; restrict writeable volumes (`config/`, `data/`, `logs/`) to trusted hosts.
 - Restrict write volumes (`config/`, `data/`, `logs/`) to least privilege; avoid sharing these into untrusted containers.
 - Example Traefik snippet (secure headers + forwarded proto):
+
     ```yaml
     labels:
         - traefik.enable=true

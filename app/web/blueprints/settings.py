@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, render_template, request
+from markupsafe import escape
 
 from app.config import Config
 from app.services import FlareSolverrClient, RAGFlowClient
@@ -95,7 +96,9 @@ def test_ragflow():
         else:
             return '<span class="status-badge status-disconnected">Connection Failed</span>'
     except Exception as exc:
-        return f'<span class="status-badge status-error">Error: {str(exc)}</span>'
+        # Escape exception message to prevent XSS
+        log_exception(logger, exc, "ragflow.test.error")
+        return '<span class="status-badge status-error">Connection test failed</span>'
 
 
 @bp.route("/settings/test-flaresolverr", methods=["POST"])
@@ -104,13 +107,16 @@ def test_flaresolverr():
         return '<span class="status-badge status-not_configured">Not Configured</span>'
 
     try:
-        client = FlareSolverrClient()
+        # Use same client instance as settings_page for consistency
+        client = container.flaresolverr_client
         if client.test_connection():
             return '<span class="status-badge status-connected">Connected</span>'
         else:
             return '<span class="status-badge status-disconnected">Connection Failed</span>'
     except Exception as exc:
-        return f'<span class="status-badge status-error">Error: {str(exc)}</span>'
+        # Escape exception message to prevent XSS
+        log_exception(logger, exc, "flaresolverr.test.error")
+        return '<span class="status-badge status-error">Connection test failed</span>'
 
 
 @bp.route("/settings/flaresolverr", methods=["POST"])

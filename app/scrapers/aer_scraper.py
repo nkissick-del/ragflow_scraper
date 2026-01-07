@@ -26,6 +26,7 @@ from selenium.common.exceptions import TimeoutException
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
+from app.utils.errors import ScraperError
 
 
 class AERScraper(BaseScraper):
@@ -66,6 +67,9 @@ class AERScraper(BaseScraper):
         try:
             # First wait for the Akamai challenge to complete
             # Look for the main content area to appear
+            if not self.driver:
+                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            assert self.driver is not None
             WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located(
                     (By.CSS_SELECTOR, ".card__inner, .views-layout__items, .region-content")
@@ -75,9 +79,10 @@ class AERScraper(BaseScraper):
             time.sleep(2)
         except TimeoutException:
             self.logger.warning("Timeout waiting for content to load")
-            # Debug: log page info
-            self.logger.debug(f"Page title: {self.driver.title}")
-            page_source = self.driver.page_source[:500]
+            # Debug: log page info if driver available
+            if self.driver:
+                self.logger.debug(f"Page title: {self.driver.title}")
+            page_source = self.get_page_source()[:500]
             if "bm-verify" in page_source or "akamai" in page_source.lower():
                 self.logger.warning("Akamai challenge may still be active")
 
@@ -164,7 +169,7 @@ class AERScraper(BaseScraper):
             if "bm-verify" in page_html:
                 self.logger.warning("Akamai challenge detected, waiting for resolution...")
                 time.sleep(5)
-                page_html = self.driver.page_source
+                page_html = self.get_page_source()
                 if "bm-verify" in page_html:
                     result.status = "failed"
                     result.errors.append("Akamai bot protection blocked access")
@@ -197,9 +202,12 @@ class AERScraper(BaseScraper):
 
                 try:
                     # Use Selenium to navigate
+                    if not self.driver:
+                        raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+                    assert self.driver is not None
                     self.driver.get(page_url)
                     self._wait_for_content()
-                    page_html = self.driver.page_source
+                    page_html = self.get_page_source()
                     self._process_page(page_html, result)
                 except Exception as e:
                     self.logger.warning(f"Failed to fetch page {page_num}: {e}")
@@ -407,10 +415,13 @@ class AERScraper(BaseScraper):
         """
         try:
             self.logger.debug(f"Fetching detail page: {detail_url}")
+            if not self.driver:
+                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            assert self.driver is not None
             self.driver.get(detail_url)
             self._wait_for_content(timeout=15)
 
-            soup = BeautifulSoup(self.driver.page_source, "lxml")
+            soup = BeautifulSoup(self.get_page_source(), "lxml")
 
             # Strategy 1: Find links with .pdf extension
             pdf_links = soup.find_all("a", href=re.compile(r"\.pdf$", re.I))

@@ -30,9 +30,10 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             log_entry["exc_info"] = self.formatException(record.exc_info)
 
-        # Preserve any structured extras on the record
-        if hasattr(record, "extra") and isinstance(record.extra, dict):
-            log_entry.update(record.extra)
+        # Preserve any structured extras on the record (passed via `extra={...}`)
+        extra_payload = getattr(record, "extra", None)
+        if isinstance(extra_payload, dict):
+            log_entry.update(extra_payload)
 
         return json.dumps(log_entry, ensure_ascii=True)
 

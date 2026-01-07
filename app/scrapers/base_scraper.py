@@ -95,7 +95,7 @@ class BaseScraper(
         self.cloudflare_bypass_enabled = cloudflare_bypass_enabled
 
         self.logger = get_logger(self.name)
-        self.state_tracker = StateTracker(self.name)
+        self.state_tracker: StateTracker = StateTracker(self.name)
         self.driver: Optional[WebDriver] = None
 
         # Cloudflare bypass state
@@ -290,13 +290,18 @@ class BaseScraper(
 
     def teardown(self) -> None:
         """Release resources after scrape ends."""
-        if self.skip_webdriver and self._session:
-            self._session.close()
-            self._session = None
-        elif self.driver:
-            self._close_driver()
-
-        self.state_tracker.save()
+        try:
+            if self.skip_webdriver and self._session:
+                self._session.close()
+                self._session = None
+            elif self.driver:
+                self._close_driver()  # type: ignore
+        except Exception as exc:
+            # Log driver cleanup errors but don't let them prevent state save
+            self.logger.error(f"Error during driver cleanup: {exc}", exc_info=True)
+        finally:
+            # Always save state, even if cleanup failed
+            self.state_tracker.save()
 
     @classmethod
     def get_metadata(cls) -> dict:

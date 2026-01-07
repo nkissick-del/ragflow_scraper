@@ -132,11 +132,12 @@ def format_file_size(size_bytes: int) -> str:
     Returns:
         Human-readable size string (e.g., "1.5 MB")
     """
+    value = float(size_bytes)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if abs(size_bytes) < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} PB"
+        if abs(value) < 1024.0:
+            return f"{value:.1f} {unit}"
+        value /= 1024.0
+    return f"{value:.1f} PB"
 
 
 def parse_file_size(size_str: str) -> Optional[int]:

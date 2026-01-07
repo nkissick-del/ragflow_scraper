@@ -102,6 +102,7 @@ class AEMCScraper(BaseScraper):
             # Step 1: Fetch main page
             self.logger.info(f"Fetching main page: {self.base_url}")
             response = self._request_with_retry(session, "get", self.base_url, timeout=30)
+            assert response is not None
 
             # Step 2: Parse review entries from table
             reviews = self._parse_reviews_table(response.text)
@@ -316,6 +317,7 @@ class AEMCScraper(BaseScraper):
 
         try:
             response = self._request_with_retry(session, "get", review_url, timeout=30)
+            assert response is not None
 
             soup = BeautifulSoup(response.text, "lxml")
 

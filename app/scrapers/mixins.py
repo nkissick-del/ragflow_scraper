@@ -6,12 +6,12 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Any, List, Dict, cast
 
 import requests
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.remote.webdriver import WebDriver
+from selenium import webdriver  # type: ignore[import]
+from selenium.webdriver.chrome.options import Options  # type: ignore[import]
+from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import]
 
 from app.config import Config
 from app.utils import ensure_dir, get_file_hash, sanitize_filename
@@ -23,6 +23,14 @@ if TYPE_CHECKING:
 
 
 class IncrementalStateMixin:
+    """Mixin to track incremental scraping state.
+
+    Notes: inheriting scrapers should provide `name: str` and `state_tracker`.
+    """
+    name: str = ""  # Provided by inheriting class
+    state_tracker: Any = None  # Provided by inheriting class
+    _newest_article_date: Optional[str] = None
+    logger: Any = None
     def _get_last_scrape_date(self) -> Optional[str]:
         key = f"_{self.name}_last_scrape_date"
         state = self.state_tracker.get_state()
@@ -49,6 +57,12 @@ class IncrementalStateMixin:
 
 
 class ExclusionRulesMixin:
+    # Common configuration attributes expected on scrapers that use this mixin
+    excluded_tags: Optional[List[str]] = None
+    required_tags: Optional[List[str]] = None
+    excluded_keywords: Optional[List[str]] = None
+    logger: Any = None
+
     def _should_exclude(self, tags: list[str]) -> bool:
         if not self.excluded_tags:
             return False
@@ -82,6 +96,12 @@ class ExclusionRulesMixin:
 
 
 class MetadataIOMixin:
+    # Expected attributes from the host scraper
+    dry_run: bool = False
+    logger: Any = None
+    # Name of the scraper (used for directories)
+    name: str = ""
+
     def _save_metadata(self, metadata: "DocumentMetadata"):
         metadata_dir = ensure_dir(Config.METADATA_DIR / self.name)
         metadata_file = metadata_dir / f"{sanitize_filename(metadata.filename)}.json"
@@ -93,31 +113,72 @@ class MetadataIOMixin:
             self.logger.info(f"[DRY RUN] Would save: {article.title}")
             return None
 
+        temp_md_path = None
+        temp_json_path = None
+        
         try:
             output_dir = ensure_dir(Config.DOWNLOAD_DIR / self.name)
             safe_filename = sanitize_filename(article.filename)
 
-            md_path = output_dir / f"{safe_filename}.md"
-            md_path.write_text(content, encoding="utf-8")
-
-            article.local_path = str(md_path)
-            article.file_size = len(content.encode("utf-8"))
-            article.hash = get_file_hash(md_path)
-
-            json_path = output_dir / f"{safe_filename}.json"
-            json_path.write_text(
-                json.dumps(article.to_dict(), indent=2, ensure_ascii=False),
+            # Write to temporary files first (atomic write pattern)
+            temp_md_path = output_dir / f".{safe_filename}.md.tmp"
+            temp_json_path = output_dir / f".{safe_filename}.json.tmp"
+            
+            # Write markdown to temp file
+            temp_md_path.write_text(content, encoding="utf-8")
+            
+            # Compute metadata from temp file
+            file_size = len(content.encode("utf-8"))
+            file_hash = get_file_hash(temp_md_path)
+            
+            # Prepare metadata with computed values (without mutating article yet)
+            article_dict = article.to_dict()
+            article_dict["local_path"] = str(output_dir / f"{safe_filename}.md")
+            article_dict["file_size"] = file_size
+            article_dict["hash"] = file_hash
+            
+            # Write JSON to temp file
+            temp_json_path.write_text(
+                json.dumps(article_dict, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
+            
+            # Both writes succeeded - now atomically move temp files to final locations
+            md_path = output_dir / f"{safe_filename}.md"
+            json_path = output_dir / f"{safe_filename}.json"
+            
+            temp_md_path.rename(md_path)
+            temp_json_path.rename(json_path)
+            
+            # Only mutate article after all file operations succeed
+            article.local_path = str(md_path)
+            article.file_size = file_size
+            article.hash = file_hash
 
             self.logger.info(f"Saved: {md_path.name}")
             return str(md_path)
         except Exception as exc:
             self.logger.error(f"Failed to save article '{article.title}': {exc}")
+            # Clean up temp files if they exist
+            if temp_md_path and temp_md_path.exists():
+                temp_md_path.unlink()
+            if temp_json_path and temp_json_path.exists():
+                temp_json_path.unlink()
             return None
 
 
 class HttpDownloadMixin:
+    # Expected attributes
+    dry_run: bool = False
+    download_timeout: int = 30
+    _errors: List[str] = []
+    logger: Any = None
+    name: str = ""
+
+    # Provide a metadata save hook signature so Pylance knows this exists
+    def _save_metadata(self, metadata: "DocumentMetadata") -> None:  # pragma: no cover - overridden by MetadataIOMixin
+        raise NotImplementedError()
+
     def _download_file(
         self,
         url: str,
@@ -178,6 +239,10 @@ class HttpDownloadMixin:
 
 
 class WebDriverLifecycleMixin:
+    # Expected attributes
+    driver: Optional[WebDriver] = None
+    logger: Any = None
+
     def _init_driver(self) -> WebDriver:
         options = Options()
         if Config.SELENIUM_HEADLESS:
@@ -195,16 +260,39 @@ class WebDriverLifecycleMixin:
         driver.implicitly_wait(10)
         return driver
 
-    def _close_driver(self):
-        if self.driver:
+    def get_page_source(self) -> str:
+        """Return page source from the Selenium driver, raising if driver missing."""
+        if not self.driver:
+            raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+        assert self.driver is not None
+        return self.driver.page_source
+
+    def _close_driver(self) -> None:
+        """Close and cleanup the Selenium WebDriver if it exists."""
+        if self.driver is not None:
             try:
                 self.driver.quit()
             except Exception as exc:
-                self.logger.warning(f"Error closing driver: {exc}")
-            self.driver = None
+                self.logger.warning(f"Error closing WebDriver: {exc}")
+            finally:
+                self.driver = None
 
 
 class CloudflareBypassMixin:
+    # Expected attributes provided by host scraper
+    cloudflare_bypass_enabled: bool = False
+    _flaresolverr: Any = None
+    _cloudflare_session_id: Optional[str] = None
+    _cloudflare_cookies: Dict[str, str] = {}
+    _cloudflare_user_agent: str = ""
+    _flaresolverr_html: str = ""
+    logger: Any = None
+    driver: Optional[WebDriver] = None
+    base_url: str = ""
+    settings_mgr: Any = None
+    _wait_for_content: Optional[Any] = None
+    if TYPE_CHECKING:  # provide stub for type checker without affecting runtime MRO
+        def get_page_source(self) -> str: ...
     def _init_cloudflare_bypass(self) -> bool:
         if not self.cloudflare_bypass_enabled:
             self.logger.debug("Cloudflare bypass not enabled")
@@ -216,22 +304,35 @@ class CloudflareBypassMixin:
 
         try:
             self.logger.info("Initializing Cloudflare bypass via FlareSolverr...")
-            self._flaresolverr = self._flaresolverr or self._build_flaresolverr()
-            result = self._flaresolverr.create_session(self.base_url)
+            self._flaresolverr = cast(Any, self._flaresolverr or self._build_flaresolverr())
 
-            if not result.success:
-                self.logger.error(f"FlareSolverr session creation failed: {result.error}")
+            # Create a session id and request FlareSolverr to create it. The
+            # FlareSolverr client returns a boolean for session creation, and
+            # subsequent get_page() calls return a FlareSolverResult with the
+            # cookies/html/user_agent we need.
+            session_id = f"scraper_session_{int(time.time())}"
+            try:
+                created = bool(self._flaresolverr.create_session(session_id))
+            except Exception:
+                created = False
+
+            if not created:
+                self.logger.error("FlareSolverr session creation failed")
                 return False
 
-            self._cloudflare_session_id = result.session
+            # Store session id and attempt to fetch an initial page to extract cookies
+            self._cloudflare_session_id = session_id
 
-            if not self._inject_cloudflare_cookies_to_driver():
-                self.logger.warning("Failed to inject Cloudflare cookies; continuing without them")
+            result = self._flaresolverr.get_page(self.base_url, session_id=session_id)
+            if not getattr(result, "success", False):
+                self.logger.error(f"FlareSolverr failed to fetch initial page: {getattr(result, 'error', '')}")
+                return False
 
-            self._cloudflare_cookies = {c["name"]: c["value"] for c in result.cookies if "name" in c}
-            self._cloudflare_user_agent = result.user_agent
+            # Extract session artifacts
+            self._cloudflare_cookies = {c["name"]: c["value"] for c in getattr(result, "cookies", []) if "name" in c}
+            self._cloudflare_user_agent = getattr(result, "user_agent", "")
             self.logger.info(f"Extracted {len(self._cloudflare_cookies)} cookies from FlareSolverr")
-            self._flaresolverr_html = result.html
+            self._flaresolverr_html = getattr(result, "html", "")
             return True
         except Exception as exc:
             self.logger.error(f"Cloudflare bypass failed: {exc}")
@@ -270,15 +371,22 @@ class CloudflareBypassMixin:
                 return html
             self.logger.warning("FlareSolverr fetch failed, falling back to Selenium")
 
+        if not self.driver:
+            raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+
+        # Narrow type for static checker
+        assert self.driver is not None
+
         self.logger.info(f"Fetching {url} via Selenium")
         self.driver.get(url)
 
-        if hasattr(self, "_wait_for_content"):
-            self._wait_for_content()
+        _wait = getattr(self, "_wait_for_content", None)
+        if callable(_wait):
+            _wait()
         else:
             time.sleep(2)
 
-        return self.driver.page_source
+        return self.get_page_source()
 
     def init_cloudflare_and_fetch_first_page(self) -> tuple[bool, str]:
         page_html = ""
@@ -295,12 +403,16 @@ class CloudflareBypassMixin:
 
         if not page_html:
             self.logger.info(f"Fetching {self.base_url} via Selenium")
+            if not self.driver:
+                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            assert self.driver is not None
             self.driver.get(self.base_url)
-            if hasattr(self, "_wait_for_content"):
-                self._wait_for_content()
+            _wait = getattr(self, "_wait_for_content", None)
+            if callable(_wait):
+                _wait()
             else:
                 time.sleep(2)
-            page_html = self.driver.page_source
+            page_html = self.get_page_source()
 
         if "Just a moment" in page_html:
             self.logger.error("Cloudflare challenge detected. Enable FlareSolverr or try again later.")
@@ -322,6 +434,9 @@ class CloudflareBypassMixin:
         if not self.driver:
             self.logger.error("Cannot inject cookies - driver not initialized")
             return False
+
+        # Help type checker understand driver is present beyond this point
+        assert self.driver is not None
 
         if not self._cloudflare_cookies:
             self.logger.debug("No Cloudflare cookies to inject")

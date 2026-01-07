@@ -12,6 +12,10 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Optional
+import atexit
+import sys
+import traceback
+import weakref
 
 
 @dataclass
@@ -91,8 +95,16 @@ class JobQueue:
         self._jobs: dict[str, ScraperJob] = {}
         self._lock = threading.Lock()
         self._shutdown = threading.Event()
-        self._worker = threading.Thread(target=self._worker_loop, daemon=False)
+        # Worker runs as a daemon so tests or processes that forget to call
+        # `shutdown()` will still exit cleanly. We also register instances
+        # for orderly shutdown at process exit.
+        self._worker = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker.start()
+        try:
+            _instances.add(self)
+        except Exception:
+            # If _instances isn't available for some reason (unlikely), ignore
+            pass
 
     def enqueue(
         self,
@@ -180,3 +192,51 @@ class JobQueue:
             self._queue.join()
         self._shutdown.set()
         self._worker.join(timeout)
+
+
+# Keep a weak set of JobQueue instances so we can attempt orderly shutdown
+# at process exit if callers forget to call `shutdown()`.
+_instances: "weakref.WeakSet[JobQueue]" = weakref.WeakSet()
+
+
+def dump_threads(file=None) -> None:
+    """Write a brief thread dump to `file` (defaults to sys.stderr)."""
+    out = file if file is not None else sys.stderr
+    try:
+        print("--- Thread dump start ---", file=out)
+        for t in threading.enumerate():
+            print(f"Thread: {t.name} (daemon={t.daemon})", file=out)
+        frames = sys._current_frames()
+        for tid, frame in frames.items():
+            print(f"\nThread id: {tid}", file=out)
+            traceback.print_stack(frame, file=out)
+        print("--- Thread dump end ---", file=out)
+    except Exception:
+        # Best-effort diagnostics; never raise from dump
+        try:
+            traceback.print_exc(file=out)
+        except Exception:
+            pass
+
+
+def _shutdown_all_queues() -> None:
+    """Attempt orderly shutdown of all known JobQueue instances on process exit.
+
+    This will join worker threads with a short timeout and dump thread
+    information for diagnostics if any threads remain.
+    """
+    try:
+        for q in list(_instances):
+            try:
+                q.shutdown(wait=False, timeout=1.0)
+            except Exception:
+                pass
+
+        # Give threads a moment to stop, then dump remaining threads
+        dump_threads()
+    except Exception:
+        pass
+
+
+# Register shutdown handler at process exit
+atexit.register(_shutdown_all_queues)
