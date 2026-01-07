@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, render_template, request
-from markupsafe import escape
+
 
 from app.config import Config
 from app.services import FlareSolverrClient, RAGFlowClient

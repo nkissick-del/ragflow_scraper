@@ -91,11 +91,20 @@ class TheEnergyScraper(BaseScraper):
             return self.base_url
         return f"{self.base_url}/p{page_num}"
 
+    def _ensure_driver_initialized(self) -> None:
+        """Ensure WebDriver is initialized.
+        
+        Raises:
+            ScraperError: If driver is not initialized
+        """
+        if not self.driver:
+            raise ScraperError("Driver not initialized", scraper=self.name)
+        assert self.driver is not None
+
     def _wait_for_content(self, timeout: int = 10) -> None:
         """Wait for article content to load."""
         try:
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            self._ensure_driver_initialized()
             assert self.driver is not None
             WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located(
@@ -251,8 +260,7 @@ class TheEnergyScraper(BaseScraper):
                 self.logger.info(f"Scraping page {page_num}: {page_url}")
 
                 try:
-                    if not self.driver:
-                        raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+                    self._ensure_driver_initialized()
                     assert self.driver is not None
                     self.driver.get(page_url)
                     self._wait_for_content()
@@ -459,8 +467,7 @@ class TheEnergyScraper(BaseScraper):
         # Stage 2: Fetch article page for JSON-LD dates and content
         try:
             self.logger.debug(f"Fetching article: {article.url}")
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            self._ensure_driver_initialized()
             assert self.driver is not None
             self.driver.get(article.url)
             self._wait_for_content(timeout=10)

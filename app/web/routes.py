@@ -193,6 +193,11 @@ def run_scraper(name):
     except ScraperAlreadyRunningError:
         scraper_class = ScraperRegistry.get_scraper_class(name)
         metadata = scraper_class.get_metadata() if scraper_class is not None else {"name": name}
+        # Augment metadata with state, status, and dry_run (consistent with success path)
+        state = container.state_tracker(name)
+        metadata["state"] = (state.get_last_run_info() if state is not None else {}) or {}
+        metadata["status"] = "running"
+        metadata["dry_run"] = dry_run
         return render_template(
             "components/scraper-card.html",
             scraper=metadata,

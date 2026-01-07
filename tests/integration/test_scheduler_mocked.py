@@ -32,4 +32,7 @@ def test_scheduler_run_now_triggers_scraper(monkeypatch):
     thread = scheduler.run_now("dummy")
     thread.join(timeout=2)
 
+    if thread.is_alive():
+        raise AssertionError("Scheduler thread did not complete within 2 seconds")
+
     assert counter["runs"] == 1

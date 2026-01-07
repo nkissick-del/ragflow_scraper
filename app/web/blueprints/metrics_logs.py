@@ -55,7 +55,7 @@ def log_stream():
     except Exception as exc:
         log_exception(logger, exc, "logs.stream.error")
         return f'<div class="log-entry log-error">Error reading logs: {escape(str(exc))}</div>'
-from pathlib import Path
+
 
 @bp.route("/logs/download/<filename>")
 def download_log(filename):
@@ -67,10 +67,7 @@ def download_log(filename):
     
     # Additional check: ensure resolved path is still within LOG_DIR
     try:
-        log_path = log_path.resolve()
-        Config.LOG_DIR.resolve().relative_to(Config.LOG_DIR.resolve())
-        if not str(log_path).startswith(str(Config.LOG_DIR.resolve())):
-            return "Invalid filename", 400
+        log_path.resolve().relative_to(Config.LOG_DIR.resolve())
     except (ValueError, OSError):
         return "Invalid filename", 400
     

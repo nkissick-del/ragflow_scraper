@@ -34,7 +34,7 @@ class ScraperJob:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     _cancel_requested: threading.Event = field(default_factory=threading.Event, init=False)
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+    _lock: threading.RLock = field(default_factory=threading.RLock, init=False)
 
     def cancel(self) -> None:
         """Request cancellation; ask scraper to stop if supported."""

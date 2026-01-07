@@ -33,7 +33,9 @@ class JsonFormatter(logging.Formatter):
         # Preserve any structured extras on the record (passed via `extra={...}`)
         extra_payload = getattr(record, "extra", None)
         if isinstance(extra_payload, dict):
-            log_entry.update(extra_payload)
+            reserved_keys = {"timestamp", "level", "logger", "message", "filename", "lineno", "exc_info"}
+            filtered_extras = {k: v for k, v in extra_payload.items() if k not in reserved_keys}
+            log_entry.update(filtered_extras)
 
         return json.dumps(log_entry, ensure_ascii=True)
 

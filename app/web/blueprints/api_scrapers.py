@@ -34,8 +34,9 @@ def api_run_scraper(name):
         return jsonify({"error": "Invalid scraper name format"}), 400
     
     # Parse optional parameters
-    dry_run = request.json.get("dry_run", False) if request.is_json else False
-    max_pages = request.json.get("max_pages") if request.is_json else None
+    json_data = request.get_json(silent=True) or {}
+    dry_run = json_data.get("dry_run", False)
+    max_pages = json_data.get("max_pages")
     
     # Validate max_pages if provided
     if max_pages is not None:

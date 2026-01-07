@@ -158,7 +158,8 @@ class SettingsManager:
             try:
                 with open(SETTINGS_FILE, "r") as f:
                     self._settings = json.load(f)
-                assert self._settings is not None
+                if self._settings is None:
+                    raise ValueError("settings JSON is null or empty")
                 self._validate(cast(dict, self._settings))
                 self.logger.debug("Settings loaded from file")
             except (json.JSONDecodeError, IOError) as e:

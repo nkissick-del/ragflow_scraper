@@ -196,7 +196,12 @@ class ENAScraper(BaseScraper):
                 # Step 1: Fetch first page
                 self.logger.info(f"Fetching first page: {section_url}")
                 response = self._request_with_retry(session, "get", section_url, timeout=30)
-                assert response is not None
+                if response is None:
+                    raise NetworkError(
+                        f"Failed to fetch first page for section '{section_name}' after retries",
+                        scraper=self.name,
+                        context={"url": section_url, "operation": "fetch_first_page", "section": section_name}
+                    )
                 response.raise_for_status()
 
                 # Step 2: Detect total pages
@@ -221,7 +226,12 @@ class ENAScraper(BaseScraper):
                         self.logger.info(f"Fetching page {page_num}: {page_url}")
                         self._polite_delay()
                         response = self._request_with_retry(session, "get", page_url, timeout=30)
-                        assert response is not None
+                        if response is None:
+                            raise NetworkError(
+                                f"Failed to fetch page {page_num} for section '{section_name}' after retries",
+                                scraper=self.name,
+                                context={"url": page_url, "operation": "fetch_page", "page_num": page_num, "section": section_name}
+                            )
                         response.raise_for_status()
 
                     # Parse articles from this page
@@ -396,7 +406,12 @@ class ENAScraper(BaseScraper):
         try:
             # First, do a HEAD request to check content type
             head_response = self._request_with_retry(session, "head", article_url, timeout=10, allow_redirects=True)
-            assert head_response is not None
+            if head_response is None:
+                raise NetworkError(
+                    f"Failed to fetch article page '{article_title[:50]}...' after retries",
+                    scraper=self.name,
+                    context={"url": article_url, "operation": "head_request", "article_title": article_title}
+                )
             content_type = head_response.headers.get("Content-Type", "").lower()
 
             # If the article URL itself is a PDF, treat it as a direct download
