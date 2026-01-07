@@ -241,10 +241,10 @@ def _shutdown_all_queues() -> None:
             if t.name != 'MainThread' and not t.daemon
         ]
         if alive_workers:
-            dump_threads()
-    except Exception:
-        pass
-        dump_threads()
+            try:
+                dump_threads()
+            except Exception:
+                pass
     except Exception:
         pass
 
