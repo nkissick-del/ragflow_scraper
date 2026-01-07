@@ -127,7 +127,14 @@ class GuardianScraper(BaseScraper):
             params=request_params,
             timeout=30,
         )
-        assert response is not None
+        
+        if response is None:
+            raise NetworkError(
+                f"Failed to fetch Guardian API response",
+                scraper=self.name,
+                context={"url": url, "endpoint": endpoint, "params": request_params},
+            )
+        
         try:
             return response.json()
         except ValueError as exc:
@@ -263,7 +270,7 @@ class GuardianScraper(BaseScraper):
             try:
                 params = self._build_search_params(tag, page, self._from_date)
                 response = self._api_request(params=params)
-                assert response is not None
+                response = self._api_request(params=params)
 
                 api_data = response.get("response", {})
 
