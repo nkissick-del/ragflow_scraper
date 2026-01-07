@@ -147,8 +147,15 @@ class MetadataIOMixin:
             md_path = output_dir / f"{safe_filename}.md"
             json_path = output_dir / f"{safe_filename}.json"
             
-            temp_md_path.rename(md_path)
-            temp_json_path.rename(json_path)
+            try:
+                # Rename JSON first (safest: if this fails, MD is not yet moved)
+                temp_json_path.rename(json_path)
+                temp_md_path.rename(md_path)
+            except Exception as exc:
+                # Clean up JSON if MD rename failed to avoid orphaned files
+                if json_path.exists():
+                    json_path.unlink()
+                raise
             
             # Only mutate article after all file operations succeed
             article.local_path = str(md_path)
