@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from types import SimpleNamespace
+import logging
 
 # Import application config and settings manager if available. During lightweight
 # test runs (e.g. CI without all env deps) these imports can fail; in that
@@ -12,8 +12,8 @@ from types import SimpleNamespace
 try:
     from app.config import Config
     import app.services.settings_manager as settings_manager
-except Exception:
-    from pathlib import Path
+except (ImportError, ModuleNotFoundError):
+    logging.info("Using stub Config and settings_manager (real modules not available)")
 
     class _StubConfig:
         DOWNLOAD_DIR = Path("data/scraped")
@@ -33,12 +33,16 @@ except Exception:
             ]:
                 d.mkdir(parents=True, exist_ok=True)
 
+    class _StubSettingsManager:
+        """Lightweight stub mirroring the real SettingsManager API."""
+        _instance = None
+
     Config = _StubConfig
-    settings_manager = SimpleNamespace(
-        SETTINGS_FILE=Config.SCRAPERS_CONFIG_DIR / "settings.json",
-        _settings_manager=None,
-        SettingsManager=type("SettingsManager", (), {"_instance": None}),
-    )
+    settings_manager = type('settings_manager', (), {
+        'SETTINGS_FILE': Config.SCRAPERS_CONFIG_DIR / "settings.json",
+        '_settings_manager': None,
+        'SettingsManager': _StubSettingsManager,
+    })()
 
 
 @pytest.fixture
