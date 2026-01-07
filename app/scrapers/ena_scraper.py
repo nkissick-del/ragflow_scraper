@@ -412,8 +412,14 @@ class ENAScraper(BaseScraper):
                     scraper=self.name,
                     context={"url": article_url, "operation": "head_request", "article_title": article_title}
                 )
-            head_response.raise_for_status()
-            content_type = head_response.headers.get("Content-Type", "").lower()
+            
+            # Check if HEAD request succeeded
+            # Some servers don't support HEAD properly (return 404/405 even when GET works)
+            if head_response.status_code >= 400:
+                self.logger.warning(f"HEAD request failed with status {head_response.status_code}, proceeding to GET")
+                content_type = ""  # Force GET request path
+            else:
+                content_type = head_response.headers.get("Content-Type", "").lower()
 
             # If the article URL itself is a PDF, treat it as a direct download
             if "application/pdf" in content_type:

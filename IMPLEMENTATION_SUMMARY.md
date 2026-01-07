@@ -133,14 +133,15 @@ Tests were failing due to three categories of issues:
 
 #### Settings Endpoint Fixes (7 tests)
 
-list
+**Route corrections:**
+
+```
 /settings/test/ragflow         → /settings/test-ragflow
 /settings/test/flaresolverr    → /settings/test-flaresolverr
 /settings/flaresolverr/save    → /settings/flaresolverr
 /settings/scraping/save        → /settings/scraping
 /settings/ragflow/save         → /settings/ragflow
-
-```list
+```
 
 **Container property changes:**
 

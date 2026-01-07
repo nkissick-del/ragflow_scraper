@@ -165,8 +165,7 @@ class SettingsManager:
             except (json.JSONDecodeError, IOError, ValueError) as e:
                 self.logger.warning(f"Failed to load settings: {e}")
                 self._settings = DEFAULT_SETTINGS.copy()
-                self._validate(cast(dict, self._settings))
-                self.logger.debug("Settings loaded from file")
+                self.logger.debug("Using default settings")
             except jsonschema.ValidationError as e:
                 self.logger.warning(f"Settings validation failed; using defaults: {e.message}")
                 self._settings = DEFAULT_SETTINGS.copy()
