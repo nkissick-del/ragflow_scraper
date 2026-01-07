@@ -171,7 +171,8 @@ class HttpDownloadMixin:
     # Expected attributes
     dry_run: bool = False
     download_timeout: int = 30
-    _errors: List[str] = []
+    def __init__(self):
+        self._errors: List[str] = []
     logger: Any = None
     name: str = ""
 
@@ -283,7 +284,6 @@ class CloudflareBypassMixin:
     cloudflare_bypass_enabled: bool = False
     _flaresolverr: Any = None
     _cloudflare_session_id: Optional[str] = None
-    _cloudflare_cookies: Dict[str, str] = {}
     _cloudflare_user_agent: str = ""
     _flaresolverr_html: str = ""
     logger: Any = None
@@ -291,6 +291,11 @@ class CloudflareBypassMixin:
     base_url: str = ""
     settings_mgr: Any = None
     _wait_for_content: Optional[Any] = None
+
+    def __init__(self) -> None:
+        """Initialize instance attributes to prevent cross-instance sharing."""
+        self._cloudflare_cookies: Dict[str, str] = {}
+
     if TYPE_CHECKING:  # provide stub for type checker without affecting runtime MRO
         def get_page_source(self) -> str: ...
     def _init_cloudflare_bypass(self) -> bool:
