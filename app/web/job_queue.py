@@ -88,15 +88,28 @@ class ScraperJob:
 
 
 class JobQueue:
-    """Single-worker job queue with per-scraper exclusivity."""
+    """Single-worker job queue with per-scraper exclusivity.
+    
+    IMPORTANT: This queue uses a non-daemon worker thread. The process will
+    block at exit until the queue is explicitly shut down (via shutdown() or
+    the atexit handler). If shutdown() is never called, the process may hang.
+    
+    The atexit handler provides automatic cleanup for most code paths, but
+    explicit shutdown() calls are still recommended for:
+    - Web applications (call during app shutdown/teardown)
+    - Scripts that need predictable exit timing
+    - Testing (via conftest.py fixture)
+    """
 
     def __init__(self):
         self._queue: queue.Queue[ScraperJob] = queue.Queue()
         self._jobs: dict[str, ScraperJob] = {}
         self._lock = threading.Lock()
         self._shutdown = threading.Event()
-        # Worker thread will be shut down by the atexit handler if callers
-        # forget to call `shutdown()` explicitly.
+        # Worker thread set to daemon=False to ensure graceful shutdown:
+        # - Process will block at exit until this thread terminates
+        # - atexit handler calls shutdown() to orderly wind down
+        # - DO NOT remove this unless shutdown() is guaranteed by callers
         self._worker = threading.Thread(target=self._worker_loop, daemon=False)
         self._worker.start()
         try:
@@ -183,9 +196,15 @@ class JobQueue:
     def shutdown(self, wait: bool = True, timeout: Optional[float] = None) -> None:
         """Gracefully shutdown the worker thread.
         
+        CRITICAL: This must be called before process exit unless you're relying
+        on the atexit handler. Without this, the process will block indefinitely
+        waiting for the worker thread to terminate.
+        
         Args:
             wait: If True, wait for the queue to be drained before returning.
             timeout: Maximum time to wait for thread completion (in seconds).
+                   If timeout expires and thread is still alive, process may hang
+                   at exit since this is a non-daemon thread.
         """
         if wait:
             self._queue.join()
