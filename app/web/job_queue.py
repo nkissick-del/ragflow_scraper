@@ -247,7 +247,17 @@ def _shutdown_all_queues() -> None:
 
     This will join worker threads with a short timeout and dump thread
     information for diagnostics if any threads remain.
+    
+    During testing (PYTEST_CURRENT_TEST), this handler is a no-op because:
+    - Daemon threads auto-cleanup
+    - dump_threads() can hang during pytest shutdown
     """
+    import os
+    
+    # Skip during testing - daemon threads will auto-cleanup
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return
+    
     try:
         for q in list(_instances):
             try:
