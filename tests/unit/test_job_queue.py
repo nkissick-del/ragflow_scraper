@@ -12,8 +12,8 @@ class TestJobQueue:
     """JobQueue unit tests."""
 
     def setup_method(self):
-        """Create a fresh JobQueue for each test."""
-        self.queue = JobQueue()
+        """Create a fresh JobQueue for each test with daemon=True for easy cleanup."""
+        self.queue = JobQueue(daemon=True)
 
     def test_enqueue_success(self):
         """Enqueuing a job should store it and mark as queued."""

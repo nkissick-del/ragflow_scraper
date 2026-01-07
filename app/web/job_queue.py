@@ -101,16 +101,17 @@ class JobQueue:
     - Testing (via conftest.py fixture)
     """
 
-    def __init__(self):
+    def __init__(self, daemon: bool = False):
         self._queue: queue.Queue[ScraperJob] = queue.Queue()
         self._jobs: dict[str, ScraperJob] = {}
         self._lock = threading.Lock()
         self._shutdown = threading.Event()
-        # Worker thread set to daemon=False to ensure graceful shutdown:
-        # - Process will block at exit until this thread terminates
-        # - atexit handler calls shutdown() to orderly wind down
-        # - DO NOT remove this unless shutdown() is guaranteed by callers
-        self._worker = threading.Thread(target=self._worker_loop, daemon=False)
+        # Worker thread daemon setting:
+        # - daemon=False (default): Process blocks at exit waiting for this thread
+        #   Best for production (ensures orderly shutdown via shutdown() or atexit)
+        # - daemon=True: Thread is killed when main thread exits
+        #   Best for testing (tests cleanup themselves)
+        self._worker = threading.Thread(target=self._worker_loop, daemon=daemon)
         self._worker.start()
         try:
             _instances.add(self)
