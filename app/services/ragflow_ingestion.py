@@ -239,10 +239,10 @@ class RAGFlowIngestionWorkflow:
             doc_id = upload_result.document_id
             if metadata and doc_id:
                 payload = None
-                if hasattr(metadata, "to_ragflow_metadata"):
-                    payload = metadata.to_ragflow_metadata()
-                elif isinstance(metadata, dict):
+                if isinstance(metadata, dict):
                     payload = metadata
+                elif hasattr(metadata, "to_ragflow_metadata"):
+                    payload = metadata.to_ragflow_metadata()
                 else:
                     try:
                         payload = dict(metadata)
