@@ -32,10 +32,10 @@ def main():
 
     # Optionally start scheduler
     try:
-        settings = container.get_settings_manager()
+        settings = container.settings
         scheduler_settings = settings.get_section("scheduler")
         if scheduler_settings.get("enabled"):
-            scheduler = container.get_scheduler()
+            scheduler = container.scheduler
             scheduler.load_schedules()
             scheduler.start()
             logger.info("Scheduler enabled; loaded schedules and started background loop")

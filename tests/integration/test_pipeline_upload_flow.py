@@ -36,13 +36,11 @@ class DummyContainer:
     def __init__(self, ragflow_client: DummyRagflowClient):
         self.ragflow_client = ragflow_client
 
-    def get_ragflow_client(self):
-        return self.ragflow_client
-
-    def get_settings_manager(self):
+    @property
+    def settings(self):
         raise RuntimeError("not needed in this test")
 
-    def get_state_tracker(self, scraper_name: str):
+    def state_tracker(self, scraper_name: str):
         raise RuntimeError("not needed in this test")
 
 

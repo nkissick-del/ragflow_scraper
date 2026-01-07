@@ -14,7 +14,7 @@
             <h2>FlareSolverr</h2>
             <span class="status-badge status-{{ flaresolverr_status }}">{{ flaresolverr_status | replace('_', ' ') }}</span>
         </div>
-        <form hx-post="{{ url_for('main.save_flaresolverr_settings') }}"
+        <form hx-post="{{ url_for('settings.save_flaresolverr_settings') }}"
               hx-target="#flaresolverr-message"
               hx-swap="innerHTML">
             <div class="card-body">
@@ -72,7 +72,7 @@
             </div>
             <div class="card-footer">
                 <button type="button" class="btn btn-secondary"
-                        hx-post="{{ url_for('main.test_flaresolverr') }}"
+                        hx-post="{{ url_for('settings.test_flaresolverr') }}"
                         hx-target="#flaresolverr-status"
                         hx-swap="innerHTML"
                         {% if not config.FLARESOLVERR_URL %}disabled{% endif %}>
@@ -89,7 +89,7 @@
         <div class="card-header">
             <h2>Scraping Defaults</h2>
         </div>
-        <form hx-post="{{ url_for('main.save_scraping_settings') }}"
+        <form hx-post="{{ url_for('settings.save_scraping_settings') }}"
               hx-target="#scraping-message"
               hx-swap="innerHTML">
             <div class="card-body">
@@ -198,7 +198,7 @@
         </div>
         <div class="card-footer">
             <button type="button" class="btn btn-secondary"
-                    hx-post="{{ url_for('main.test_ragflow') }}"
+                    hx-post="{{ url_for('settings.test_ragflow') }}"
                     hx-target="#ragflow-status"
                     hx-swap="innerHTML">
                 Test Connection
@@ -212,7 +212,7 @@
         <div class="card-header">
             <h2>RAGFlow Dataset Defaults</h2>
         </div>
-        <form hx-post="{{ url_for('main.save_ragflow_settings') }}"
+        <form hx-post="{{ url_for('settings.save_ragflow_settings') }}"
               hx-target="#ragflow-settings-message"
               hx-swap="innerHTML">
             <div class="card-body">

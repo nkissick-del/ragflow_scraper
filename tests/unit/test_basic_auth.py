@@ -5,7 +5,7 @@ import pytest
 
 from app.config import Config
 from app.web import create_app
-import app.web.routes as routes
+import app.web.blueprints.auth as auth_bp
 
 
 def _auth_header(username: str, password: str) -> dict[str, str]:
@@ -16,7 +16,7 @@ def _auth_header(username: str, password: str) -> dict[str, str]:
 def test_basic_auth_disabled_allows_requests(monkeypatch):
     # Ensure auth is off
     monkeypatch.setattr(Config, "BASIC_AUTH_ENABLED", False)
-    importlib.reload(routes)
+    importlib.reload(auth_bp)
 
     app = create_app()
     client = app.test_client()
@@ -29,7 +29,7 @@ def test_basic_auth_blocks_without_credentials(monkeypatch):
     monkeypatch.setattr(Config, "BASIC_AUTH_ENABLED", True)
     monkeypatch.setattr(Config, "BASIC_AUTH_USERNAME", "user")
     monkeypatch.setattr(Config, "BASIC_AUTH_PASSWORD", "pass")
-    importlib.reload(routes)
+    importlib.reload(auth_bp)
 
     app = create_app()
     client = app.test_client()
@@ -42,7 +42,7 @@ def test_basic_auth_allows_with_valid_credentials(monkeypatch):
     monkeypatch.setattr(Config, "BASIC_AUTH_ENABLED", True)
     monkeypatch.setattr(Config, "BASIC_AUTH_USERNAME", "user")
     monkeypatch.setattr(Config, "BASIC_AUTH_PASSWORD", "pass")
-    importlib.reload(routes)
+    importlib.reload(auth_bp)
 
     app = create_app()
     client = app.test_client()

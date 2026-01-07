@@ -16,12 +16,8 @@ from typing import Any, Optional
 import feedparser  # type: ignore[import-untyped]
 import requests
 
-from app.scrapers.base_scraper import (
-    BaseScraper,
-    DocumentMetadata,
-    ExcludedDocument,
-    ScraperResult,
-)
+from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename, ArticleConverter
 from app.utils.errors import NetworkError, ParsingError
 from app.utils.retry import retry_on_error

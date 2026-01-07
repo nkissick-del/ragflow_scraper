@@ -66,6 +66,8 @@ class Config:
 
     # FlareSolverr (enabled/disabled is controlled via UI settings, not env)
     FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "")
+    FLARESOLVERR_TIMEOUT = int(os.getenv("FLARESOLVERR_TIMEOUT", 60))
+    FLARESOLVERR_MAX_TIMEOUT = int(os.getenv("FLARESOLVERR_MAX_TIMEOUT", 120))
 
     # Guardian Open Platform API
     GUARDIAN_API_KEY = os.getenv("GUARDIAN_API_KEY", "")

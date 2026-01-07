@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.scrapers.base_scraper import DocumentMetadata
+from app.scrapers.models import DocumentMetadata
 from app.services.ragflow_client import RAGFlowClient, UploadResult
 
 

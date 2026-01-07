@@ -1,6 +1,6 @@
 <div class="scraper-card"
      id="scraper-{{ scraper.name }}"
-     hx-get="{{ url_for('main.scraper_card', name=scraper.name) }}"
+     hx-get="{{ url_for('scrapers.scraper_card', name=scraper.name) }}"
      hx-trigger="every 5s"
      hx-swap="outerHTML">
     <div class="scraper-header">
@@ -17,7 +17,7 @@
     <div class="scraper-actions">
         {% if scraper.status == 'running' or scraper.status == 'cancelling' %}
         <button class="btn btn-danger"
-                hx-post="{{ url_for('main.cancel_scraper', name=scraper.name) }}"
+                hx-post="{{ url_for('scrapers.cancel_scraper', name=scraper.name) }}"
                 hx-target="#scraper-{{ scraper.name }} .status-badge"
                 hx-swap="outerHTML"
                 {% if scraper.status == 'cancelling' %}disabled{% endif %}>
@@ -25,12 +25,12 @@
         </button>
         {% else %}
         <button class="btn btn-primary"
-                hx-post="{{ url_for('main.run_scraper', name=scraper.name) }}"
+                hx-post="{{ url_for('scrapers.run_scraper', name=scraper.name) }}"
                 hx-target="#scraper-{{ scraper.name }}"
                 hx-swap="outerHTML">
             Run Now
         </button>
         {% endif %}
-        <a href="{{ url_for('main.scrapers') }}" class="btn btn-secondary">Configure</a>
+        <a href="{{ url_for('scrapers.scrapers_page') }}" class="btn btn-secondary">Configure</a>
     </div>
 </div>

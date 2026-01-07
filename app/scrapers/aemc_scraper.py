@@ -16,7 +16,8 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 
-from app.scrapers.base_scraper import BaseScraper, DocumentMetadata, ExcludedDocument, ScraperResult
+from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
 from app.utils.errors import NetworkError
 

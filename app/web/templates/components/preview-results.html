@@ -76,7 +76,7 @@
 
     <div class="preview-actions">
         <button class="btn btn-primary"
-                hx-post="{{ url_for('main.run_scraper', name=scraper_name) }}"
+                hx-post="{{ url_for('scrapers.run_scraper', name=scraper_name) }}"
                 hx-target="#scraper-{{ scraper_name }}"
                 hx-swap="outerHTML">
             Run Full Scrape

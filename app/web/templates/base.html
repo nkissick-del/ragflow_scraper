@@ -9,7 +9,7 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 
     <!-- Styles -->
-    <link rel="stylesheet" href="{{ url_for('main.static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 
     {% block head %}{% endblock %}
 </head>
@@ -18,13 +18,13 @@
 
     <nav class="navbar" aria-label="Primary">
         <div class="nav-brand">
-            <a href="{{ url_for('main.index') }}">PDF Scraper</a>
+            <a href="{{ url_for('scrapers.index') }}">PDF Scraper</a>
         </div>
         <ul class="nav-links">
-            <li><a href="{{ url_for('main.index') }}" {% if request.endpoint == 'main.index' %}class="active"{% endif %}>Dashboard</a></li>
-            <li><a href="{{ url_for('main.scrapers') }}" {% if request.endpoint == 'main.scrapers' %}class="active"{% endif %}>Scrapers</a></li>
-            <li><a href="{{ url_for('main.logs') }}" {% if request.endpoint == 'main.logs' %}class="active"{% endif %}>Logs</a></li>
-            <li><a href="{{ url_for('main.settings') }}" {% if request.endpoint == 'main.settings' %}class="active"{% endif %}>Settings</a></li>
+            <li><a href="{{ url_for('scrapers.index') }}" {% if request.endpoint == 'scrapers.index' %}class="active"{% endif %}>Dashboard</a></li>
+            <li><a href="{{ url_for('scrapers.scrapers_page') }}" {% if request.endpoint == 'scrapers.scrapers_page' %}class="active"{% endif %}>Scrapers</a></li>
+            <li><a href="{{ url_for('metrics_logs.logs') }}" {% if request.endpoint == 'metrics_logs.logs' %}class="active"{% endif %}>Logs</a></li>
+            <li><a href="{{ url_for('settings.settings_page') }}" {% if request.endpoint == 'settings.settings_page' %}class="active"{% endif %}>Settings</a></li>
         </ul>
     </nav>
 
@@ -37,8 +37,8 @@
     </footer>
 
     <!-- JavaScript -->
-    <script src="{{ url_for('main.static', filename='js/utils.js') }}"></script>
-    <script src="{{ url_for('main.static', filename='js/components.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components.js') }}"></script>
 
     {% block scripts %}{% endblock %}
 </body>

@@ -22,7 +22,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-from app.scrapers.base_scraper import BaseScraper, DocumentMetadata, ScraperResult, ExcludedDocument
+from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.models import DocumentMetadata, ScraperResult, ExcludedDocument
 from app.utils import sanitize_filename, parse_file_size
 
 

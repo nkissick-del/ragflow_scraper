@@ -29,8 +29,8 @@ def create_app() -> Flask:
             x_prefix=Config.TRUST_PROXY_COUNT,
         )
 
-    # Register routes
-    from app.web.routes import bp
-    app.register_blueprint(bp)
+    # Register routes via modular blueprints
+    from app.web.blueprints import register_blueprints
+    register_blueprints(app)
 
     return app

@@ -16,19 +16,21 @@ class DummyScraper:
 
 
 class DummyContainer:
-    def get_ragflow_client(self):
+    @property
+    def ragflow_client(self):
         class _Dummy:
             ...
 
         return _Dummy()
 
-    def get_settings_manager(self):
+    @property
+    def settings(self):
         class _Dummy:
             ...
 
         return _Dummy()
 
-    def get_state_tracker(self, scraper_name: str):
+    def state_tracker(self, scraper_name: str):
         class _Dummy:
             ...
 

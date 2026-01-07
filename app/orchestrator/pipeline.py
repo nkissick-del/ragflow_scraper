@@ -92,7 +92,7 @@ class Pipeline:
         self.container = container or get_container()
 
         self.logger = get_logger(f"pipeline.{scraper_name}")
-        self.ragflow = self.container.get_ragflow_client() if upload_to_ragflow else None
+        self.ragflow = self.container.ragflow_client if upload_to_ragflow else None
         self._step_times: dict[str, float] = {}
 
     def run(self) -> PipelineResult:

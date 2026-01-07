@@ -23,12 +23,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
-from app.scrapers.base_scraper import (
-    BaseScraper,
-    DocumentMetadata,
-    ExcludedDocument,
-    ScraperResult,
-)
+from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
 
 

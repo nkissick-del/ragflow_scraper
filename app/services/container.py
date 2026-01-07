@@ -8,7 +8,9 @@ Provides lazy-loading and singleton pattern for efficiency.
 from __future__ import annotations
 
 from typing import Optional
+
 from app.config import Config
+from app.orchestrator.scheduler import Scheduler
 from app.services.settings_manager import get_settings, SettingsManager
 from app.services.ragflow_client import RAGFlowClient
 from app.services.flaresolverr_client import FlareSolverrClient
@@ -43,6 +45,7 @@ class ServiceContainer:
         self._settings: Optional[SettingsManager] = None
         self._ragflow_client: Optional[RAGFlowClient] = None
         self._flaresolverr_client: Optional[FlareSolverrClient] = None
+        self._scheduler: Optional[Scheduler] = None
 
         # State trackers (cached by scraper name)
         self._state_trackers: dict[str, StateTracker] = {}
@@ -79,10 +82,8 @@ class ServiceContainer:
         """
         if self._ragflow_client is None:
             if not Config.RAGFLOW_API_URL or not Config.RAGFLOW_API_KEY:
-                raise ValueError(
-                    "RAGFlow configuration missing. Set RAGFLOW_API_URL and "
-                    "RAGFLOW_API_KEY environment variables."
-                )
+                raise ValueError("RAGFlow configuration missing: RAGFLOW_API_URL and RAGFLOW_API_KEY are required")
+
             self._ragflow_client = RAGFlowClient(
                 api_url=Config.RAGFLOW_API_URL,
                 api_key=Config.RAGFLOW_API_KEY,
@@ -112,6 +113,14 @@ class ServiceContainer:
             self.logger.debug("Initialized FlareSolverrClient")
         return self._flaresolverr_client
 
+    @property
+    def scheduler(self) -> Scheduler:
+        """Get scheduler singleton."""
+        if self._scheduler is None:
+            self._scheduler = Scheduler()
+            self.logger.debug("Initialized Scheduler")
+        return self._scheduler
+
     def state_tracker(self, scraper_name: str) -> StateTracker:
         """
         Get or create state tracker for a scraper (factory pattern).
@@ -138,6 +147,7 @@ class ServiceContainer:
         self._ragflow_client = None
         self._flaresolverr_client = None
         self._state_trackers = {}
+        self._scheduler = None
         self.logger.debug("Service container reset")
 
 

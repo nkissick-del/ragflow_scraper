@@ -15,6 +15,62 @@ A modular web scraping system that downloads PDFs and articles from multiple Aus
 
 ## Quick Start
 
+### Production Deployment
+
+For detailed deployment instructions, see **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)**.
+
+**Quick setup:**
+```bash
+# 1. Clone and configure
+git clone <repository-url>
+cd scraper
+cp .env.example .env
+nano .env  # Configure SECRET_KEY, RAGFlow, etc.
+
+# 2. Build and start
+docker compose build
+docker compose up -d
+
+# 3. Access web UI
+open http://localhost:5000
+```
+
+**Docker Compose Profiles:**
+```bash
+# Default: All services (scraper + Chrome)
+docker compose up -d
+
+# Future profiles (when implemented):
+# docker compose --profile full up -d      # Include RAGFlow/FlareSolverr
+# docker compose --profile minimal up -d   # Scraper only
+```
+
+See [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for:
+- Environment configuration
+- Service connectivity tests
+- Troubleshooting guide
+- Production best practices
+
+### Operations
+
+For day-to-day operations, see **[RUNBOOK_COMMON_OPERATIONS.md](docs/RUNBOOK_COMMON_OPERATIONS.md)**.
+
+**Common commands:**
+```bash
+# Start/stop services
+docker compose up -d
+docker compose down
+
+# View logs
+docker compose logs -f scraper
+
+# Run scraper
+docker compose exec scraper python scripts/run_scraper.py --scraper aemo
+
+# Backup data
+tar -czf backup.tar.gz data/state/ data/metadata/ config/
+```
+
 ### Dev Workflow (Make + dev compose)
 
 These targets default to `docker-compose.dev.yml` and run everything inside the dev container.
@@ -114,17 +170,33 @@ python scripts/run_scraper.py config migrate --write
 scraper/
 ├── app/
 │   ├── scrapers/       # Scraper modules
-│   ├── services/       # External integrations
+│   ├── services/       # External integrations (RAGFlow, FlareSolverr)
 │   ├── orchestrator/   # Scheduling and pipelines
-│   ├── web/            # Flask web interface
+│   ├── web/            # Flask web interface (blueprints-based)
 │   └── utils/          # Shared utilities
 ├── config/             # Configuration files
-├── data/               # Downloaded files and state
-├── scripts/            # CLI tools
-└── docker-compose.yml
+│   ├── settings.json   # Runtime settings
+│   └── scrapers/       # Per-scraper configurations
+├── data/               # Runtime data
+│   ├── scraped/        # Downloaded documents
+│   ├── metadata/       # Document metadata
+│   ├── state/          # Scraper state files
+│   └── logs/           # Application logs
+├── docs/               # Documentation
+│   ├── DEPLOYMENT_GUIDE.md              # Production deployment
+│   ├── RUNBOOK_COMMON_OPERATIONS.md     # Day-to-day operations
+│   ├── MIGRATION_AND_STATE_REPAIR.md    # State management
+│   ├── DEVELOPER_GUIDE.md               # Development guide (see below)
+│   └── ...
+├── scripts/            # CLI tools and utilities
+└── docker-compose.yml  # Production compose file
 ```
 
 ## Adding a New Scraper
+
+For detailed instructions, see **[DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)**.
+
+**Quick start:**
 
 1. Create a new file in `app/scrapers/` (e.g., `my_scraper.py`)
 2. Inherit from `BaseScraper` and implement required methods
@@ -134,13 +206,27 @@ scraper/
 from app.scrapers.base_scraper import BaseScraper
 
 class MyScraper(BaseScraper):
-    name = "my-scraper"
-    description = "Scrapes documents from example.com"
+    NAME = "my-scraper"
+    DESCRIPTION = "Scrapes documents from example.com"
 
     def scrape(self):
         # Implementation here
         pass
+    
+    def get_metadata(self, filepath):
+        # Extract document metadata
+        return {
+            "title": "Document title",
+            "source": "my-scraper",
+            "url": "https://example.com/doc.pdf"
+        }
 ```
+
+See [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for:
+- Development setup
+- Scraper best practices
+- Testing and debugging
+- Architecture overview
 
 ## Environment Variables
 

@@ -18,12 +18,8 @@ from typing import Any, Optional
 import requests
 
 from app.config import Config
-from app.scrapers.base_scraper import (
-    BaseScraper,
-    DocumentMetadata,
-    ExcludedDocument,
-    ScraperResult,
-)
+from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename, ArticleConverter
 from app.utils.retry import retry_on_error
 from app.utils.errors import NetworkError, ParsingError
@@ -136,7 +132,7 @@ class GuardianScraper(BaseScraper):
             return response.json()
         except ValueError as exc:
             raise ParsingError(
-                "Failed to parse Guardian API response",
+                # No change needed—already imports from models; skipping
                 scraper=self.name,
                 recoverable=False,
                 context={"url": url},

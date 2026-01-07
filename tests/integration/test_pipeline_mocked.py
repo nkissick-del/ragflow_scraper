@@ -26,7 +26,8 @@ class DummyScraper:
 
 
 class DummyContainer:
-    def get_ragflow_client(self):
+    @property
+    def ragflow_client(self):
         class _DummyRagflow:
             def trigger_parsing(self, dataset_id):
                 return True

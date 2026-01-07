@@ -20,7 +20,7 @@
 
     <div class="log-container" id="log-container">
         <div class="log-viewer" role="log" aria-live="polite" aria-label="Application logs"
-             hx-get="{{ url_for('main.log_stream') }}"
+             hx-get="{{ url_for('metrics_logs.log_stream') }}"
              hx-trigger="load, every 2s"
              hx-swap="innerHTML">
             <p class="loading">Loading logs...</p>
@@ -35,7 +35,7 @@
         <div class="log-file-item">
             <span class="log-filename">{{ log_file.name }}</span>
             <span class="log-size">{{ (log_file.stat().st_size / 1024) | round(1) }} KB</span>
-            <a href="{{ url_for('main.download_log', filename=log_file.name) }}"
+            <a href="{{ url_for('metrics_logs.download_log', filename=log_file.name) }}"
                class="btn btn-small">Download</a>
         </div>
         {% else %}

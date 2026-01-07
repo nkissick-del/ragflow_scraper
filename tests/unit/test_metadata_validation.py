@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from app.scrapers.base_scraper import DocumentMetadata
+from app.scrapers.models import DocumentMetadata
 from app.services.ragflow_metadata import (
     prepare_metadata_for_ragflow,
     validate_metadata,
