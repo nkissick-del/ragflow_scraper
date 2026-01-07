@@ -19,7 +19,7 @@ from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
-from app.utils.errors import NetworkError
+from app.utils.errors import NetworkError, ScraperError
 
 
 class AEMCScraper(BaseScraper):
@@ -102,7 +102,13 @@ class AEMCScraper(BaseScraper):
             # Step 1: Fetch main page
             self.logger.info(f"Fetching main page: {self.base_url}")
             response = self._request_with_retry(session, "get", self.base_url, timeout=30)
-            assert response is not None
+            
+            if response is None:
+                raise ScraperError(
+                    f"Failed to fetch main page",
+                    scraper=self.name,
+                    context={"url": self.base_url},
+                )
 
             # Step 2: Parse review entries from table
             reviews = self._parse_reviews_table(response.text)
@@ -317,7 +323,13 @@ class AEMCScraper(BaseScraper):
 
         try:
             response = self._request_with_retry(session, "get", review_url, timeout=30)
-            assert response is not None
+            
+            if response is None:
+                raise ScraperError(
+                    f"Failed to fetch review page",
+                    scraper=self.name,
+                    context={"url": review_url},
+                )
 
             soup = BeautifulSoup(response.text, "lxml")
 

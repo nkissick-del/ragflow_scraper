@@ -95,10 +95,9 @@ class JobQueue:
         self._jobs: dict[str, ScraperJob] = {}
         self._lock = threading.Lock()
         self._shutdown = threading.Event()
-        # Worker runs as a daemon so tests or processes that forget to call
-        # `shutdown()` will still exit cleanly. We also register instances
-        # for orderly shutdown at process exit.
-        self._worker = threading.Thread(target=self._worker_loop, daemon=True)
+        # Worker thread will be shut down by the atexit handler if callers
+        # forget to call `shutdown()` explicitly.
+        self._worker = threading.Thread(target=self._worker_loop, daemon=False)
         self._worker.start()
         try:
             _instances.add(self)
@@ -200,7 +199,11 @@ _instances: "weakref.WeakSet[JobQueue]" = weakref.WeakSet()
 
 
 def dump_threads(file=None) -> None:
-    """Write a brief thread dump to `file` (defaults to sys.stderr)."""
+    """Write a brief thread dump to `file` (defaults to sys.stderr).
+    
+    Uses sys._current_frames() for stack traces; this is CPython-specific
+    and best-effort diagnostics.
+    """
     out = file if file is not None else sys.stderr
     try:
         print("--- Thread dump start ---", file=out)
@@ -232,7 +235,15 @@ def _shutdown_all_queues() -> None:
             except Exception:
                 pass
 
-        # Give threads a moment to stop, then dump remaining threads
+        # Dump thread info only if worker threads are still alive
+        alive_workers = [
+            t for t in threading.enumerate()
+            if t.name != 'MainThread' and not t.daemon
+        ]
+        if alive_workers:
+            dump_threads()
+    except Exception:
+        pass
         dump_threads()
     except Exception:
         pass
