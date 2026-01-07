@@ -89,83 +89,24 @@ RUN_INTEGRATION_TESTS = os.getenv("RUN_INTEGRATION_TESTS", "0") == "1"
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_job_queue_at_session_end():
-    """Session-scoped cleanup: shut down ALL JobQueue instances at the end of tests.
+    """Session-scoped cleanup for JobQueue.
     
-    This must be session-scoped to run AFTER all tests complete. Tests may create
-    multiple JobQueue instances (especially test_job_queue.py), and each has a 
-    non-daemon worker thread. We must shut down ALL of them before pytest exits.
+    During testing, JobQueue instances use daemon=True (set via PYTEST_CURRENT_TEST
+    env var detection in app/web/runtime.py). Daemon threads are automatically killed
+    when pytest exits, so we don't need explicit shutdown cleanup.
     
-    Semantics of shutdown(wait=True, timeout=5.0):
-    - wait=True: Drain the queue (complete all pending jobs)
-    - timeout=5.0: Wait up to 5 seconds for worker thread to terminate gracefully
-    
-    If ANY worker thread doesn't exit after timeout, this fixture will force exit
-    the pytest process to prevent hanging indefinitely.
+    This fixture exists as a safety net for debugging if needed.
     """
     yield  # Let all tests run first
     
     logger = logging.getLogger("test.conftest")
-    logger.debug("=== Session teardown: Starting JobQueue cleanup ===")
-    
-    try:
-        from app.web.job_queue import _instances
-        
-        # Shut down ALL JobQueue instances, not just the global one
-        queues_to_shutdown = list(_instances)  # Make a copy since _instances is weak
-        logger.debug(f"Found {len(queues_to_shutdown)} JobQueue instances to shutdown")
-        
-        for i, queue in enumerate(queues_to_shutdown):
-            try:
-                logger.debug(f"Shutting down JobQueue instance {i+1}/{len(queues_to_shutdown)}")
-                queue.shutdown(wait=True, timeout=2.0)
-            except Exception as exc:
-                logger.debug(f"JobQueue #{i+1} shutdown raised: {exc}")
-        
-        logger.debug(f"Active threads after shutdown: {[t.name for t in threading.enumerate()]}")
-        
-        # Check if worker threads actually exited
-        worker_threads = [t for t in threading.enumerate() 
-                         if '_worker_loop' in t.name and not t.daemon]
-        if worker_threads:
-            logger.warning(f"{len(worker_threads)} worker threads still alive after shutdown")
-            logger.warning("Forcing pytest to exit to avoid hanging indefinitely...")
-            # Give threads 2 more seconds, then force exit
-            for _ in range(20):  # 2 seconds with 0.1s checks
-                if not any(t for t in threading.enumerate() 
-                          if '_worker_loop' in t.name and not t.daemon):
-                    logger.debug("All worker threads finally exited")
-                    break
-                sys.stderr.flush()
-                sys.stdout.flush()
-                threading.Event().wait(0.1)
-            else:
-                logger.error(f"Worker threads STILL alive - forcing pytest exit!")
-                sys.exit(0)  # Hard exit to prevent hanging
-        
-        logger.debug("=== Session teardown: JobQueue cleanup finished ===")
-        
-    except ImportError as exc:
-        logger.debug(f"Could not import JobQueue cleanup (expected for minimal tests): {exc}")
-        
-    except Exception as exc:
-        logger.debug(f"Unexpected error in cleanup_job_queue_at_session_end: {exc}")
-        import traceback
-        logger.debug(f"Traceback: {traceback.format_exc()}")
+    logger.debug("Session teardown: Tests completed, daemon threads will auto-cleanup")
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """Hook that runs after the entire test session ends, before pytest exits.
+    """Hook that runs after the entire test session ends.
     
-    With daemon=True for test JobQueues, we don't need to force exit.
-    Just verify cleanup happened.
+    With daemon threads, we don't need to do anything - they'll be killed
+    automatically by Python when pytest exits.
     """
-    logger = logging.getLogger("test.conftest")
-    
-    non_daemon_threads = [t for t in threading.enumerate() if not t.daemon and t.name != 'MainThread']
-    
-    if non_daemon_threads:
-        logger.error(f"WARNING: {len(non_daemon_threads)} non-daemon threads still alive!")
-        for t in non_daemon_threads:
-            logger.error(f"  - {t.name}")
-    else:
-        logger.debug("All non-daemon threads cleaned up successfully")
+    pass
