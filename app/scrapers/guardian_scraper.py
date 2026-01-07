@@ -270,7 +270,13 @@ class GuardianScraper(BaseScraper):
             try:
                 params = self._build_search_params(tag, page, self._from_date)
                 response = self._api_request(params=params)
-                response = self._api_request(params=params)
+
+                if response is None:
+                    raise NetworkError(
+                        f"Failed to fetch results for tag {tag}",
+                        scraper=self.name,
+                        context={"tag": tag, "page": page},
+                    )
 
                 api_data = response.get("response", {})
 
