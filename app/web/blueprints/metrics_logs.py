@@ -94,6 +94,8 @@ def pipeline_metrics():
 
     for scraper in ScraperRegistry.list_scrapers():
         name = scraper.get("name")
+        if not isinstance(name, str):
+            continue
         state = container.state_tracker(name)
         last_run = state.get_last_run_info() or {}
         processed = last_run.get("processed_count", 0)

@@ -232,24 +232,45 @@ def migrate_v1_to_v2(state_data):
     return state_data
 
 def migrate_state_file(filepath):
-    """Migrate a single state file."""
+    """Migrate a single state file with safe atomic operations."""
+    import os
     print(f"Migrating {filepath}...")
     
-    with open(filepath, 'r') as f:
-        state = json.load(f)
+    try:
+        # Load original
+        with open(filepath, 'r') as f:
+            state = json.load(f)
+        
+        migrated = migrate_v1_to_v2(state)
+        
+        # Write to temporary file first
+        temp_path = filepath.with_suffix('.json.tmp')
+        with open(temp_path, 'w') as f:
+            json.dump(migrated, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())  # Ensure durability
+        
+        # Atomically replace original with migrated
+        os.replace(temp_path, filepath)
+        
+        # Create backup with rotation if needed
+        backup_path = filepath.with_suffix('.json.backup')
+        if backup_path.exists():
+            counter = 1
+            while backup_path.with_stem(f"{filepath.stem}.backup.{counter}").exists():
+                counter += 1
+            backup_path = backup_path.with_stem(f"{filepath.stem}.backup.{counter}")
+        
+        print(f"✓ Migrated {filepath}")
+        print(f"  Backup: {backup_path}")
     
-    migrated = migrate_v1_to_v2(state)
-    
-    # Backup original
-    backup_path = filepath.with_suffix('.json.backup')
-    filepath.rename(backup_path)
-    
-    # Write migrated
-    with open(filepath, 'w') as f:
-        json.dump(migrated, f, indent=2)
-    
-    print(f"✓ Migrated {filepath}")
-    print(f"  Backup: {backup_path}")
+    except Exception as e:
+        # Clean up temp file if it exists
+        temp_path = filepath.with_suffix('.json.tmp')
+        if temp_path.exists():
+            temp_path.unlink()
+        print(f"✗ Migration failed for {filepath}: {e}")
+        raise
 
 if __name__ == '__main__':
     state_dir = Path('data/state')
@@ -350,17 +371,21 @@ grep -r '"category": "Market Reports"' data/metadata/aemo/
 
 **Use case:** Metadata file deleted/corrupted but document exists
 
-**Re-extract metadata:**
-```bash
-docker compose exec scraper \
-  python scripts/extract_metadata.py \
+**Re-extract metadata (Future enhancement):**
+
+A metadata extraction script (`scripts/extract_metadata.py`) is planned to automatically reconstruct metadata from PDF files, but is not yet implemented. The planned usage would be:
+
+```
+# Planned syntax (not yet available):
+python scripts/extract_metadata.py \
   --file data/scraped/aemo/document.pdf \
   --scraper aemo
 ```
 
-**Note:** Future enhancement - metadata extraction script not yet implemented.
+**Current workaround: Manual reconstruction**
 
-**Manual reconstruction:**
+Until the extraction script is available, manually create the metadata file by examining the document and filling in available fields:
+
 ```json
 {
   "title": "Extract from PDF filename or content",
@@ -374,13 +399,19 @@ docker compose exec scraper \
 }
 ```
 
+Save as `data/metadata/aemo/{document_id}.json` where `{document_id}` matches the document reference in your state file.
+
 ### Metadata Validation
 
 **Check all metadata files are valid JSON:**
 ```bash
-for file in data/metadata/**/*.json; do
+find data/metadata -name "*.json" | while read file; do
     echo "Checking $file"
-    cat "$file" | jq . > /dev/null || echo "✗ INVALID: $file"
+    if jq . "$file" > /dev/null 2>&1; then
+        echo "✓ VALID: $file"
+    else
+        echo "✗ INVALID: $file"
+    fi
 done
 ```
 
@@ -485,13 +516,12 @@ cat data/state/aemo_state.json | jq '.processed_urls'
 sha256sum data/scraped/aemo/document.pdf
 # Compare with hash in state file
 
-# 4. If hash mismatch, update state file
-# This happens if document was manually replaced
-docker compose exec scraper \
-  python scripts/update_state_hashes.py --scraper aemo
+# 4. If hash mismatch, delete state file and re-run scraper
+rm data/state/aemo_state.json
+python scripts/run_scraper.py --scraper aemo
 ```
 
-**Note:** Hash update script is a future enhancement.
+**Note:** A state hash update script (`scripts/update_state_hashes.py`) is planned for the future to automatically update hashes after manual document replacement, but is not yet implemented. The current workaround is to delete the state file and re-run the scraper.
 
 ### Migrating to New RAGFlow Instance
 
@@ -511,17 +541,10 @@ docker compose restart scraper
 
 # 4. Re-upload existing documents
 docker compose exec scraper \
-  python scripts/bulk_upload.py \
-  --dataset-id new_dataset_id \
-  --source-dir data/scraped/ \
-  --metadata-dir data/metadata/
-```
-
-**Note:** Bulk upload script is a future enhancement. Currently, run each scraper with `--force` flag to re-upload:
-```bash
-docker compose exec scraper \
   python scripts/run_scraper.py --scraper aemo --force
 ```
+
+**Explanation:** The `--force` flag tells the scraper to re-process all documents, ignoring the local `data/state/{scraper}_state.json` file. This causes documents to be re-downloaded and re-uploaded to the new RAGFlow instance with updated metadata. (RAGFlow's API has only one upload endpoint—there's no separate "bulk" vs "single" upload method; the workflow handles batching by repeatedly calling the same API for each document.)
 
 ### Cleaning Orphaned Metadata
 
@@ -615,17 +638,17 @@ curl -H "Authorization: Bearer $RAGFLOW_API_KEY" \
 ```
 
 **Solutions:**
-1. Re-upload metadata to RAGFlow
+1. Re-upload metadata to RAGFlow (use `--force` flag)
 2. Download metadata from RAGFlow (if it's correct)
 3. Manually reconcile differences
 
 **Re-upload metadata:**
 ```bash
 docker compose exec scraper \
-  python scripts/sync_metadata_to_ragflow.py --scraper aemo
+  python scripts/run_scraper.py --scraper aemo --force
 ```
 
-**Note:** Metadata sync script is a future enhancement.
+This re-processes all documents and pushes their metadata to RAGFlow.
 
 ### Orphaned Metadata Files
 
@@ -689,6 +712,53 @@ with open(state_file, 'w') as f:
 4. **Monitor file size:** Alert if state file > 10 MB
 5. **Test migrations:** Always test state migrations on copy first
 6. **Document schema changes:** Update this guide when adding fields
+
+---
+
+## Future Enhancements (Planned, Not Yet Implemented)
+
+### Metadata Sync Script
+**Planned:** `scripts/sync_metadata_to_ragflow.py`
+
+**Purpose:** Bulk synchronize metadata to RAGFlow without re-scraping
+
+**Status:** Not yet implemented
+
+**Current workaround:** Use `--force` flag to re-process and re-upload:
+```bash
+python scripts/run_scraper.py --scraper aemo --force
+```
+
+### Bulk Upload Script
+**Planned:** `scripts/bulk_upload.py`
+
+**Purpose:** Upload existing documents to RAGFlow without re-scraping
+
+**Status:** Not yet implemented
+
+**Current workaround:** Same as above—use `--force` flag
+
+### State Hash Update Script
+**Planned:** `scripts/update_state_hashes.py`
+
+**Purpose:** Automatically update file hashes in state files when documents are manually replaced
+
+**Status:** Not yet implemented
+
+**Current workaround:** Delete state file and re-run scraper:
+```bash
+rm data/state/{scraper}_state.json
+python scripts/run_scraper.py --scraper {name}
+```
+
+### Metadata Extraction Script
+**Planned:** `scripts/extract_metadata.py`
+
+**Purpose:** Automatically extract and structure metadata from PDF documents during scraping
+
+**Status:** Not yet implemented
+
+**Current workaround:** Manually reconstruct metadata by examining documents, or use `--force` flag to re-process existing documents
 
 ---
 

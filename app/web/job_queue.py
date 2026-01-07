@@ -30,6 +30,7 @@ class ScraperJob:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     _cancel_requested: threading.Event = field(default_factory=threading.Event, init=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
     def cancel(self) -> None:
         """Request cancellation; ask scraper to stop if supported."""
@@ -40,39 +41,46 @@ class ScraperJob:
             except Exception:
                 # Cancellation best-effort; failures should not crash the queue
                 pass
-        if self.status in {"queued", "running"}:
-            self.status = "cancelling"
+        with self._lock:
+            if self.status in {"queued", "running"}:
+                self.status = "cancelling"
 
     def execute(self) -> None:
         """Run the job, honoring cancellation requests."""
-        if self._cancel_requested.is_set():
-            self.status = "cancelled"
-            self.completed_at = datetime.now().isoformat()
-            return
+        with self._lock:
+            if self._cancel_requested.is_set():
+                self.status = "cancelled"
+                self.completed_at = datetime.now().isoformat()
+                return
 
-        self.status = "running"
-        self.started_at = datetime.now().isoformat()
+            self.status = "running"
+            self.started_at = datetime.now().isoformat()
 
         try:
             self.result = self.run_callable()
-            # If cancellation was requested mid-run, mark accordingly
-            if self._cancel_requested.is_set():
-                self.status = "cancelled"
-            else:
-                self.status = "completed"
-        except Exception as exc:  # pragma: no cover - passthrough for caller logging
-            self.error = str(exc)
-            self.status = "failed"
+            with self._lock:
+                # If cancellation was requested mid-run, mark accordingly
+                if self._cancel_requested.is_set():
+                    self.status = "cancelled"
+                else:
+                    self.status = "completed"
+        except Exception as exc:  # pragma: no cover - exceptions recorded in error field
+            with self._lock:
+                self.error = str(exc)
+                self.status = "failed"
         finally:
-            self.completed_at = datetime.now().isoformat()
+            with self._lock:
+                self.completed_at = datetime.now().isoformat()
 
     @property
     def is_active(self) -> bool:
-        return self.status in {"queued", "running", "cancelling"}
+        with self._lock:
+            return self.status in {"queued", "running", "cancelling"}
 
     @property
     def is_finished(self) -> bool:
-        return self.status in {"completed", "failed", "cancelled"}
+        with self._lock:
+            return self.status in {"completed", "failed", "cancelled"}
 
 
 class JobQueue:
@@ -82,7 +90,8 @@ class JobQueue:
         self._queue: queue.Queue[ScraperJob] = queue.Queue()
         self._jobs: dict[str, ScraperJob] = {}
         self._lock = threading.Lock()
-        self._worker = threading.Thread(target=self._worker_loop, daemon=True)
+        self._shutdown = threading.Event()
+        self._worker = threading.Thread(target=self._worker_loop, daemon=False)
         self._worker.start()
 
     def enqueue(
@@ -95,6 +104,13 @@ class JobQueue:
         max_pages: Optional[int] = None,
     ) -> ScraperJob:
         """Queue a scraper job; refuses if one is already active for that scraper."""
+        # Validate that scraper has a callable run attribute
+        run_callable = getattr(scraper, "run", None)
+        if not callable(run_callable):
+            raise ValueError(
+                f"Scraper {scraper_name} is missing or has non-callable run attribute"
+            )
+        
         with self._lock:
             existing = self._jobs.get(scraper_name)
             if existing and existing.is_active:
@@ -102,7 +118,7 @@ class JobQueue:
 
             job = ScraperJob(
                 scraper_name=scraper_name,
-                run_callable=scraper.run,
+                run_callable=run_callable,
                 scraper=scraper,
                 preview=preview,
                 dry_run=dry_run,
@@ -138,11 +154,29 @@ class JobQueue:
                 self._jobs.pop(scraper_name, None)
 
     def _worker_loop(self) -> None:
-        while True:
-            job = self._queue.get()
+        while not self._shutdown.is_set():
+            try:
+                # Use timeout to allow periodic shutdown checks
+                job = self._queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            
             job.execute()
             # Drop completed non-preview jobs immediately; previews are cleaned up by callers
-            if not job.preview and job.is_finished:
-                with self._lock:
-                    self._jobs.pop(job.scraper_name, None)
+            with job._lock:
+                if not job.preview and job.is_finished:
+                    with self._lock:
+                        self._jobs.pop(job.scraper_name, None)
             self._queue.task_done()
+
+    def shutdown(self, wait: bool = True, timeout: Optional[float] = None) -> None:
+        """Gracefully shutdown the worker thread.
+        
+        Args:
+            wait: If True, wait for the queue to be drained before returning.
+            timeout: Maximum time to wait for thread completion (in seconds).
+        """
+        if wait:
+            self._queue.join()
+        self._shutdown.set()
+        self._worker.join(timeout)

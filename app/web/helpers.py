@@ -21,7 +21,7 @@ def get_scraper_status(name: str) -> str:
     state = container.state_tracker(name)
     info = state.get_last_run_info()
 
-    if not info.get("last_updated"):
+    if not info or not info.get("last_updated"):
         return "idle"
 
     stats = info.get("statistics", {})

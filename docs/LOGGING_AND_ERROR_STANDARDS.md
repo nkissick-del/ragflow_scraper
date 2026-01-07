@@ -479,9 +479,10 @@ SCRAPER RUN FAILED
 **Error:** `Duplicate detected (hash match)` but document is new  
 **Cause:** Hash algorithm gave false positive or document content didn't change  
 **Fix:**
-1. Force re-upload: `rm data/state/{scraper}_state.json` (loses history)
-2. Or manually delete document from RAGFlow and re-upload
-3. Check if document content was actually updated
+1. Use `--force` flag to re-process: `python scripts/run_scraper.py --scraper {name} --force`
+2. Or delete state and re-run: `rm data/state/{scraper}_state.json` (loses history)
+3. If document is already in RAGFlow, manually delete and re-upload
+4. Check if document content was actually updated
 
 #### Resource & System Errors
 

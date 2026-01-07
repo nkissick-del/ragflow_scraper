@@ -27,8 +27,8 @@ def index():
     for scraper in scrapers:
         state = container.state_tracker(scraper["name"])
         info = state.get_last_run_info()
-        scraper["last_run"] = info.get("last_updated")
-        scraper["processed_count"] = info.get("processed_count", 0)
+        scraper["last_run"] = info.get("last_updated") if info else None
+        scraper["processed_count"] = info.get("processed_count", 0) if info else 0
         scraper["status"] = get_scraper_status(scraper["name"])
 
     log_event(logger, "info", "ui.page.index", scraper_count=len(scrapers))
@@ -91,9 +91,12 @@ def run_scraper(name):
     try:
         job_queue.enqueue(name, scraper, dry_run=dry_run, max_pages=max_pages)
     except ValueError:
+        scraper_class = ScraperRegistry.get_scraper_class(name)
+        if not scraper_class:
+            return jsonify({"error": f"Scraper not found: {name}"}), 404
         return render_template(
             "components/scraper-card.html",
-            scraper=ScraperRegistry.get_scraper_class(name).get_metadata(),
+            scraper=scraper_class.get_metadata(),
             status="running",
             message="Already queued or running",
         )
@@ -107,7 +110,11 @@ def run_scraper(name):
         max_pages=max_pages,
     )
 
-    metadata = ScraperRegistry.get_scraper_class(name).get_metadata()
+    scraper_class = ScraperRegistry.get_scraper_class(name)
+    if not scraper_class:
+        return jsonify({"error": f"Scraper not found: {name}"}), 404
+    
+    metadata = scraper_class.get_metadata()
     state = container.state_tracker(name)
     metadata["state"] = state.get_last_run_info()
     metadata["status"] = job_queue.status(name)
