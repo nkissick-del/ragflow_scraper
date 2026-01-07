@@ -96,7 +96,7 @@ class RAGFlowIngestionWorkflow:
         else:
             # Fallback: object with attributes
             try:
-                success = bool(getattr(raw_result, "success", True))
+                success = bool(getattr(raw_result, "success", False))
                 doc_id = getattr(raw_result, "document_id", None) or getattr(raw_result, "doc_id", None)
                 filename = getattr(raw_result, "filename", getattr(raw_result, "file_name", getattr(raw_result, "name", None)))
                 res = UploadResult(success=success, document_id=doc_id, filename=filename)
@@ -196,7 +196,11 @@ class RAGFlowIngestionWorkflow:
                 filepath: Path = doc["filepath"]
                 metadata = doc.get("metadata")
             else:
-                # Unknown format
+                # Unknown format - log and skip to aid debugging
+                self.logger.warning(
+                    f"Skipping doc with unknown format: {type(doc).__name__} "
+                    f"(expected tuple/list or dict with 'filepath' key)"
+                )
                 continue
             file_hash = getattr(metadata, "hash", None) if metadata else None
             # Support both dict and object metadata; dicts use 'file_hash' key
