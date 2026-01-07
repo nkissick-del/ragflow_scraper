@@ -86,8 +86,14 @@ def ensure_job_queue_shutdown():
     """Ensure the shared web-layer `job_queue` is shut down after each test.
 
     This prevents lingering worker threads from previous tests causing the
-    test process to hang. We make this best-effort and swallow any errors so
-    it doesn't interfere with tests that don't import the runtime.
+    test process to hang. Uses non-blocking shutdown for speed (wait=False),
+    relying on the worker thread's daemon semantics and the atexit handler
+    for final cleanup.
+
+    Semantics of shutdown(wait=False, timeout=0.5):
+    - wait=False: Skip draining the queue; signal shutdown and return quickly
+    - timeout=0.5: Wait up to 0.5 seconds for worker thread to terminate
+    - If worker doesn't exit within timeout, it will be cleaned by atexit
     """
     yield
     try:
@@ -96,10 +102,20 @@ def ensure_job_queue_shutdown():
         from app.web.runtime import job_queue
 
         try:
+            # Non-blocking shutdown: signal worker and wait briefly for thread exit
             job_queue.shutdown(wait=False, timeout=0.5)
-        except Exception:
-            # Best-effort; don't fail tests if shutdown isn't possible
-            pass
-    except Exception:
-        # Runtime may not be importable in minimal test environments
-        pass
+        except Exception as exc:
+            # Log failures to aid debugging, but don't fail the test
+            import logging
+            logger = logging.getLogger("test.conftest")
+            logger.debug(f"JobQueue shutdown raised exception (non-fatal): {exc}")
+    except ImportError as exc:
+        # Runtime not importable in minimal test environments (expected for some tests)
+        import logging
+        logger = logging.getLogger("test.conftest")
+        logger.debug(f"Could not import job_queue (test doesn't use web runtime): {exc}")
+    except Exception as exc:
+        # Unexpected error during import
+        import logging
+        logger = logging.getLogger("test.conftest")
+        logger.debug(f"Unexpected error in ensure_job_queue_shutdown: {exc}")
