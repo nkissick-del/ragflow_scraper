@@ -45,13 +45,13 @@ shell:
 # Tests
 
 test:
-	$(DC) exec $(SERVICE) python -m pytest -q
+	$(DC) exec -T $(SERVICE) python -m pytest -q < /dev/null
 
 test-unit:
-	$(DC) exec $(SERVICE) python -m pytest tests/unit -q
+	$(DC) exec -T $(SERVICE) python -m pytest tests/unit -q < /dev/null
 
 test-int:
-	$(DC) exec $(SERVICE) python -m pytest tests/integration -q
+	$(DC) exec -T $(SERVICE) python -m pytest tests/integration -q < /dev/null
 
 # Usage: make test-file FILE=tests/unit/test_metadata_validation.py::TestClass::test_case
 ifeq ($(FILE),)

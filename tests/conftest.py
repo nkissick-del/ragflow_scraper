@@ -108,5 +108,9 @@ def pytest_sessionfinish(session, exitstatus):
     
     With daemon threads, we don't need to do anything - they'll be killed
     automatically by Python when pytest exits.
+    
+    Force an explicit exit to prevent hanging in container environments.
     """
-    pass
+    # Force pytest to exit immediately - prevents hanging in Docker/container environments
+    # where background processes or event loops might otherwise keep the process alive
+    sys.exit(exitstatus)
