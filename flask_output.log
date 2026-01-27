@@ -1,0 +1,432 @@
+
+============================================================
+PDF Scraper Web Interface
+============================================================
+Running on: http://0.0.0.0:5000
+Debug mode: disabled
+============================================================
+
+ * Serving Flask app 'app.web'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.2:5000
+[33mPress CTRL+C to quit[0m
+2026-01-27 08:41:49 | INFO     | scraper.registry | Discovering scrapers in /app/app/scrapers
+2026-01-27 08:41:49 | INFO     | scraper.registry | Registered scraper: aemc (AEMCScraper)
+2026-01-27 08:41:49 | INFO     | scraper.registry | Registered scraper: aemo (AEMOScraper)
+2026-01-27 08:41:49 | INFO     | scraper.registry | Registered scraper: aer (AERScraper)
+2026-01-27 08:41:49 | INFO     | scraper.registry | Registered scraper: eca (ECAScraper)
+2026-01-27 08:41:49 | INFO     | scraper.registry | Registered scraper: ena (ENAScraper)
+2026-01-27 08:41:49 | INFO     | scraper.registry | Registered scraper: guardian (GuardianScraper)
+2026-01-27 08:41:49 | INFO     | scraper.registry | Registered scraper: reneweconomy (RenewEconomyScraper)
+2026-01-27 08:41:49 | INFO     | scraper.registry | Registered scraper: the-conversation (TheConversationScraper)
+2026-01-27 08:41:49 | INFO     | scraper.registry | Registered scraper: theenergy (TheEnergyScraper)
+2026-01-27 08:41:49 | INFO     | scraper.registry | Discovery complete: 9 scrapers found
+2026-01-27 08:41:49 | WARNING  | scraper.ragflow.http | GET http://localhost:9380/api/v1/pipelines failed (attempt 1): HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:41:49 | WARNING  | scraper.ragflow.http | GET http://localhost:9380/api/v1/pipelines failed (attempt 2): HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:41:50 | ERROR    | scraper.ragflow.client | ragflow.pipelines.fetch
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/connection.py", line 85, in create_connection
+    raise err
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 493, in _make_request
+    conn.request(
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 500, in request
+    self.endheaders()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1093, in _send_output
+    self.send(msg)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1037, in send
+    self.connect()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 331, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 219, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/retry.py", line 535, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/app/app/services/ragflow_client.py", line 232, in list_ingestion_pipelines
+    resp = self.http.request("GET", "/api/v1/pipelines")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/app/services/ragflow_client.py", line 92, in request
+    resp = self.session.request(method, url, headers=headers, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/adapters.py", line 700, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:41:50 | INFO     | scraper.web.scrapers | ui.page.scrapers
+127.0.0.1 - - [27/Jan/2026 08:41:50] "GET /scrapers HTTP/1.1" 200 -
+2026-01-27 08:42:11 | WARNING  | scraper.ragflow.http | GET http://localhost:9380/api/v1/pipelines failed (attempt 1): HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:42:12 | WARNING  | scraper.ragflow.http | GET http://localhost:9380/api/v1/pipelines failed (attempt 2): HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:42:13 | ERROR    | scraper.ragflow.client | ragflow.pipelines.fetch
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/connection.py", line 85, in create_connection
+    raise err
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 493, in _make_request
+    conn.request(
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 500, in request
+    self.endheaders()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1093, in _send_output
+    self.send(msg)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1037, in send
+    self.connect()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 331, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 219, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/retry.py", line 535, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/app/app/services/ragflow_client.py", line 232, in list_ingestion_pipelines
+    resp = self.http.request("GET", "/api/v1/pipelines")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/app/services/ragflow_client.py", line 92, in request
+    resp = self.session.request(method, url, headers=headers, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/adapters.py", line 700, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:42:13 | INFO     | scraper.web.scrapers | ui.page.scrapers
+127.0.0.1 - - [27/Jan/2026 08:42:13] "GET /scrapers HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:42:13] "GET /static/js/components.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:42:13] "GET /static/css/styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:42:13] "GET /static/js/utils.js HTTP/1.1" 200 -
+2026-01-27 08:42:14 | INFO     | scraper.web.scrapers | scraper.run.requested
+2026-01-27 08:42:14 | INFO     | scraper.aemc | Starting scraper: aemc
+2026-01-27 08:42:14 | INFO     | scraper.aemc | Connecting to Selenium at http://localhost:4444/wd/hub
+127.0.0.1 - - [27/Jan/2026 08:42:14] "POST /scrapers/aemc/run HTTP/1.1" 200 -
+2026-01-27 08:42:14 | ERROR    | scraper.aemc | Scraper failed: HTTPConnectionPool(host='localhost', port=4444): Max retries exceeded with url: /wd/hub/session (Caused by NewConnectionError("HTTPConnection(host='localhost', port=4444): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:42:14 | INFO     | scraper.aemc | Scraper completed: 0 downloaded, 0 skipped, 0 failed
+2026-01-27 08:43:14 | WARNING  | scraper.ragflow.http | GET http://localhost:9380/api/v1/pipelines failed (attempt 1): HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:43:14 | WARNING  | scraper.ragflow.http | GET http://localhost:9380/api/v1/pipelines failed (attempt 2): HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:43:15 | ERROR    | scraper.ragflow.client | ragflow.pipelines.fetch
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/connection.py", line 85, in create_connection
+    raise err
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 493, in _make_request
+    conn.request(
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 500, in request
+    self.endheaders()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1093, in _send_output
+    self.send(msg)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1037, in send
+    self.connect()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 331, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 219, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/retry.py", line 535, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/app/app/services/ragflow_client.py", line 232, in list_ingestion_pipelines
+    resp = self.http.request("GET", "/api/v1/pipelines")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/app/services/ragflow_client.py", line 92, in request
+    resp = self.session.request(method, url, headers=headers, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/adapters.py", line 700, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:43:15 | INFO     | scraper.web.scrapers | ui.page.scrapers
+127.0.0.1 - - [27/Jan/2026 08:43:15] "GET /scrapers HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:15] "GET /static/css/styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:15] "GET /static/js/components.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:15] "GET /static/js/utils.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:21] "GET /scrapers/aemc/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:21] "GET /scrapers/aemo/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:21] "GET /scrapers/aer/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:21] "GET /scrapers/eca/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:21] "GET /scrapers/ena/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:21] "GET /scrapers/guardian/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:21] "GET /scrapers/reneweconomy/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:21] "GET /scrapers/the-conversation/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:43:21] "GET /scrapers/theenergy/status HTTP/1.1" 200 -
+2026-01-27 08:43:21 | INFO     | scraper.web.scrapers | scraper.run.requested
+127.0.0.1 - - [27/Jan/2026 08:43:21] "POST /scrapers/aemc/run HTTP/1.1" 200 -
+2026-01-27 08:43:21 | INFO     | scraper.aemc | Starting scraper: aemc
+2026-01-27 08:43:21 | INFO     | scraper.aemc | Connecting to Selenium at http://localhost:4444/wd/hub
+2026-01-27 08:43:21 | ERROR    | scraper.aemc | Scraper failed: HTTPConnectionPool(host='localhost', port=4444): Max retries exceeded with url: /wd/hub/session (Caused by NewConnectionError("HTTPConnection(host='localhost', port=4444): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:43:21 | INFO     | scraper.aemc | Scraper completed: 0 downloaded, 0 skipped, 0 failed
+2026-01-27 08:44:16 | WARNING  | scraper.ragflow.http | GET http://localhost:9380/api/v1/pipelines failed (attempt 1): HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:44:16 | WARNING  | scraper.ragflow.http | GET http://localhost:9380/api/v1/pipelines failed (attempt 2): HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:44:17 | ERROR    | scraper.ragflow.client | ragflow.pipelines.fetch
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/connection.py", line 85, in create_connection
+    raise err
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 493, in _make_request
+    conn.request(
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 500, in request
+    self.endheaders()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1093, in _send_output
+    self.send(msg)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1037, in send
+    self.connect()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 331, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 219, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/retry.py", line 535, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/app/app/services/ragflow_client.py", line 232, in list_ingestion_pipelines
+    resp = self.http.request("GET", "/api/v1/pipelines")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/app/services/ragflow_client.py", line 92, in request
+    resp = self.session.request(method, url, headers=headers, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/adapters.py", line 700, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:44:18 | INFO     | scraper.web.scrapers | ui.page.scrapers
+127.0.0.1 - - [27/Jan/2026 08:44:18] "GET /scrapers HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:18] "GET /static/js/utils.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:18] "GET /static/css/styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:18] "GET /static/js/components.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:23] "GET /scrapers/aemc/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:23] "GET /scrapers/aemo/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:23] "GET /scrapers/ena/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:23] "GET /scrapers/aer/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:23] "GET /scrapers/guardian/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:23] "GET /scrapers/reneweconomy/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:23] "GET /scrapers/eca/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:23] "GET /scrapers/the-conversation/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:44:23] "GET /scrapers/theenergy/status HTTP/1.1" 200 -
+2026-01-27 08:44:23 | INFO     | scraper.web.scrapers | scraper.run.requested
+2026-01-27 08:44:23 | INFO     | scraper.aemc | Starting scraper: aemc
+127.0.0.1 - - [27/Jan/2026 08:44:23] "POST /scrapers/aemc/run HTTP/1.1" 200 -
+2026-01-27 08:44:23 | INFO     | scraper.aemc | Connecting to Selenium at http://localhost:4444/wd/hub
+2026-01-27 08:44:23 | ERROR    | scraper.aemc | Scraper failed: HTTPConnectionPool(host='localhost', port=4444): Max retries exceeded with url: /wd/hub/session (Caused by NewConnectionError("HTTPConnection(host='localhost', port=4444): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:44:23 | ERROR    | scraper.state.aemc | Failed to save state: [Errno 2] No such file or directory: '/app/data/state/aemc_state.json'
+2026-01-27 08:44:23 | INFO     | scraper.aemc | Scraper completed: 0 downloaded, 0 skipped, 0 failed
+2026-01-27 08:45:02 | WARNING  | scraper.ragflow.http | GET http://localhost:9380/api/v1/pipelines failed (attempt 1): HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:45:03 | WARNING  | scraper.ragflow.http | GET http://localhost:9380/api/v1/pipelines failed (attempt 2): HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:45:04 | ERROR    | scraper.ragflow.client | ragflow.pipelines.fetch
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/connection.py", line 85, in create_connection
+    raise err
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 493, in _make_request
+    conn.request(
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 500, in request
+    self.endheaders()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1093, in _send_output
+    self.send(msg)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/http/client.py", line 1037, in send
+    self.connect()
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 331, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connection.py", line 219, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/urllib3/util/retry.py", line 535, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/app/app/services/ragflow_client.py", line 232, in list_ingestion_pipelines
+    resp = self.http.request("GET", "/api/v1/pipelines")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/app/services/ragflow_client.py", line 92, in request
+    resp = self.session.request(method, url, headers=headers, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/requests/adapters.py", line 700, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=9380): Max retries exceeded with url: /api/v1/pipelines (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9380): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:45:04 | INFO     | scraper.web.scrapers | ui.page.scrapers
+127.0.0.1 - - [27/Jan/2026 08:45:04] "GET /scrapers HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:45:04] "GET /static/css/styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:45:04] "GET /static/js/utils.js HTTP/1.1" 200 -
+127.0.0.1 - - [27/Jan/2026 08:45:04] "GET /static/js/components.js HTTP/1.1" 200 -
+2026-01-27 08:45:04 | INFO     | scraper.web.scrapers | scraper.run.requested
+127.0.0.1 - - [27/Jan/2026 08:45:04] "POST /scrapers/aemo/run HTTP/1.1" 200 -
+2026-01-27 08:45:04 | INFO     | scraper.aemo | Starting scraper: aemo
+2026-01-27 08:45:04 | INFO     | scraper.aemo | Connecting to Selenium at http://localhost:4444/wd/hub
+2026-01-27 08:45:04 | ERROR    | scraper.aemo | Scraper failed: HTTPConnectionPool(host='localhost', port=4444): Max retries exceeded with url: /wd/hub/session (Caused by NewConnectionError("HTTPConnection(host='localhost', port=4444): Failed to establish a new connection: [Errno 111] Connection refused"))
+2026-01-27 08:45:04 | ERROR    | scraper.state.aemo | Failed to save state: [Errno 2] No such file or directory: '/app/data/state/aemo_state.json'
+2026-01-27 08:45:04 | INFO     | scraper.aemo | Scraper completed: 0 downloaded, 0 skipped, 0 failed

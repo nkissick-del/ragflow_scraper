@@ -23,7 +23,7 @@
 
         <div class="card-body">
             <p><strong>Description:</strong> {{ scraper.description }}</p>
-            <p><strong>Base URL:</strong> <a href="{{ scraper.base_url }}" target="_blank">{{ scraper.base_url }}</a></p>
+            <p><strong>Base URL:</strong> <a href="{{ scraper.base_url }}" target="_blank" rel="noopener noreferrer">{{ scraper.base_url }}</a></p>
 
             {% if scraper.excluded_tags %}
             <p><strong>Excluded Tags:</strong> {{ scraper.excluded_tags | join(', ') }}</p>
@@ -56,7 +56,7 @@
         <!-- RAGFlow Settings (collapsible) -->
         <details class="ragflow-settings-section">
             <summary class="ragflow-settings-toggle">
-                <span class="toggle-icon">▶</span> RAGFlow Settings
+                <span class="toggle-icon" aria-hidden="true">▶</span> RAGFlow Settings
                 <span id="ragflow-status-{{ scraper.name }}" class="setting-status"></span>
             </summary>
             <div class="ragflow-settings-content">
@@ -244,19 +244,23 @@
                     <span class="btn-loader"><span class="loading-spinner"></span></span>
                 </button>
                 {% if scraper.status == 'running' or scraper.status == 'cancelling' %}
-                <button class="btn btn-danger"
+                <button class="btn btn-danger btn-with-loader"
                         hx-post="{{ url_for('scrapers.cancel_scraper', name=scraper.name) }}"
                         hx-target="#scraper-{{ scraper.name }} .status-badge"
                         hx-swap="outerHTML"
+                        hx-disabled-elt="this"
                         {% if scraper.status == 'cancelling' %}disabled{% endif %}>
-                    {% if scraper.status == 'cancelling' %}Cancelling...{% else %}Cancel{% endif %}
+                    <span class="btn-text">{% if scraper.status == 'cancelling' %}Cancelling...{% else %}Cancel{% endif %}</span>
+                    <span class="btn-loader"><span class="loading-spinner"></span></span>
                 </button>
                 {% else %}
-                <button class="btn btn-primary"
+                <button class="btn btn-primary btn-with-loader"
                         hx-post="{{ url_for('scrapers.run_scraper', name=scraper.name) }}"
                         hx-target="#scraper-{{ scraper.name }}"
-                        hx-swap="outerHTML">
-                    Run Scraper
+                        hx-swap="outerHTML"
+                        hx-disabled-elt="this">
+                    <span class="btn-text">Run Scraper</span>
+                    <span class="btn-loader"><span class="loading-spinner"></span></span>
                 </button>
                 {% endif %}
             </div>

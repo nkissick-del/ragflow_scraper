@@ -48,7 +48,7 @@
                     {% endif %}
                 </div>
                 <div class="document-url">
-                    <a href="{{ doc.url }}" target="_blank" rel="noopener">{{ doc.url[:80] }}{% if doc.url|length > 80 %}...{% endif %}</a>
+                    <a href="{{ doc.url }}" target="_blank" rel="noopener noreferrer">{{ doc.url[:80] }}{% if doc.url|length > 80 %}...{% endif %}</a>
                 </div>
             </div>
             {% endfor %}
@@ -75,11 +75,13 @@
     {% endif %}
 
     <div class="preview-actions">
-        <button class="btn btn-primary"
+        <button class="btn btn-primary btn-with-loader"
                 hx-post="{{ url_for('scrapers.run_scraper', name=scraper_name) }}"
                 hx-target="#scraper-{{ scraper_name }}"
-                hx-swap="outerHTML">
-            Run Full Scrape
+                hx-swap="outerHTML"
+                hx-disabled-elt="this">
+            <span class="btn-text">Run Full Scrape</span>
+            <span class="btn-loader"><span class="loading-spinner"></span></span>
         </button>
         <button class="btn btn-secondary" onclick="this.closest('.preview-modal').remove()">
             Close

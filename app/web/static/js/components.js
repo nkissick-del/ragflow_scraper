@@ -20,17 +20,24 @@ function handleScraperActions() {
     document.addEventListener('htmx:beforeRequest', function(event) {
         const target = event.target;
         if (target.matches('[hx-post*="/run"]')) {
-            target.disabled = true;
-            target.dataset.originalText = target.textContent;
-            target.textContent = 'Starting...';
+            // If button uses the CSS loader pattern, don't mess with text content
+            if (!target.classList.contains('btn-with-loader')) {
+                target.disabled = true;
+                target.dataset.originalText = target.textContent;
+                target.textContent = 'Starting...';
+            }
         }
     });
 
     document.addEventListener('htmx:afterRequest', function(event) {
         const target = event.target;
-        if (target.matches('[hx-post*="/run"]') && target.dataset.originalText) {
-            // Button will be replaced by HTMX, but just in case
-            target.disabled = false;
+        if (target.matches('[hx-post*="/run"]')) {
+            if (target.classList.contains('btn-with-loader')) {
+                target.classList.remove('htmx-request');
+            } else if (target.dataset.originalText) {
+                // Button will be replaced by HTMX, but just in case
+                target.disabled = false;
+            }
         }
         // Handle preview button - remove htmx-request class to stop spinner
         if (target.matches('[hx-post*="/preview"]')) {
@@ -42,8 +49,12 @@ function handleScraperActions() {
     document.addEventListener('htmx:requestError', function(event) {
         const target = event.target;
         if (target.matches('[hx-post*="/run"]')) {
-            target.disabled = false;
-            target.textContent = target.dataset.originalText || 'Run Now';
+            if (target.classList.contains('btn-with-loader')) {
+                target.classList.remove('htmx-request');
+            } else {
+                target.disabled = false;
+                target.textContent = target.dataset.originalText || 'Run Now';
+            }
             showNotification('Request failed. Please try again.', 'error');
         }
         // Handle preview button errors
