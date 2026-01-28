@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import pytest
+import hashlib
 from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
 from datetime import datetime
 
 from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.mixins import MetadataIOMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.services.state_tracker import StateTracker
 
@@ -288,3 +290,65 @@ class TestBaseScrapeTemplate:
         assert self.scraper.teardown_called is True
         assert call_order == ['setup', 'teardown']
         assert result is not None
+
+class TestMetadataIOMixin:
+    """Test MetadataIOMixin."""
+
+    def setup_method(self):
+        class TestScraper(MetadataIOMixin):
+            name = "test_scraper"
+            logger = Mock()
+
+        self.scraper = TestScraper()
+        self.scraper.dry_run = False
+
+    def test_save_article_optimized(self):
+        """Should use optimized in-memory hashing and write_bytes."""
+        # Mock data
+        article = DocumentMetadata(
+            title="Test Article",
+            url="http://example.com/test",
+            filename="test_article.pdf",
+            organization="test"
+        )
+        content = "Test content"
+        content_bytes = content.encode("utf-8")
+        expected_hash = hashlib.sha256(content_bytes).hexdigest()
+
+        # Mock dependencies
+        with patch("app.scrapers.mixins.Config") as mock_config, \
+             patch("app.scrapers.mixins.ensure_dir") as mock_ensure_dir, \
+             patch("app.scrapers.mixins.sanitize_filename") as mock_sanitize_filename:
+
+            mock_output_dir = MagicMock()
+            mock_ensure_dir.return_value = mock_output_dir
+
+            mock_temp_md = MagicMock()
+            mock_temp_json = MagicMock()
+            mock_md_path = MagicMock()
+            mock_json_path = MagicMock()
+
+            def path_div(name):
+                if name == ".test_article.md.tmp":
+                    return mock_temp_md
+                if name == ".test_article.json.tmp":
+                    return mock_temp_json
+                if name == "test_article.md":
+                    return mock_md_path
+                if name == "test_article.json":
+                    return mock_json_path
+                return MagicMock()
+
+            mock_output_dir.__truediv__.side_effect = path_div
+            mock_sanitize_filename.return_value = "test_article"
+
+            # Call the method
+            result = self.scraper._save_article(article, content)
+
+            # Verify result path
+            assert result == str(mock_md_path)
+
+            # Verify optimization
+            mock_temp_md.write_bytes.assert_called_once_with(content_bytes)
+            assert article.hash == expected_hash
+            assert article.file_size == len(content_bytes)

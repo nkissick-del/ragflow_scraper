@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from datetime import datetime
@@ -14,7 +15,7 @@ from selenium.webdriver.chrome.options import Options  # type: ignore[import]
 from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import]
 
 from app.config import Config
-from app.utils import ensure_dir, get_file_hash, sanitize_filename
+from app.utils import ensure_dir, sanitize_filename
 from app.utils.errors import DownloadError, NetworkError, ScraperError
 from app.utils.retry import retry_on_error
 
@@ -124,12 +125,13 @@ class MetadataIOMixin:
             temp_md_path = output_dir / f".{safe_filename}.md.tmp"
             temp_json_path = output_dir / f".{safe_filename}.json.tmp"
             
-            # Write markdown to temp file
-            temp_md_path.write_text(content, encoding="utf-8")
-            
-            # Compute metadata from temp file
-            file_size = len(content.encode("utf-8"))
-            file_hash = get_file_hash(temp_md_path)
+            # Compute hash and size from content in memory
+            content_bytes = content.encode("utf-8")
+            file_size = len(content_bytes)
+            file_hash = hashlib.sha256(content_bytes).hexdigest()
+
+            # Write markdown bytes to temp file
+            temp_md_path.write_bytes(content_bytes)
             
             # Prepare metadata with computed values (without mutating article yet)
             article_dict = article.to_dict()
