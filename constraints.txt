@@ -1,6 +1,7 @@
 # Pinned dependency set for reproducible installs.
 # Update via pip-compile or bump consciously.
 flask==3.0.3
+Flask-WTF==1.2.2
 selenium==4.25.0
 beautifulsoup4==4.12.3
 lxml==5.2.2
