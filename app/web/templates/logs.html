@@ -12,6 +12,9 @@
     <div class="log-controls">
         <h2>Live Log Viewer</h2>
         <div class="log-filters">
+            <button id="copy-logs-btn" class="btn btn-small btn-secondary" onclick="handleCopyLogs()" aria-label="Copy all logs to clipboard">
+                📋 Copy Logs
+            </button>
             <label>
                 <input type="checkbox" id="auto-scroll" checked> Auto-scroll
             </label>
@@ -53,5 +56,15 @@ document.addEventListener('htmx:afterSwap', function(event) {
         container.scrollTop = container.scrollHeight;
     }
 });
+
+async function handleCopyLogs() {
+    const logViewer = document.querySelector('.log-viewer');
+    if (!logViewer) return;
+
+    // Get text content (strips HTML tags, preserves newlines)
+    const text = logViewer.innerText;
+
+    await copyToClipboard(text);
+}
 </script>
 {% endblock %}

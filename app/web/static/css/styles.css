@@ -476,12 +476,19 @@ code {
     margin-bottom: 12px;
 }
 
+.log-filters {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
 .log-filters label {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 0.9rem;
     color: var(--text-muted);
+    margin: 0;
 }
 
 .log-files {

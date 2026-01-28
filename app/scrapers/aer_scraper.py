@@ -102,7 +102,7 @@ class AERScraper(BaseScraper):
         # Format: <a title="Go to last page" href="?...&page=261">
         last_link = soup.select_one('a[title="Go to last page"]')
         if last_link:
-            href = last_link.get("href", "")
+            href = str(last_link.get("href", ""))
             match = re.search(r"page=(\d+)", href)
             if match:
                 # page is 0-indexed, so add 1 for total count
@@ -113,7 +113,7 @@ class AERScraper(BaseScraper):
         if page_links:
             max_page = 0
             for link in page_links:
-                href = link.get("href", "")
+                href = str(link.get("href", ""))
                 match = re.search(r"page=(\d+)", href)
                 if match:
                     max_page = max(max_page, int(match.group(1)))
