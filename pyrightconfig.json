@@ -1,13 +1,3 @@
 {
-  "include": ["app", "scripts"],
-  "exclude": ["**/__pycache__"],
-  "pythonVersion": "3.11",
-  "typeCheckingMode": "basic",
-  "reportMissingImports": true,
-  "reportMissingModuleSource": false,
-  "reportMissingTypeStubs": false,
-  "reportUnknownMemberType": false,
-  "reportUnknownVariableType": false,
-  "reportUnknownArgumentType": false,
-  "reportUnknownParameterType": false
+  "reportMissingTypeStubs": false
 }

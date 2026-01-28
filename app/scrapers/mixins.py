@@ -58,9 +58,9 @@ class IncrementalStateMixin:
 
 class ExclusionRulesMixin:
     # Common configuration attributes expected on scrapers that use this mixin
-    excluded_tags: Optional[List[str]] = None
-    required_tags: Optional[List[str]] = None
-    excluded_keywords: Optional[List[str]] = None
+    excluded_tags: List[str] = []
+    required_tags: List[str] = []
+    excluded_keywords: List[str] = []
     logger: Any = None
 
     def _should_exclude(self, tags: list[str]) -> bool:
