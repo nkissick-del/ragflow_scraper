@@ -115,11 +115,39 @@ function showNotification(message, type = 'info', duration = 3000) {
  */
 async function copyToClipboard(text) {
     try {
-        await navigator.clipboard.writeText(text);
+        // Try modern API first (if available and secure context)
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            // Fallback for non-secure contexts (e.g., HTTP local network)
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+
+            // Avoid scrolling to bottom
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                const successful = document.execCommand('copy');
+                if (!successful) throw new Error('execCommand failed');
+            } catch (err) {
+                document.body.removeChild(textArea);
+                throw err;
+            }
+
+            document.body.removeChild(textArea);
+        }
+
         showNotification('Copied to clipboard', 'success', 2000);
         return true;
     } catch (e) {
         console.error('Failed to copy:', e);
+        showNotification('Failed to copy to clipboard', 'error', 2000);
         return false;
     }
 }
