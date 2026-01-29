@@ -33,4 +33,20 @@ def create_app() -> Flask:
     from app.web.blueprints import register_blueprints
     register_blueprints(app)
 
+    @app.after_request
+    def add_security_headers(response):
+        """Add security headers to all responses."""
+        # Prevent MIME sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Prevent clickjacking
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        # Privacy protection
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # CSP: Allow self, unpkg (HTMX), and inline scripts/styles (required for current templates)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' https://unpkg.com 'unsafe-inline' 'unsafe-eval'; "
+            "img-src 'self' data:;"
+        )
+        return response
+
     return app
