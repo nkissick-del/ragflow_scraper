@@ -97,6 +97,24 @@ def get_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
     return hash_obj.hexdigest()
 
 
+def get_content_hash(content: str | bytes, algorithm: str = "sha256") -> str:
+    """
+    Calculate the hash of content (string or bytes).
+
+    Args:
+        content: String or bytes content
+        algorithm: Hash algorithm to use (default: sha256)
+
+    Returns:
+        Hex digest of the hash
+    """
+    hash_obj = hashlib.new(algorithm)
+    if isinstance(content, str):
+        content = content.encode("utf-8")
+    hash_obj.update(content)
+    return hash_obj.hexdigest()
+
+
 def get_unique_filepath(base_path: Path, filename: str) -> Path:
     """
     Get a unique filepath by appending a number if file already exists.

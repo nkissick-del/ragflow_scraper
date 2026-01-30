@@ -3,7 +3,13 @@ Utility modules for the PDF Scraper application.
 """
 
 from .logging_config import setup_logging, get_logger
-from .file_utils import sanitize_filename, ensure_dir, get_file_hash, parse_file_size
+from .file_utils import (
+    sanitize_filename,
+    ensure_dir,
+    get_file_hash,
+    get_content_hash,
+    parse_file_size,
+)
 from .article_converter import ArticleConverter
 from .errors import (
     ScraperError,
@@ -21,6 +27,7 @@ __all__ = [
     "sanitize_filename",
     "ensure_dir",
     "get_file_hash",
+    "get_content_hash",
     "parse_file_size",
     "ArticleConverter",
     "ScraperError",
