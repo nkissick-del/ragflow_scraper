@@ -14,7 +14,7 @@ from selenium.webdriver.chrome.options import Options  # type: ignore[import]
 from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import]
 
 from app.config import Config
-from app.utils import ensure_dir, get_file_hash, sanitize_filename
+from app.utils import ensure_dir, get_file_hash, get_content_hash, sanitize_filename
 from app.utils.errors import DownloadError, NetworkError, ScraperError
 from app.utils.retry import retry_on_error
 
@@ -124,12 +124,15 @@ class MetadataIOMixin:
             temp_md_path = output_dir / f".{safe_filename}.md.tmp"
             temp_json_path = output_dir / f".{safe_filename}.json.tmp"
             
+            # Encode content once
+            content_bytes = content.encode("utf-8")
+
             # Write markdown to temp file
-            temp_md_path.write_text(content, encoding="utf-8")
+            temp_md_path.write_bytes(content_bytes)
             
-            # Compute metadata from temp file
-            file_size = len(content.encode("utf-8"))
-            file_hash = get_file_hash(temp_md_path)
+            # Compute metadata from content bytes
+            file_size = len(content_bytes)
+            file_hash = get_content_hash(content_bytes)
             
             # Prepare metadata with computed values (without mutating article yet)
             article_dict = article.to_dict()
