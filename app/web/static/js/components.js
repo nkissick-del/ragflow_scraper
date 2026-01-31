@@ -4,6 +4,18 @@
  */
 
 /**
+ * Initialize HTMX CSRF protection.
+ */
+function initializeCSRFProtection() {
+    document.body.addEventListener('htmx:configRequest', function(event) {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]');
+        if (csrfToken) {
+            event.detail.headers['X-CSRFToken'] = csrfToken.getAttribute('content');
+        }
+    });
+}
+
+/**
  * Initialize status polling for elements with auto-refresh.
  */
 function initializeStatusPolling() {
@@ -217,6 +229,7 @@ function initializeKeyboardShortcuts() {
 
 // Initialize all components when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
+    initializeCSRFProtection();
     initializeStatusPolling();
     handleScraperActions();
     handleFormSubmissions();

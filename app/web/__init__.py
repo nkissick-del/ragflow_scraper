@@ -3,7 +3,10 @@ Web interface module for the PDF Scraper application.
 """
 
 from flask import Flask
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
+
+csrf = CSRFProtect()
 
 
 def create_app() -> Flask:
@@ -17,6 +20,9 @@ def create_app() -> Flask:
     # Load configuration
     from app.config import Config
     app.config["SECRET_KEY"] = Config.SECRET_KEY
+
+    # Initialize CSRF protection
+    csrf.init_app(app)
 
     # Respect proxy headers when running behind reverse proxies (controlled via TRUST_PROXY_COUNT)
     if Config.TRUST_PROXY_COUNT > 0:

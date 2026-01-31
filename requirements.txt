@@ -28,3 +28,4 @@ schedule
 
 # Development
 webdriver-manager
+flask-wtf
