@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import time
 from datetime import datetime
 from pathlib import Path
@@ -222,9 +223,16 @@ class HttpDownloadMixin:
                 ) from exc
 
             try:
+                # OPTIMIZATION: Calculate hash while downloading to avoid re-read
+                hash_obj = hashlib.sha256()
                 with open(download_path, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
+                    # 64KB chunks for better I/O performance
+                    for chunk in response.iter_content(chunk_size=65536):
                         f.write(chunk)
+                        hash_obj.update(chunk)
+
+                if metadata:
+                    metadata.hash = hash_obj.hexdigest()
             except Exception as exc:
                 raise DownloadError(
                     f"Failed to write file for {url}",

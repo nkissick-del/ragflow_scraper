@@ -92,7 +92,7 @@ def get_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
     """
     hash_obj = hashlib.new(algorithm)
     with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
+        for chunk in iter(lambda: f.read(65536), b""):
             hash_obj.update(chunk)
     return hash_obj.hexdigest()
 
