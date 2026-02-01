@@ -29,6 +29,14 @@ def create_app() -> Flask:
             x_prefix=Config.TRUST_PROXY_COUNT,
         )
 
+    @app.after_request
+    def add_security_headers(response):
+        """Add security headers to all responses."""
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
     # Register routes via modular blueprints
     from app.web.blueprints import register_blueprints
     register_blueprints(app)
