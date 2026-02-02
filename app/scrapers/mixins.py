@@ -14,7 +14,8 @@ from selenium.webdriver.chrome.options import Options  # type: ignore[import]
 from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import]
 
 from app.config import Config
-from app.utils import ensure_dir, get_file_hash, get_content_hash, sanitize_filename
+from app.utils import ensure_dir, get_content_hash, sanitize_filename
+from app.utils.file_utils import CHUNK_SIZE
 from app.utils.errors import DownloadError, NetworkError, ScraperError
 from app.utils.retry import retry_on_error
 
@@ -154,7 +155,7 @@ class MetadataIOMixin:
                 # Rename JSON first (safest: if this fails, MD is not yet moved)
                 temp_json_path.rename(json_path)
                 temp_md_path.rename(md_path)
-            except Exception as exc:
+            except Exception:
                 # Clean up JSON if MD rename failed to avoid orphaned files
                 if json_path.exists():
                     json_path.unlink()
@@ -223,7 +224,7 @@ class HttpDownloadMixin:
 
             try:
                 with open(download_path, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
+                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                         f.write(chunk)
             except Exception as exc:
                 raise DownloadError(
