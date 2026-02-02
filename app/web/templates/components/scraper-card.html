@@ -24,11 +24,14 @@
             {% if scraper.status == 'cancelling' %}Cancelling...{% else %}Cancel{% endif %}
         </button>
         {% else %}
-        <button class="btn btn-primary"
+        <button class="btn btn-primary btn-with-loader"
                 hx-post="{{ url_for('scrapers.run_scraper', name=scraper.name) }}"
                 hx-target="#scraper-{{ scraper.name }}"
-                hx-swap="outerHTML">
-            Run Now
+                hx-swap="outerHTML"
+                hx-disabled-elt="this"
+                hx-indicator="this">
+            <span class="btn-text">Run Now</span>
+            <span class="btn-loader"><span class="loading-spinner"></span></span>
         </button>
         {% endif %}
         <a href="{{ url_for('scrapers.scrapers_page') }}" class="btn btn-secondary">Configure</a>

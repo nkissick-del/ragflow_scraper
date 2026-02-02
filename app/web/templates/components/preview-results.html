@@ -75,11 +75,14 @@
     {% endif %}
 
     <div class="preview-actions">
-        <button class="btn btn-primary"
+        <button class="btn btn-primary btn-with-loader"
                 hx-post="{{ url_for('scrapers.run_scraper', name=scraper_name) }}"
                 hx-target="#scraper-{{ scraper_name }}"
-                hx-swap="outerHTML">
-            Run Full Scrape
+                hx-swap="outerHTML"
+                hx-disabled-elt="this"
+                hx-indicator="this">
+            <span class="btn-text">Run Full Scrape</span>
+            <span class="btn-loader"><span class="loading-spinner"></span></span>
         </button>
         <button class="btn btn-secondary" onclick="this.closest('.preview-modal').remove()">
             Close

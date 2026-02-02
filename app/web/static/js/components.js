@@ -20,6 +20,10 @@ function handleScraperActions() {
     document.addEventListener('htmx:beforeRequest', function(event) {
         const target = event.target;
         if (target.matches('[hx-post*="/run"]')) {
+            // If the button has the loader class, let CSS handle the loading state
+            if (target.classList.contains('btn-with-loader')) {
+                return;
+            }
             target.disabled = true;
             target.dataset.originalText = target.textContent;
             target.textContent = 'Starting...';
@@ -43,7 +47,9 @@ function handleScraperActions() {
         const target = event.target;
         if (target.matches('[hx-post*="/run"]')) {
             target.disabled = false;
-            target.textContent = target.dataset.originalText || 'Run Now';
+            if (!target.classList.contains('btn-with-loader')) {
+                target.textContent = target.dataset.originalText || 'Run Now';
+            }
             showNotification('Request failed. Please try again.', 'error');
         }
         // Handle preview button errors
