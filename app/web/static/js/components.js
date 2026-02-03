@@ -13,6 +13,19 @@ function initializeStatusPolling() {
 }
 
 /**
+ * Initialize CSRF protection for HTMX requests.
+ * Reads token from meta tag and adds to headers.
+ */
+function initializeCSRF() {
+    document.body.addEventListener('htmx:configRequest', function(evt) {
+        const tokenMeta = document.querySelector('meta[name="csrf-token"]');
+        if (tokenMeta) {
+            evt.detail.headers['X-CSRFToken'] = tokenMeta.content;
+        }
+    });
+}
+
+/**
  * Handle scraper action button clicks.
  * Adds loading state and disables button during request.
  */
@@ -217,6 +230,7 @@ function initializeKeyboardShortcuts() {
 
 // Initialize all components when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
+    initializeCSRF();
     initializeStatusPolling();
     handleScraperActions();
     handleFormSubmissions();
