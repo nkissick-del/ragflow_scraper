@@ -15,6 +15,7 @@ from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import
 
 from app.config import Config
 from app.utils import ensure_dir, get_file_hash, get_content_hash, sanitize_filename
+from app.utils.file_utils import CHUNK_SIZE
 from app.utils.errors import DownloadError, NetworkError, ScraperError
 from app.utils.retry import retry_on_error
 
@@ -223,7 +224,7 @@ class HttpDownloadMixin:
 
             try:
                 with open(download_path, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
+                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                         f.write(chunk)
             except Exception as exc:
                 raise DownloadError(
