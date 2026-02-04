@@ -101,18 +101,23 @@ class JobQueue:
     - Testing (via conftest.py fixture)
     """
 
-    def __init__(self, daemon: bool = False):
+    def __init__(self, daemon: bool = False, max_workers: int = 1):
         self._queue: queue.Queue[ScraperJob] = queue.Queue()
         self._jobs: dict[str, ScraperJob] = {}
         self._lock = threading.Lock()
         self._shutdown = threading.Event()
+        self._workers: list[threading.Thread] = []
+
         # Worker thread daemon setting:
         # - daemon=False (default): Process blocks at exit waiting for this thread
         #   Best for production (ensures orderly shutdown via shutdown() or atexit)
         # - daemon=True: Thread is killed when main thread exits
         #   Best for testing (tests cleanup themselves)
-        self._worker = threading.Thread(target=self._worker_loop, daemon=daemon)
-        self._worker.start()
+        for i in range(max_workers):
+            t = threading.Thread(target=self._worker_loop, daemon=daemon, name=f"ScraperWorker-{i}")
+            t.start()
+            self._workers.append(t)
+
         try:
             _instances.add(self)
         except Exception:
@@ -195,11 +200,11 @@ class JobQueue:
             self._queue.task_done()
 
     def shutdown(self, wait: bool = True, timeout: Optional[float] = None) -> None:
-        """Gracefully shutdown the worker thread.
+        """Gracefully shutdown the worker threads.
         
         CRITICAL: This must be called before process exit unless you're relying
         on the atexit handler. Without this, the process will block indefinitely
-        waiting for the worker thread to terminate.
+        waiting for the worker threads to terminate.
         
         Args:
             wait: If True, wait for the queue to be drained before returning.
@@ -210,7 +215,9 @@ class JobQueue:
         if wait:
             self._queue.join()
         self._shutdown.set()
-        self._worker.join(timeout)
+
+        for worker in self._workers:
+            worker.join(timeout)
 
 
 # Keep a weak set of JobQueue instances so we can attempt orderly shutdown

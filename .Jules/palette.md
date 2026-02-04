@@ -5,3 +5,11 @@
 ## 2026-01-29 - Dynamic Content Accessibility
 **Learning:** Dynamic content like toast notifications and client-side navigation updates are often invisible to screen readers without explicit ARIA roles.
 **Action:** Always add `role="alert"` or `role="status"` to toast notifications, and ensure `aria-current="page"` is updated on navigation links.
+
+## 2024-10-24 - Accessible Navigation
+**Learning:** Visual indication of active pages (e.g., `class="active"`) is insufficient for screen readers. They require `aria-current="page"` to announce the user's current location within a navigation set.
+**Action:** Ensure all navigation logic that sets an active class also sets `aria-current="page"`.
+
+## 2026-02-04 - Standardized Button Loading State
+**Learning:** HTMX buttons can easily support loading states by toggling visibility of text/loader elements based on the `htmx-request` class. This pattern is robust and should be applied to all async buttons.
+**Action:** Use `.btn-with-loader` wrapper with `.btn-text` and `.btn-loader` children, plus `hx-indicator` pointing to self.

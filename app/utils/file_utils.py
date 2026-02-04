@@ -14,6 +14,9 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# Standard chunk size for file I/O operations (64KB)
+CHUNK_SIZE = 65536
+
 
 def sanitize_filename(filename: str, max_length: int = 200) -> str:
     """
@@ -92,8 +95,26 @@ def get_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
     """
     hash_obj = hashlib.new(algorithm)
     with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
+        for chunk in iter(lambda: f.read(CHUNK_SIZE), b""):
             hash_obj.update(chunk)
+    return hash_obj.hexdigest()
+
+
+def get_content_hash(content: str | bytes, algorithm: str = "sha256") -> str:
+    """
+    Calculate the hash of content (string or bytes).
+
+    Args:
+        content: Content to hash (string or bytes)
+        algorithm: Hash algorithm to use (default: sha256)
+
+    Returns:
+        Hex digest of the content hash
+    """
+    hash_obj = hashlib.new(algorithm)
+    if isinstance(content, str):
+        content = content.encode("utf-8")
+    hash_obj.update(content)
     return hash_obj.hexdigest()
 
 
