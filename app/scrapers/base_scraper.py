@@ -95,7 +95,8 @@ class BaseScraper(
         self.cloudflare_bypass_enabled = cloudflare_bypass_enabled
 
         self.logger = get_logger(self.name)
-        self.state_tracker: StateTracker = StateTracker(self.name)
+        from app.container import get_container
+        self.state_tracker: StateTracker = get_container().state_tracker(self.name)
         self.driver: Optional[WebDriver] = None
 
         # Cloudflare bypass state

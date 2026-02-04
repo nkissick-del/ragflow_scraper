@@ -26,6 +26,7 @@ def app():
         
         app = create_app()
         app.config["TESTING"] = True
+        app.config["WTF_CSRF_ENABLED"] = False
         yield app
 
 
@@ -181,7 +182,11 @@ class TestSettingsEndpoints:
     
     def test_test_flaresolverr_connection(self, client):
         """Test FlareSolverr connection test endpoint."""
-        with patch("app.web.blueprints.settings.container") as mock_container:
+        with patch("app.web.blueprints.settings.container") as mock_container, \
+             patch("app.web.blueprints.settings.Config") as mock_config:
+
+            mock_config.FLARESOLVERR_URL = "http://test:8191"
+
             mock_flaresolverr = MagicMock()
             mock_flaresolverr.test_connection.return_value = True
             mock_container.flaresolverr_client = mock_flaresolverr
@@ -258,8 +263,10 @@ class TestMetricsLogsEndpoints:
     
     def test_pipeline_metrics_endpoint(self, client):
         """Test pipeline metrics endpoint."""
-        response = client.get("/metrics/pipeline")
-        assert response.status_code == 200
+        with patch("app.web.blueprints.metrics_logs.ScraperRegistry.list_scrapers") as mock_list:
+            mock_list.return_value = []
+            response = client.get("/metrics/pipeline")
+            assert response.status_code == 200
 
 
 class TestAPIEndpoints:

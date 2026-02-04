@@ -3,6 +3,7 @@
 
 # Web Framework
 flask
+Flask-WTF
 
 # Scraping
 selenium

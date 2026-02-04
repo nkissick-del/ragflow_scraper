@@ -5,3 +5,7 @@
 ## 2024-10-24 - Accessible Navigation
 **Learning:** Visual indication of active pages (e.g., `class="active"`) is insufficient for screen readers. They require `aria-current="page"` to announce the user's current location within a navigation set.
 **Action:** Ensure all navigation logic that sets an active class also sets `aria-current="page"`.
+
+## 2026-02-04 - Standardized Button Loading State
+**Learning:** HTMX buttons can easily support loading states by toggling visibility of text/loader elements based on the `htmx-request` class. This pattern is robust and should be applied to all async buttons.
+**Action:** Use `.btn-with-loader` wrapper with `.btn-text` and `.btn-loader` children, plus `hx-indicator` pointing to self.
