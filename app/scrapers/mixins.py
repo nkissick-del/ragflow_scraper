@@ -15,7 +15,12 @@ from selenium.webdriver.chrome.options import Options  # type: ignore[import]
 from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import]
 
 from app.config import Config
-from app.utils import ensure_dir, get_file_hash, get_content_hash, sanitize_filename, CHUNK_SIZE
+from app.utils import (
+    ensure_dir,
+    get_content_hash,
+    sanitize_filename,
+    CHUNK_SIZE,
+)
 from app.utils.errors import DownloadError, NetworkError, ScraperError
 from app.utils.retry import retry_on_error
 
@@ -28,10 +33,12 @@ class IncrementalStateMixin:
 
     Notes: inheriting scrapers should provide `name: str` and `state_tracker`.
     """
+
     name: str = ""  # Provided by inheriting class
     state_tracker: Any = None  # Provided by inheriting class
     _newest_article_date: Optional[str] = None
     logger: Any = None
+
     def _get_last_scrape_date(self) -> Optional[str]:
         key = f"_{self.name}_last_scrape_date"
         state = self.state_tracker.get_state()
@@ -39,7 +46,9 @@ class IncrementalStateMixin:
 
     def _update_last_scrape_date(self, date_str: Optional[str] = None) -> None:
         key = f"_{self.name}_last_scrape_date"
-        value = date_str or self._newest_article_date or datetime.now().strftime("%Y-%m-%d")
+        value = (
+            date_str or self._newest_article_date or datetime.now().strftime("%Y-%m-%d")
+        )
         self.state_tracker.set_value(key, value)
         self.state_tracker.save()
 
@@ -67,7 +76,10 @@ class ExclusionRulesMixin:
     def _should_exclude(self, tags: list[str]) -> bool:
         if not self.excluded_tags:
             return False
-        return any(excluded.lower() in [t.lower() for t in tags] for excluded in self.excluded_tags)
+        return any(
+            excluded.lower() in [t.lower() for t in tags]
+            for excluded in self.excluded_tags
+        )
 
     def should_exclude_document(self, doc: "DocumentMetadata") -> Optional[str]:
         tags_lower = [t.lower() for t in doc.tags] if doc.tags else []
@@ -109,14 +121,38 @@ class MetadataIOMixin:
         with open(metadata_file, "w") as f:
             json.dump(metadata.to_dict(), f, indent=2)
 
-    def _save_article(self, article: "DocumentMetadata", content: str) -> Optional[str]:
+    def _save_article(
+        self,
+        article: "DocumentMetadata",
+        content: str,
+        html_content: Optional[str] = None,
+    ) -> Optional[str]:
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {article.title}")
             return None
 
+        # Determine if we should generate a PDF archive
+        # We do this if html_content is provided (Archive Path)
+        if html_content:
+            try:
+                from app.services.archiver import Archiver
+
+                # Use existing driver if available (from WebDriverLifecycleMixin)
+                driver = getattr(self, "driver", None)
+                archiver = Archiver(driver=driver)
+
+                output_dir = ensure_dir(Config.DOWNLOAD_DIR / self.name)
+                pdf_path = archiver.generate_pdf(html_content, article, output_dir)
+
+                if pdf_path:
+                    article.pdf_path = str(pdf_path)
+            except Exception as e:
+                self.logger.error(f"Archiver failed for '{article.title}': {e}")
+                # Don't fail the whole save, just log error for archive path
+
         temp_md_path = None
         temp_json_path = None
-        
+
         try:
             output_dir = ensure_dir(Config.DOWNLOAD_DIR / self.name)
             safe_filename = sanitize_filename(article.filename)
@@ -124,43 +160,43 @@ class MetadataIOMixin:
             # Write to temporary files first (atomic write pattern)
             temp_md_path = output_dir / f".{safe_filename}.md.tmp"
             temp_json_path = output_dir / f".{safe_filename}.json.tmp"
-            
+
             # Encode content once
             content_bytes = content.encode("utf-8")
 
             # Write markdown to temp file
             temp_md_path.write_bytes(content_bytes)
-            
+
             # Compute metadata from content bytes
             file_size = len(content_bytes)
             file_hash = get_content_hash(content_bytes)
-            
+
             # Prepare metadata with computed values (without mutating article yet)
             article_dict = article.to_dict()
             article_dict["local_path"] = str(output_dir / f"{safe_filename}.md")
             article_dict["file_size"] = file_size
             article_dict["hash"] = file_hash
-            
+
             # Write JSON to temp file
             temp_json_path.write_text(
                 json.dumps(article_dict, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
-            
+
             # Both writes succeeded - now atomically move temp files to final locations
             md_path = output_dir / f"{safe_filename}.md"
             json_path = output_dir / f"{safe_filename}.json"
-            
+
             try:
                 # Rename JSON first (safest: if this fails, MD is not yet moved)
                 temp_json_path.rename(json_path)
                 temp_md_path.rename(md_path)
-            except Exception as exc:
+            except Exception:
                 # Clean up JSON if MD rename failed to avoid orphaned files
                 if json_path.exists():
                     json_path.unlink()
                 raise
-            
+
             # Only mutate article after all file operations succeed
             article.local_path = str(md_path)
             article.file_size = file_size
@@ -182,13 +218,17 @@ class HttpDownloadMixin:
     # Expected attributes
     dry_run: bool = False
     download_timeout: int = 30
+
     def __init__(self):
         self._errors: List[str] = []
+
     logger: Any = None
     name: str = ""
 
     # Provide a metadata save hook signature so Pylance knows this exists
-    def _save_metadata(self, metadata: "DocumentMetadata") -> None:  # pragma: no cover - overridden by MetadataIOMixin
+    def _save_metadata(
+        self, metadata: "DocumentMetadata"
+    ) -> None:  # pragma: no cover - overridden by MetadataIOMixin
         raise NotImplementedError()
 
     def _download_file(
@@ -215,12 +255,12 @@ class HttpDownloadMixin:
                     headers={"User-Agent": "Mozilla/5.0 PDF Scraper"},
                 )
                 response.raise_for_status()
-            except requests.RequestException as exc:
+            except requests.RequestException:
                 raise NetworkError(
                     f"Failed to fetch {url}",
                     scraper=self.name,
                     context={"url": url},
-                ) from exc
+                )
 
             try:
                 hash_obj = hashlib.sha256()
@@ -230,13 +270,13 @@ class HttpDownloadMixin:
                         f.write(chunk)
                         hash_obj.update(chunk)
                         file_size += len(chunk)
-            except Exception as exc:
+            except Exception:
                 raise DownloadError(
                     f"Failed to write file for {url}",
                     scraper=self.name,
                     recoverable=False,
                     context={"url": url, "path": str(download_path)},
-                ) from exc
+                )
 
             self.logger.info(f"Downloaded: {download_path}")
 
@@ -284,7 +324,9 @@ class WebDriverLifecycleMixin:
     def get_page_source(self) -> str:
         """Return page source from the Selenium driver, raising if driver missing."""
         if not self.driver:
-            raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            raise ScraperError(
+                "Driver not initialized", scraper=getattr(self, "name", "unknown")
+            )
         assert self.driver is not None
         return self.driver.page_source
 
@@ -317,7 +359,9 @@ class CloudflareBypassMixin:
         self._cloudflare_cookies: Dict[str, str] = {}
 
     if TYPE_CHECKING:  # provide stub for type checker without affecting runtime MRO
+
         def get_page_source(self) -> str: ...
+
     def _init_cloudflare_bypass(self) -> bool:
         if not self.cloudflare_bypass_enabled:
             self.logger.debug("Cloudflare bypass not enabled")
@@ -329,7 +373,9 @@ class CloudflareBypassMixin:
 
         try:
             self.logger.info("Initializing Cloudflare bypass via FlareSolverr...")
-            self._flaresolverr = cast(Any, self._flaresolverr or self._build_flaresolverr())
+            self._flaresolverr = cast(
+                Any, self._flaresolverr or self._build_flaresolverr()
+            )
 
             # Create a session id and request FlareSolverr to create it. The
             # FlareSolverr client returns a boolean for session creation, and
@@ -350,13 +396,21 @@ class CloudflareBypassMixin:
 
             result = self._flaresolverr.get_page(self.base_url, session_id=session_id)
             if not getattr(result, "success", False):
-                self.logger.error(f"FlareSolverr failed to fetch initial page: {getattr(result, 'error', '')}")
+                self.logger.error(
+                    f"FlareSolverr failed to fetch initial page: {getattr(result, 'error', '')}"
+                )
                 return False
 
             # Extract session artifacts
-            self._cloudflare_cookies = {c["name"]: c["value"] for c in getattr(result, "cookies", []) if "name" in c}
+            self._cloudflare_cookies = {
+                c["name"]: c["value"]
+                for c in getattr(result, "cookies", [])
+                if "name" in c
+            }
             self._cloudflare_user_agent = getattr(result, "user_agent", "")
-            self.logger.info(f"Extracted {len(self._cloudflare_cookies)} cookies from FlareSolverr")
+            self.logger.info(
+                f"Extracted {len(self._cloudflare_cookies)} cookies from FlareSolverr"
+            )
             self._flaresolverr_html = getattr(result, "html", "")
             return True
         except Exception as exc:
@@ -397,7 +451,9 @@ class CloudflareBypassMixin:
             self.logger.warning("FlareSolverr fetch failed, falling back to Selenium")
 
         if not self.driver:
-            raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+            raise ScraperError(
+                "Driver not initialized", scraper=getattr(self, "name", "unknown")
+            )
 
         # Narrow type for static checker
         assert self.driver is not None
@@ -423,13 +479,17 @@ class CloudflareBypassMixin:
                 if page_html and "Just a moment" not in page_html:
                     self.logger.info("Using FlareSolverr HTML directly")
                 else:
-                    self.logger.warning("FlareSolverr HTML invalid, falling back to Selenium")
+                    self.logger.warning(
+                        "FlareSolverr HTML invalid, falling back to Selenium"
+                    )
                     page_html = ""
 
         if not page_html:
             self.logger.info(f"Fetching {self.base_url} via Selenium")
             if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
+                raise ScraperError(
+                    "Driver not initialized", scraper=getattr(self, "name", "unknown")
+                )
             assert self.driver is not None
             self.driver.get(self.base_url)
             _wait = getattr(self, "_wait_for_content", None)
@@ -440,7 +500,9 @@ class CloudflareBypassMixin:
             page_html = self.get_page_source()
 
         if "Just a moment" in page_html:
-            self.logger.error("Cloudflare challenge detected. Enable FlareSolverr or try again later.")
+            self.logger.error(
+                "Cloudflare challenge detected. Enable FlareSolverr or try again later."
+            )
             return False, page_html
 
         return True, page_html
@@ -489,7 +551,9 @@ class CloudflareBypassMixin:
                 self.driver.add_cookie(cookie)
                 self.logger.debug(f"Injected cookie: {name}")
 
-            self.logger.info(f"Injected {len(self._cloudflare_cookies)} cookies into Selenium")
+            self.logger.info(
+                f"Injected {len(self._cloudflare_cookies)} cookies into Selenium"
+            )
             return True
         except Exception as exc:
             self.logger.error(f"Failed to inject Cloudflare cookies: {exc}")
@@ -501,13 +565,24 @@ class CloudflareBypassMixin:
         from app.services.flaresolverr_client import FlareSolverrClient
 
         settings = getattr(self, "settings_mgr", None)
-        timeout = settings.flaresolverr_timeout if settings else Config.FLARESOLVERR_TIMEOUT
-        max_timeout = settings.flaresolverr_max_timeout if settings else Config.FLARESOLVERR_MAX_TIMEOUT
-        return FlareSolverrClient(url=Config.FLARESOLVERR_URL, timeout=timeout, max_timeout=max_timeout)
+        timeout = (
+            settings.flaresolverr_timeout if settings else Config.FLARESOLVERR_TIMEOUT
+        )
+        max_timeout = (
+            settings.flaresolverr_max_timeout
+            if settings
+            else Config.FLARESOLVERR_MAX_TIMEOUT
+        )
+        return FlareSolverrClient(
+            url=Config.FLARESOLVERR_URL, timeout=timeout, max_timeout=max_timeout
+        )
 
 
-class ExclusionAndMetadataMixin(ExclusionRulesMixin, MetadataIOMixin, HttpDownloadMixin):
+class ExclusionAndMetadataMixin(
+    ExclusionRulesMixin, MetadataIOMixin, HttpDownloadMixin
+):
     """Convenience mixin grouping exclusion + IO."""
+
     pass
 
 

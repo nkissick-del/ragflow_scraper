@@ -25,6 +25,10 @@ class DocumentMetadata:
     hash: Optional[str] = None
     extra: dict = field(default_factory=dict)
 
+    # Paperless integration
+    paperless_id: Optional[int] = None
+    pdf_path: Optional[str] = None
+
     def to_dict(self) -> dict:
         return asdict(self)
 

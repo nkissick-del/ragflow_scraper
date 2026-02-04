@@ -22,7 +22,9 @@ def _parse_proxy_count(raw: str) -> int:
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        raise ValueError(f"Invalid Config.TRUST_PROXY_COUNT: must be an integer, got '{raw}'")
+        raise ValueError(
+            f"Invalid Config.TRUST_PROXY_COUNT: must be an integer, got '{raw}'"
+        )
 
     if value < 0 or value > 10:
         raise ValueError(
@@ -32,25 +34,29 @@ def _parse_proxy_count(raw: str) -> int:
     return value
 
 
-def _parse_timeout(raw: str, param_name: str, min_val: int = 1, max_val: int = 600) -> int:
+def _parse_timeout(
+    raw: str, param_name: str, min_val: int = 1, max_val: int = 600
+) -> int:
     """Validate timeout parameter as a bounded positive integer.
-    
+
     Args:
         raw: Raw value from environment variable
         param_name: Name of the parameter for error messages
         min_val: Minimum allowed value (default 1)
         max_val: Maximum allowed value (default 600)
-        
+
     Returns:
         Validated integer timeout value
-        
+
     Raises:
         ValueError: If value is not an integer or out of range
     """
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        raise ValueError(f"Invalid Config.{param_name}: must be an integer, got '{raw}'")
+        raise ValueError(
+            f"Invalid Config.{param_name}: must be an integer, got '{raw}'"
+        )
 
     if value < min_val or value > max_val:
         raise ValueError(
@@ -71,6 +77,10 @@ class Config:
     BASIC_AUTH_USERNAME = os.getenv("BASIC_AUTH_USERNAME", "")
     BASIC_AUTH_PASSWORD = os.getenv("BASIC_AUTH_PASSWORD", "")
 
+    # Paperless-ngx
+    PAPERLESS_API_URL = os.getenv("PAPERLESS_API_URL", "http://localhost:8000")
+    PAPERLESS_API_TOKEN = os.getenv("PAPERLESS_API_TOKEN", "")
+
     # RAGFlow
     RAGFLOW_API_URL = os.getenv("RAGFLOW_API_URL", "http://localhost:9380")
     RAGFLOW_API_KEY = os.getenv("RAGFLOW_API_KEY", "")
@@ -83,12 +93,18 @@ class Config:
     # RAGFlow Metadata Settings
     RAGFLOW_PUSH_METADATA = os.getenv("RAGFLOW_PUSH_METADATA", "true").lower() == "true"
     RAGFLOW_METADATA_TIMEOUT = float(os.getenv("RAGFLOW_METADATA_TIMEOUT", "10.0"))
-    RAGFLOW_METADATA_POLL_INTERVAL = float(os.getenv("RAGFLOW_METADATA_POLL_INTERVAL", "0.5"))
+    RAGFLOW_METADATA_POLL_INTERVAL = float(
+        os.getenv("RAGFLOW_METADATA_POLL_INTERVAL", "0.5")
+    )
     RAGFLOW_METADATA_RETRIES = int(os.getenv("RAGFLOW_METADATA_RETRIES", "3"))
-    RAGFLOW_CHECK_DUPLICATES = os.getenv("RAGFLOW_CHECK_DUPLICATES", "true").lower() == "true"
+    RAGFLOW_CHECK_DUPLICATES = (
+        os.getenv("RAGFLOW_CHECK_DUPLICATES", "true").lower() == "true"
+    )
 
     # Selenium
-    SELENIUM_REMOTE_URL = os.getenv("SELENIUM_REMOTE_URL", "http://localhost:4444/wd/hub")
+    SELENIUM_REMOTE_URL = os.getenv(
+        "SELENIUM_REMOTE_URL", "http://localhost:4444/wd/hub"
+    )
     SELENIUM_HEADLESS = os.getenv("SELENIUM_HEADLESS", "true").lower() == "true"
 
     # FlareSolverr (enabled/disabled is controlled via UI settings, not env)
@@ -97,13 +113,13 @@ class Config:
         os.getenv("FLARESOLVERR_TIMEOUT", "60"),
         "FLARESOLVERR_TIMEOUT",
         min_val=1,
-        max_val=600
+        max_val=600,
     )
     FLARESOLVERR_MAX_TIMEOUT = _parse_timeout(
         os.getenv("FLARESOLVERR_MAX_TIMEOUT", "120"),
         "FLARESOLVERR_MAX_TIMEOUT",
         min_val=1,
-        max_val=600
+        max_val=600,
     )
 
     # Guardian Open Platform API
@@ -151,7 +167,7 @@ class Config:
                 raise ValueError(
                     "Invalid Config: BASIC_AUTH_ENABLED=true requires both BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD"
                 )
-        
+
         if cls.FLARESOLVERR_MAX_TIMEOUT < cls.FLARESOLVERR_TIMEOUT:
             raise ValueError(
                 f"Invalid Config: FLARESOLVERR_MAX_TIMEOUT ({cls.FLARESOLVERR_MAX_TIMEOUT}) "

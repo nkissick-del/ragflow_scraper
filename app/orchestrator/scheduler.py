@@ -8,13 +8,11 @@ import json
 import threading
 import time
 from datetime import datetime
-from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 import schedule  # type: ignore[import-untyped]
 
 from app.config import Config
-from app.scrapers import ScraperRegistry
 from app.utils import get_logger
 from app.utils.logging_config import log_exception, log_event
 
@@ -81,7 +79,13 @@ class Scheduler:
         job = self._parse_cron_and_schedule(scraper_name, cron)
         if job:
             self._jobs[scraper_name] = job
-            log_event(self.logger, "info", "scheduler.job.scheduled", scraper=scraper_name, cron=cron)
+            log_event(
+                self.logger,
+                "info",
+                "scheduler.job.scheduled",
+                scraper=scraper_name,
+                cron=cron,
+            )
 
     def _parse_cron_and_schedule(
         self,
@@ -149,19 +153,26 @@ class Scheduler:
         log_event(self.logger, "info", "scheduler.run.start", scraper=scraper_name)
 
         try:
-            scraper = ScraperRegistry.get_scraper(scraper_name)
-            if scraper:
-                result = scraper.run()
-                log_event(
-                    self.logger,
-                    "info",
-                    "scheduler.run.complete",
-                    scraper=scraper_name,
-                    downloaded=result.downloaded_count,
-                    failed=result.failed_count,
-                )
-            else:
-                log_event(self.logger, "error", "scheduler.run.not_found", scraper=scraper_name)
+            # Use Pipeline to handle scraping + upload + parsing
+            from app.orchestrator.pipeline import run_pipeline
+
+            # Run pipeline (scraper -> paperless -> ragflow)
+            result = run_pipeline(
+                scraper_name=scraper_name,
+                upload_to_ragflow=True,  # Default to True from config
+                upload_to_paperless=True,  # Default to True
+                wait_for_parsing=False,  # Don't block scheduler thread for parsing
+            )
+
+            log_event(
+                self.logger,
+                "info",
+                "scheduler.run.complete",
+                scraper=scraper_name,
+                downloaded=result.downloaded_count,
+                failed=result.failed_count,
+                status=result.status,
+            )
         except Exception as e:
             log_exception(
                 self.logger,

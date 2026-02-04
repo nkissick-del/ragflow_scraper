@@ -10,11 +10,9 @@ Saves article content as Markdown for RAGFlow indexing.
 
 from __future__ import annotations
 
-import time
 from typing import Any, Optional
 
 import feedparser  # type: ignore[import-untyped]
-import requests
 
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
@@ -305,7 +303,9 @@ class TheConversationScraper(BaseScraper):
             result.downloaded_count += 1
             result.documents.append(metadata.to_dict())
         else:
-            saved_path = self._save_article(metadata, content_md)
+            saved_path = self._save_article(
+                metadata, content_md, html_content=content_html
+            )
             if saved_path:
                 result.downloaded_count += 1
                 result.documents.append(metadata.to_dict())

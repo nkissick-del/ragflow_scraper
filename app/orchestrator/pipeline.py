@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from app.config import Config
 from app.container import get_container
@@ -71,6 +71,7 @@ class Pipeline:
         dataset_id: Optional[str] = None,
         max_pages: Optional[int] = None,
         upload_to_ragflow: bool = True,
+        upload_to_paperless: bool = True,
         wait_for_parsing: bool = True,
         container=None,
     ):
@@ -82,12 +83,14 @@ class Pipeline:
             dataset_id: RAGFlow dataset ID (uses config if not provided)
             max_pages: Maximum pages to scrape
             upload_to_ragflow: Whether to upload to RAGFlow
+            upload_to_paperless: Whether to upload to Paperless
             wait_for_parsing: Whether to wait for parsing to complete
         """
         self.scraper_name = scraper_name
         self.dataset_id = dataset_id or Config.RAGFLOW_DATASET_ID
         self.max_pages = max_pages
         self.upload_to_ragflow = upload_to_ragflow
+        self.upload_to_paperless = upload_to_paperless
         self.wait_for_parsing = wait_for_parsing
         self.container = container or get_container()
 
@@ -103,6 +106,7 @@ class Pipeline:
             PipelineResult with statistics
         """
         import time
+
         start_time = time.perf_counter()
         step_times: dict[str, float] = {}
 
@@ -113,7 +117,9 @@ class Pipeline:
 
         try:
             # Step 1: Run scraper
-            log_event(self.logger, "info", "pipeline.scrape.start", scraper=self.scraper_name)
+            log_event(
+                self.logger, "info", "pipeline.scrape.start", scraper=self.scraper_name
+            )
             step_start = time.perf_counter()
             scraper_result = self._run_scraper()
             step_times["scrape"] = time.perf_counter() - step_start
@@ -133,17 +139,43 @@ class Pipeline:
                 result.status = "completed"
                 return self._finalize_result(result, start_time)
 
-            # Step 2: Upload to RAGFlow
+            # Step 2: Archive to Paperless
+            if self.upload_to_paperless:
+                archive_start = time.perf_counter()
+                log_event(
+                    self.logger,
+                    "info",
+                    "pipeline.archive.start",
+                    scraper=self.scraper_name,
+                )
+
+                archive_result = self._archive_to_paperless(scraper_result.documents)
+                result.uploaded_to_paperless = archive_result["uploaded"]
+
+                step_times["archive"] = time.perf_counter() - archive_start
+                self._step_times = step_times
+
+                if archive_result["failed"] > 0:
+                    result.errors.append(
+                        f"{archive_result['failed']} documents failed to archive to Paperless"
+                    )
+
+            # Step 3: Upload to RAGFlow (Ingest Path)
             if self.upload_to_ragflow and self.dataset_id:
                 upload_start = time.perf_counter()
+
+                # Determine file pattern based on scraper type or just look for both
+                # Ideally, we upload the Source file (MD) if available, otherwise PDF
+                # For now, let's upload all MD and PDF files found that match scraped docs
+
                 log_event(
                     self.logger,
                     "info",
                     "pipeline.upload.start",
                     scraper=self.scraper_name,
                     dataset_id=self.dataset_id,
-                    file_count=len(list((Config.DOWNLOAD_DIR / self.scraper_name).glob("*.pdf"))),
                 )
+
                 upload_result = self._upload_to_ragflow()
                 result.uploaded_count = upload_result["uploaded"]
                 result.failed_count += upload_result["failed"]
@@ -155,17 +187,17 @@ class Pipeline:
 
                 if upload_result["failed"] > 0:
                     result.errors.append(
-                        f"{upload_result['failed']} documents failed to upload"
+                        f"{upload_result['failed']} documents failed to upload to RAGFlow"
                     )
 
-                # Step 3: Trigger parsing
+                # Step 4: Trigger parsing
                 if result.uploaded_count > 0:
-                    self.logger.info("Step 3: Triggering parsing...")
+                    self.logger.info("Step 4: Triggering parsing...")
                     if self._trigger_parsing():
-                        # Step 4: Wait for parsing
+                        # Step 5: Wait for parsing
                         if self.wait_for_parsing:
                             parse_start = time.time()
-                            self.logger.info("Step 4: Waiting for parsing...")
+                            self.logger.info("Step 5: Waiting for parsing...")
                             if self._wait_for_parsing():
                                 result.parsed_count = result.uploaded_count
                                 step_times["parse_wait"] = time.time() - parse_start
@@ -201,6 +233,53 @@ class Pipeline:
         self._step_times = step_times
         return self._finalize_result(result, start_time)
 
+    def _archive_to_paperless(self, documents: list[dict]) -> dict[str, int]:
+        """Upload PDFs to Paperless."""
+        from app.services.paperless_client import PaperlessClient
+
+        client = PaperlessClient()
+
+        if not client.is_configured:
+            return {"uploaded": 0, "failed": 0}
+
+        uploaded = 0
+        failed = 0
+
+        for doc in documents:
+            pdf_path = doc.get("pdf_path")
+            if not pdf_path or not Path(pdf_path).exists():
+                continue
+
+            try:
+                # Parse date
+                created = None
+                if doc.get("publication_date"):
+                    try:
+                        created = datetime.strptime(doc["publication_date"], "%Y-%m-%d")
+                    except ValueError:
+                        pass
+
+                doc_id = client.post_document(
+                    file_path=pdf_path,
+                    title=doc.get("title", "Untitled"),
+                    created=created,
+                    correspondent=doc.get("organization")
+                    or doc.get("extra", {}).get("author"),
+                    tags=doc.get("tags"),
+                )
+
+                if doc_id:
+                    doc["paperless_id"] = doc_id
+                    uploaded += 1
+                    # Ideally update the metadata JSON on disk too, but skipping for speed
+                else:
+                    failed += 1
+            except Exception as e:
+                self.logger.error(f"Failed to archive document: {e}")
+                failed += 1
+
+        return {"uploaded": uploaded, "failed": failed}
+
     def _run_scraper(self):
         """Run the scraper."""
         scraper = ScraperRegistry.get_scraper(
@@ -219,11 +298,16 @@ class Pipeline:
             return {"uploaded": 0, "failed": 0}
 
         # Get list of downloaded files
+        # Prioritize Markdown, fall back to PDF if no MD
         download_dir = Config.DOWNLOAD_DIR / self.scraper_name
         if not download_dir.exists():
             return {"uploaded": 0, "failed": 0}
 
-        files = list(download_dir.glob("*.pdf"))
+        files = list(download_dir.glob("*.md"))
+        # If no markdown, looks for pdfs (legacy behavior for pdf scrapers)
+        if not files:
+            files = list(download_dir.glob("*.pdf"))
+
         if not files:
             return {"uploaded": 0, "failed": 0}
 
@@ -256,6 +340,7 @@ class Pipeline:
     ) -> PipelineResult:
         """Finalize the result with timing information."""
         import time
+
         result.duration_seconds = time.perf_counter() - start_time
         result.completed_at = datetime.now().isoformat()
 
