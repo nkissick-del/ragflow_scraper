@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from datetime import datetime
@@ -14,7 +15,7 @@ from selenium.webdriver.chrome.options import Options  # type: ignore[import]
 from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import]
 
 from app.config import Config
-from app.utils import ensure_dir, get_file_hash, get_content_hash, sanitize_filename
+from app.utils import ensure_dir, get_file_hash, get_content_hash, sanitize_filename, CHUNK_SIZE
 from app.utils.errors import DownloadError, NetworkError, ScraperError
 from app.utils.retry import retry_on_error
 
@@ -222,9 +223,13 @@ class HttpDownloadMixin:
                 ) from exc
 
             try:
+                hash_obj = hashlib.sha256()
+                file_size = 0
                 with open(download_path, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
+                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                         f.write(chunk)
+                        hash_obj.update(chunk)
+                        file_size += len(chunk)
             except Exception as exc:
                 raise DownloadError(
                     f"Failed to write file for {url}",
@@ -237,6 +242,11 @@ class HttpDownloadMixin:
 
             if metadata:
                 metadata.local_path = str(download_path)
+                metadata.hash = hash_obj.hexdigest()
+                # Update file_size if not already present or if different (trust actual download size)
+                if metadata.file_size is None or metadata.file_size == 0:
+                    metadata.file_size = file_size
+
                 self._save_metadata(metadata)
 
             return download_path
