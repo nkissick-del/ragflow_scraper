@@ -93,6 +93,13 @@ function showNotification(message, type = 'info', duration = 3000) {
     };
     notification.style.borderLeft = '4px solid ' + (colors[type] || colors.info);
 
+    // Add accessibility attributes
+    if (type === 'error' || type === 'warning') {
+        notification.setAttribute('role', 'alert');
+    } else {
+        notification.setAttribute('role', 'status');
+    }
+
     container.appendChild(notification);
 
     // Auto-remove after duration
