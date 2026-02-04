@@ -22,10 +22,10 @@
             <a href="{{ url_for('scrapers.index') }}">PDF Scraper</a>
         </div>
         <ul class="nav-links">
-            <li><a href="{{ url_for('scrapers.index') }}" {% if request.endpoint == 'scrapers.index' %}class="active"{% endif %}>Dashboard</a></li>
-            <li><a href="{{ url_for('scrapers.scrapers_page') }}" {% if request.endpoint == 'scrapers.scrapers_page' %}class="active"{% endif %}>Scrapers</a></li>
-            <li><a href="{{ url_for('metrics_logs.logs') }}" {% if request.endpoint == 'metrics_logs.logs' %}class="active"{% endif %}>Logs</a></li>
-            <li><a href="{{ url_for('settings.settings_page') }}" {% if request.endpoint == 'settings.settings_page' %}class="active"{% endif %}>Settings</a></li>
+            <li><a href="{{ url_for('scrapers.index') }}" {% if request.endpoint == 'scrapers.index' %}class="active" aria-current="page"{% endif %}>Dashboard</a></li>
+            <li><a href="{{ url_for('scrapers.scrapers_page') }}" {% if request.endpoint == 'scrapers.scrapers_page' %}class="active" aria-current="page"{% endif %}>Scrapers</a></li>
+            <li><a href="{{ url_for('metrics_logs.logs') }}" {% if request.endpoint == 'metrics_logs.logs' %}class="active" aria-current="page"{% endif %}>Logs</a></li>
+            <li><a href="{{ url_for('settings.settings_page') }}" {% if request.endpoint == 'settings.settings_page' %}class="active" aria-current="page"{% endif %}>Settings</a></li>
         </ul>
     </nav>
 
