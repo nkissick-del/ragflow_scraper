@@ -29,12 +29,16 @@
                 {% endif %}
             </div>
             <div class="scraper-actions">
-                <button class="btn btn-primary"
+                <button class="btn btn-primary btn-with-loader"
+                        id="run-btn-card-{{ scraper.name }}"
                         hx-post="{{ url_for('scrapers.run_scraper', name=scraper.name) }}"
                         hx-target="#scraper-{{ scraper.name }}"
                         hx-swap="outerHTML"
+                        hx-disabled-elt="this"
+                        hx-indicator="#run-btn-card-{{ scraper.name }}"
                         {% if scraper.status == 'running' %}disabled{% endif %}>
-                    {% if scraper.status == 'running' %}Running...{% else %}Run Now{% endif %}
+                    <span class="btn-text">{% if scraper.status == 'running' %}Running...{% else %}Run Now{% endif %}</span>
+                    <span class="btn-loader"><span class="loading-spinner"></span></span>
                 </button>
                 <a href="{{ url_for('scrapers.scrapers_page') }}" class="btn btn-secondary">Configure</a>
             </div>
