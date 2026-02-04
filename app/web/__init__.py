@@ -4,6 +4,7 @@ Web interface module for the PDF Scraper application.
 
 from flask import Flask
 from werkzeug.middleware.proxy_fix import ProxyFix
+from flask_wtf.csrf import CSRFProtect
 
 
 def create_app() -> Flask:
@@ -13,6 +14,9 @@ def create_app() -> Flask:
         template_folder="templates",
         static_folder="static",
     )
+
+    # Initialize CSRF protection
+    csrf = CSRFProtect(app)
 
     # Load configuration
     from app.config import Config
@@ -32,6 +36,10 @@ def create_app() -> Flask:
     # Register routes via modular blueprints
     from app.web.blueprints import register_blueprints
     register_blueprints(app)
+
+    # Exempt API blueprint from CSRF protection (relies on Basic Auth)
+    from app.web.blueprints.api_scrapers import bp as api_bp
+    csrf.exempt(api_bp)
 
     @app.after_request
     def add_security_headers(response):
