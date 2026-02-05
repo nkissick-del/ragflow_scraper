@@ -24,7 +24,11 @@ logger = get_logger("web.scrapers")
 
 @bp.route("/")
 def index():
-    return redirect(url_for("scrapers.scrapers_page"))
+    scrapers = ScraperRegistry.list_scrapers()
+    load_scraper_configs(scrapers)
+
+    log_event(logger, "info", "ui.page.dashboard")
+    return render_template("index.html", scrapers=scrapers)
 
 
 @bp.route("/scrapers")

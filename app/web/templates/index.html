@@ -12,37 +12,7 @@
     <h2>Scrapers</h2>
     <div class="scraper-grid">
         {% for scraper in scrapers %}
-        <div class="scraper-card"
-             id="scraper-{{ scraper.name }}"
-             hx-get="{{ url_for('scrapers.scraper_card', name=scraper.name) }}"
-             hx-trigger="every 5s"
-             hx-swap="outerHTML">
-            <div class="scraper-header">
-                <h3>{{ scraper.name }}</h3>
-                <span class="status-badge status-{{ scraper.status }}">{{ scraper.status }}</span>
-            </div>
-            <p class="scraper-description">{{ scraper.description }}</p>
-            <div class="scraper-stats">
-                <span>Processed: {{ scraper.processed_count }}</span>
-                {% if scraper.last_run %}
-                <span>Last run: {{ scraper.last_run[:10] }}</span>
-                {% endif %}
-            </div>
-            <div class="scraper-actions">
-                <button class="btn btn-primary btn-with-loader"
-                        id="run-btn-card-{{ scraper.name }}"
-                        hx-post="{{ url_for('scrapers.run_scraper', name=scraper.name) }}"
-                        hx-target="#scraper-{{ scraper.name }}"
-                        hx-swap="outerHTML"
-                        hx-disabled-elt="this"
-                        hx-indicator="#run-btn-card-{{ scraper.name }}"
-                        {% if scraper.status == 'running' %}disabled{% endif %}>
-                    <span class="btn-text">{% if scraper.status == 'running' %}Running...{% else %}Run Now{% endif %}</span>
-                    <span class="btn-loader"><span class="loading-spinner"></span></span>
-                </button>
-                <a href="{{ url_for('scrapers.scrapers_page') }}" class="btn btn-secondary">Configure</a>
-            </div>
-        </div>
+        {% include "components/scraper-card.html" %}
         {% else %}
         <div class="empty-state">
             <p>No scrapers found. Add a scraper module to get started.</p>

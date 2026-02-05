@@ -35,6 +35,6 @@
             <span class="btn-loader"><span class="loading-spinner"></span></span>
         </button>
         {% endif %}
-        <a href="{{ url_for('scrapers.scrapers_page') }}" class="btn btn-secondary">Configure</a>
+        <a href="{{ url_for('scrapers.scrapers_page') }}#scraper-{{ scraper.name }}" class="btn btn-secondary">Configure</a>
     </div>
 </div>
