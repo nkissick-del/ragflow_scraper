@@ -5,7 +5,7 @@ Pipeline execution for scrape -> upload -> parse workflows.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields as dataclass_fields
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -159,8 +159,6 @@ class Pipeline:
                 scraper=self.scraper_name,
                 document_count=len(scraper_result.documents),
             )
-
-            from dataclasses import fields as dataclass_fields
 
             known_fields = {f.name for f in dataclass_fields(DocumentMetadata)}
 

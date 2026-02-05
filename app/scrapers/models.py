@@ -21,6 +21,7 @@ class DocumentMetadata:
     filename: str
     file_size: Optional[int] = None
     file_size_str: Optional[str] = None
+    page_count: Optional[int] = None
     publication_date: Optional[str] = None
     tags: list[str] = field(default_factory=list)
     source_page: Optional[str] = None

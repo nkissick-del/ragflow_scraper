@@ -113,7 +113,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
             self.logger.error("Cannot verify - Paperless not configured")
             return False
 
-        document_id = self.client.verify_document_exists(
+        verified_id = self.client.verify_document_exists(
             task_id=document_id, timeout=timeout, poll_interval=2
         )
-        return document_id is not None
+        return verified_id is not None
