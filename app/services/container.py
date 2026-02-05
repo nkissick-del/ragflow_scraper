@@ -148,7 +148,7 @@ class ServiceContainer:
         return self._state_trackers[scraper_name]
 
     @property
-    def parser_backend(self) -> Optional[ParserBackend]:
+    def parser_backend(self) -> ParserBackend:
         """
         Get parser backend (lazy-loaded singleton).
 
@@ -182,13 +182,12 @@ class ServiceContainer:
         return self._parser_backend
 
     @property
-    def archive_backend(self) -> Optional[ArchiveBackend]:
+    def archive_backend(self) -> ArchiveBackend:
         """
         Get archive backend (lazy-loaded singleton).
 
         Raises:
-            ValueError: If backend name is invalid
-            RuntimeError: If backend is unavailable
+            ValueError: If backend name is invalid or backend is unavailable
 
         Returns:
             ArchiveBackend instance
@@ -214,7 +213,7 @@ class ServiceContainer:
                 raise ValueError(f"Unknown archive backend: {backend_name}")
 
             if not self._archive_backend.is_available():
-                raise RuntimeError(
+                raise ValueError(
                     f"Archive backend '{backend_name}' not available "
                     "(check dependencies and configuration)"
                 )
@@ -223,7 +222,7 @@ class ServiceContainer:
         return self._archive_backend
 
     @property
-    def rag_backend(self) -> Optional[RAGBackend]:
+    def rag_backend(self) -> RAGBackend:
         """
         Get RAG backend (lazy-loaded singleton).
 

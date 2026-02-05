@@ -160,13 +160,13 @@ class Pipeline:
                 document_count=len(scraper_result.documents),
             )
 
+            from dataclasses import fields as dataclass_fields
+
+            known_fields = {f.name for f in dataclass_fields(DocumentMetadata)}
+
             for doc_dict in scraper_result.documents:
                 try:
                     # Reconstruct DocumentMetadata from dict
-                    # Filter keys to only include those known to DocumentMetadata
-                    from dataclasses import fields
-
-                    known_fields = {f.name for f in fields(DocumentMetadata)}
                     filtered_dict = {
                         k: v for k, v in doc_dict.items() if k in known_fields
                     }
@@ -422,14 +422,7 @@ class Pipeline:
 
             return result
 
-        except (ParserBackendError, ArchiveError) as e:
-            # FAIL FAST for parser/archive errors
-            self.logger.error(f"Document processing failed: {e}")
-            raise
-
-        except Exception as e:
-            # Unexpected errors
-            self.logger.error(f"Unexpected error processing document: {e}")
+        except (ParserBackendError, ArchiveError):
             raise
 
     def _finalize_result(

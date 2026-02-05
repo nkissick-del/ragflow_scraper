@@ -65,41 +65,40 @@ class DoclingParser(ParserBackend):
             self.logger.error(error_msg)
             return ParserResult(success=False, error=error_msg, parser_name=self.name)
 
-        # Lazy import
-        try:
-            from concurrent.futures import ProcessPoolExecutor, TimeoutError
-        except ImportError as e:
-            error_msg = f"Failed to import required modules: {e}"
-            self.logger.error(error_msg)
-            return ParserResult(success=False, error=error_msg, parser_name=self.name)
+        # Standard imports
+        from concurrent.futures import ProcessPoolExecutor, TimeoutError
 
         try:
             self.logger.info(f"Parsing document with Docling: {file_path.name}")
 
             # Use a ProcessPoolExecutor to enforce a timeout on the potentially hanging convert call
             with ProcessPoolExecutor(max_workers=1) as executor:
-                # We need a wrapper function because DocumentConverter is not picklable easily
-                # but for simplicity in this script we try a direct call if possible or a helper.
-                # Standard practice for Docling is often just direct call, but here we want timeout.
                 future = executor.submit(_run_conversion, str(file_path))
                 try:
-                    result = future.result(timeout=300)  # 5 minute timeout
+                    raw_result = future.result(timeout=300)  # 5 minute timeout
                 except TimeoutError:
                     error_msg = f"Docling conversion timed out for {file_path.name}"
                     self.logger.error(error_msg)
                     return ParserResult(
-                        success=False, error="timeout", parser_name=self.name
+                        success=False, error=error_msg, parser_name=self.name
                     )
 
-            if result is None:
-                error_msg = f"Docling conversion failed for {file_path.name}"
-                self.logger.error(error_msg)
+            if not raw_result or not raw_result.get("success"):
+                error_msg = (
+                    raw_result.get("error")
+                    if raw_result
+                    else f"Docling conversion failed for {file_path.name}"
+                )
+                self.logger.error(f"Docling conversion failed: {error_msg}")
+                if raw_result and raw_result.get("traceback"):
+                    self.logger.debug(f"Docling traceback: {raw_result['traceback']}")
+
                 return ParserResult(
                     success=False, error=error_msg, parser_name=self.name
                 )
 
             # Export to Markdown
-            # Note: result here is a simplified dict or object returned from worker
+            result = raw_result["result"]
             markdown_content = result["markdown"]
             docling_meta = result["metadata"]
             page_count = result["page_count"]
@@ -126,8 +125,11 @@ class DoclingParser(ParserBackend):
             )
 
         except Exception as e:
+            import traceback
+
             error_msg = f"Docling parsing failed: {e}"
             self.logger.error(error_msg)
+            self.logger.debug(traceback.format_exc())
             return ParserResult(success=False, error=error_msg, parser_name=self.name)
 
     def _extract_metadata(
@@ -174,8 +176,10 @@ class DoclingParser(ParserBackend):
         return metadata
 
 
-def _run_conversion(file_path: str) -> Optional[dict]:
+def _run_conversion(file_path: str) -> dict:
     """Helper function to run Docling conversion in a separate process."""
+    import traceback
+
     try:
         from docling.document_converter import DocumentConverter
 
@@ -196,9 +200,16 @@ def _run_conversion(file_path: str) -> Optional[dict]:
                 doc_meta["creation_date"] = doc.metadata.creation_date
 
         return {
-            "markdown": markdown_content,
-            "metadata": doc_meta,
-            "page_count": len(doc.pages) if hasattr(doc, "pages") else None,
+            "success": True,
+            "result": {
+                "markdown": markdown_content,
+                "metadata": doc_meta,
+                "page_count": len(doc.pages) if hasattr(doc, "pages") else None,
+            },
         }
-    except Exception:
-        return None
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }

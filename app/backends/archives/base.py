@@ -52,7 +52,7 @@ class ArchiveBackend(ABC):
             created: Document creation date (ISO format)
             correspondent: Source organization
             tags: List of tags
-            metadata: Additional metadata dict
+            metadata: Additional metadata mapping
 
         Returns:
             ArchiveResult with document_id for verification

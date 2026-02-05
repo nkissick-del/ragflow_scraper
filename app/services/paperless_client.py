@@ -10,6 +10,7 @@ from typing import Optional, Union
 
 import requests
 import time
+import uuid
 
 from app.config import Config
 from app.utils import get_logger
@@ -52,7 +53,7 @@ class PaperlessClient:
         file_path: Union[str, Path],
         title: str,
         created: Optional[datetime] = None,
-        correspondent: Optional[str] = None,
+        correspondent: Optional[Union[str, int]] = None,
         tags: Optional[list[str]] = None,
     ) -> Optional[str]:
         """
@@ -62,11 +63,10 @@ class PaperlessClient:
             file_path: Path to file to upload
             title: Document title
             created: Document creation date
-            correspondent: Sender/Author
+            correspondent: Sender/Author (name or numeric ID)
             tags: List of tags
 
         Returns:
-
             Task ID if successful, None otherwise
         """
         if not self.is_configured:
@@ -162,6 +162,13 @@ class PaperlessClient:
         if not self.is_configured:
             return None
 
+        # Validate task_id is a proper UUID
+        try:
+            uuid.UUID(task_id)
+        except (ValueError, TypeError, AttributeError):
+            self.logger.warning(f"Invalid task_id format: {task_id}")
+            return None
+
         # Use direct task endpoint for better performance
         endpoint = f"{self.url}/api/tasks/{task_id}/"
         try:
@@ -178,7 +185,7 @@ class PaperlessClient:
 
     def verify_document_exists(
         self, task_id: str, timeout: int = 60, poll_interval: int = 2
-    ) -> bool:
+    ) -> Optional[str]:
         """
         Poll task status until document is verified (Sonarr-style).
 
@@ -188,11 +195,11 @@ class PaperlessClient:
             poll_interval: Seconds between polls
 
         Returns:
-            True if document verified successfully
+            Document ID string if verified successfully, None otherwise
         """
 
         if not self.is_configured:
-            return False
+            return None
 
         start_time = time.time()
         self.logger.info(f"Verifying document for task {task_id}...")
@@ -212,11 +219,18 @@ class PaperlessClient:
                 self.logger.info(
                     f"Document verified: task={task_id}, document_id={document_id}"
                 )
-                return True
+                return str(document_id)
+
+            if status == "SUCCESS" and not document_id:
+                self.logger.warning(
+                    f"Task {task_id} marked SUCCESS but no related_document found. "
+                    f"Status: {status}"
+                )
+                return None
 
             if status == "FAILURE":
                 self.logger.error(f"Task {task_id} failed: {task_status}")
-                return False
+                return None
 
             # Status is PENDING or STARTED, keep polling
             self.logger.debug(f"Task {task_id} status: {status}, waiting...")
@@ -225,4 +239,4 @@ class PaperlessClient:
         self.logger.warning(
             f"Document verification timed out after {timeout}s for task {task_id}"
         )
-        return False
+        return None

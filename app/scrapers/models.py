@@ -11,6 +11,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+INT_FIELDS = {"file_size", "page_count"}
+
 
 @dataclass
 class DocumentMetadata:
@@ -105,8 +107,10 @@ class DocumentMetadata:
                         if isinstance(value, current_type):
                             merged[key] = value
                         else:
-                            # Attempt safe coercion for known fields
-                            if key == "file_size" and isinstance(value, str):
+                            # Attempt safe coercion for known numeric fields
+                            if key in INT_FIELDS and isinstance(
+                                value, (str, float, int)
+                            ):
                                 try:
                                     merged[key] = int(value)
                                     continue

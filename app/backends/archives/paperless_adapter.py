@@ -70,7 +70,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
             try:
                 # Normalize 'Z' to '+00:00' for ISO format parsing
                 normalized_date = (
-                    created.replace("Z", "+00:00") if created.endswith("Z") else created
+                    created[:-1] + "+00:00" if created.endswith("Z") else created
                 )
                 created_dt = datetime.fromisoformat(normalized_date)
             except ValueError as e:
@@ -113,7 +113,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
             self.logger.error("Cannot verify - Paperless not configured")
             return False
 
-        return self.client.verify_document_exists(
+        document_id = self.client.verify_document_exists(
             task_id=document_id, timeout=timeout, poll_interval=2
         )
-
+        return document_id is not None

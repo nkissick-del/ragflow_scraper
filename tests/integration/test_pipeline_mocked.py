@@ -24,16 +24,7 @@ class DummyScraper:
 
 
 class DummyContainer:
-    @property
-    def ragflow_client(self):
-        class _DummyRagflow:
-            def trigger_parsing(self, dataset_id):
-                return True
-
-            def wait_for_parsing(self, dataset_id):
-                return True
-
-        return _DummyRagflow()
+    pass
 
 
 def test_pipeline_with_mocked_dependencies(monkeypatch):
