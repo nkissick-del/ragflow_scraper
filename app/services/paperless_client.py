@@ -43,10 +43,173 @@ class PaperlessClient:
         if self.token:
             self.session.headers.update({"Authorization": f"Token {self.token}"})
 
+        # Caches for name-to-ID lookups (populated on first use)
+        self._correspondent_cache: dict[str, int] = {}
+        self._tag_cache: dict[str, int] = {}
+
     @property
     def is_configured(self) -> bool:
         """Check if client has necessary credentials."""
         return bool(self.url and self.token)
+
+    def _fetch_correspondents(self) -> dict[str, int]:
+        """
+        Fetch all correspondents from Paperless API with pagination.
+
+        Returns:
+            Dict mapping correspondent names to IDs
+        """
+        if not self.is_configured:
+            return {}
+
+        correspondents: dict[str, int] = {}
+        next_url: Optional[str] = f"{self.url}/api/correspondents/"
+
+        try:
+            while next_url:
+                response = self.session.get(next_url, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+
+                for item in data.get("results", []):
+                    name = item.get("name")
+                    corr_id = item.get("id")
+                    if name and corr_id:
+                        correspondents[name] = corr_id
+
+                next_url = data.get("next")
+
+        except Exception as e:
+            self.logger.error(f"Failed to fetch correspondents: {e}")
+
+        return correspondents
+
+    def get_or_create_correspondent(self, name: str) -> Optional[int]:
+        """
+        Get correspondent ID by name, creating if not exists.
+
+        Args:
+            name: Correspondent name
+
+        Returns:
+            Correspondent ID, or None if lookup/creation failed
+        """
+        if not self.is_configured or not name:
+            return None
+
+        # Check cache first
+        if name in self._correspondent_cache:
+            return self._correspondent_cache[name]
+
+        # Populate cache if empty
+        if not self._correspondent_cache:
+            self._correspondent_cache = self._fetch_correspondents()
+
+        # Check if now in cache
+        if name in self._correspondent_cache:
+            return self._correspondent_cache[name]
+
+        # Create new correspondent
+        try:
+            response = self.session.post(
+                f"{self.url}/api/correspondents/",
+                json={"name": name},
+                timeout=30,
+            )
+            response.raise_for_status()
+            data = response.json()
+            corr_id = data.get("id")
+
+            if corr_id:
+                self._correspondent_cache[name] = corr_id
+                self.logger.info(f"Created correspondent '{name}' with ID {corr_id}")
+                return corr_id
+
+        except Exception as e:
+            self.logger.error(f"Failed to create correspondent '{name}': {e}")
+
+        return None
+
+    def _fetch_tags(self) -> dict[str, int]:
+        """
+        Fetch all tags from Paperless API with pagination.
+
+        Returns:
+            Dict mapping tag names to IDs
+        """
+        if not self.is_configured:
+            return {}
+
+        tags: dict[str, int] = {}
+        next_url: Optional[str] = f"{self.url}/api/tags/"
+
+        try:
+            while next_url:
+                response = self.session.get(next_url, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+
+                for item in data.get("results", []):
+                    name = item.get("name")
+                    tag_id = item.get("id")
+                    if name and tag_id:
+                        tags[name] = tag_id
+
+                next_url = data.get("next")
+
+        except Exception as e:
+            self.logger.error(f"Failed to fetch tags: {e}")
+
+        return tags
+
+    def get_or_create_tags(self, names: list[str]) -> list[int]:
+        """
+        Get tag IDs by names, creating any that don't exist.
+
+        Args:
+            names: List of tag names
+
+        Returns:
+            List of tag IDs (preserving order, skipping failures)
+        """
+        if not self.is_configured or not names:
+            return []
+
+        # Populate cache if empty
+        if not self._tag_cache:
+            self._tag_cache = self._fetch_tags()
+
+        result_ids: list[int] = []
+
+        for name in names:
+            if not name:
+                continue
+
+            # Check cache
+            if name in self._tag_cache:
+                result_ids.append(self._tag_cache[name])
+                continue
+
+            # Create new tag
+            try:
+                response = self.session.post(
+                    f"{self.url}/api/tags/",
+                    json={"name": name},
+                    timeout=30,
+                )
+                response.raise_for_status()
+                data = response.json()
+                tag_id = data.get("id")
+
+                if tag_id:
+                    self._tag_cache[name] = tag_id
+                    self.logger.info(f"Created tag '{name}' with ID {tag_id}")
+                    result_ids.append(tag_id)
+
+            except Exception as e:
+                self.logger.warning(f"Failed to create tag '{name}': {e}")
+
+        return result_ids
 
     def post_document(
         self,
@@ -87,31 +250,41 @@ class PaperlessClient:
             data["created"] = created.isoformat()
 
         if correspondent:
-            # Paperless API requires IDs (integers). Omit if it looks like a name.
-            if isinstance(correspondent, int) or (
-                isinstance(correspondent, str) and correspondent.isdigit()
-            ):
+            # Resolve string name to integer ID if needed
+            if isinstance(correspondent, int):
                 data["correspondent"] = correspondent
+            elif isinstance(correspondent, str) and correspondent.isdigit():
+                data["correspondent"] = int(correspondent)
             else:
-                self.logger.warning(
-                    f"Paperless API requires IDs, received name: '{correspondent}'. "
-                    "Skipping correspondent field. TODO: Implement lookup."
-                )
+                # Look up or create correspondent by name
+                corr_id = self.get_or_create_correspondent(correspondent)
+                if corr_id:
+                    data["correspondent"] = corr_id
+                else:
+                    self.logger.warning(
+                        f"Could not resolve correspondent '{correspondent}', skipping"
+                    )
 
         if tags:
-            # Paperless API requires IDs (integers). Omit if they are names.
-            numeric_tags = []
-            for t in tags:
-                if isinstance(t, int) or (isinstance(t, str) and t.isdigit()):
-                    numeric_tags.append(t)
+            # Resolve string names to integer IDs
+            tag_ids: list[int] = []
+            string_tags: list[str] = []
 
-            if numeric_tags:
-                data["tags"] = numeric_tags
-            if len(numeric_tags) < len(tags):
-                self.logger.warning(
-                    f"Paperless API requires IDs, received tags: {tags}. "
-                    "Non-numeric tags were omitted. TODO: Implement lookup."
-                )
+            for t in tags:
+                if isinstance(t, int):
+                    tag_ids.append(t)
+                elif isinstance(t, str) and t.isdigit():
+                    tag_ids.append(int(t))
+                elif isinstance(t, str):
+                    string_tags.append(t)
+
+            # Look up or create string tags
+            if string_tags:
+                resolved_ids = self.get_or_create_tags(string_tags)
+                tag_ids.extend(resolved_ids)
+
+            if tag_ids:
+                data["tags"] = tag_ids
 
         self.logger.info(f"Uploading to Paperless: {title}")
 

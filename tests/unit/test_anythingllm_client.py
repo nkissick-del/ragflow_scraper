@@ -1,5 +1,6 @@
 """Tests for AnythingLLM client."""
 
+import json
 import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -214,10 +215,13 @@ class TestUploadDocument:
         result = client.upload_document(test_file, metadata=metadata)
 
         assert result.success is True
-        # Verify metadata was included
+        # Verify metadata was included and matches expected payload
         args, kwargs = mock_session.request.call_args
         assert "data" in kwargs
         assert "metadata" in kwargs["data"]
+        # Parse JSON-serialized metadata and verify exact equality
+        actual_metadata = json.loads(kwargs["data"]["metadata"])
+        assert actual_metadata == metadata
 
     def test_upload_file_not_found(self, client):
         """Should return error when file doesn't exist."""
