@@ -146,13 +146,13 @@ class TestDocumentUpload:
         request = responses.calls[0].request
         # Parse multipart form data to verify metadata field exists
         content_type = request.headers.get("Content-Type", "")
-        if "multipart" in content_type:
-            parsed = multipart_decoder.MultipartDecoder(request.body, content_type)
-            field_names = [
-                part.headers.get(b"Content-Disposition", b"").decode()
-                for part in parsed.parts
-            ]
-            assert any("metadata" in name for name in field_names)
+        assert "multipart" in content_type, "Expected multipart form data request"
+        parsed = multipart_decoder.MultipartDecoder(request.body, content_type)
+        field_names = [
+            part.headers.get(b"Content-Disposition", b"").decode()
+            for part in parsed.parts
+        ]
+        assert any("metadata" in name for name in field_names)
 
     @responses.activate
     def test_upload_server_error(self, client, tmp_path):
@@ -273,7 +273,6 @@ class TestBackendIntegration:
 class TestErrorHandling:
     """Test error handling scenarios."""
 
-    @responses.activate
     def test_network_timeout(self, client, tmp_path):
         """Should handle network timeouts gracefully."""
         test_file = tmp_path / "test.md"

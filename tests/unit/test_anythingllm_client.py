@@ -98,8 +98,7 @@ class TestTestConnection:
 class TestListWorkspaces:
     """Test workspace listing."""
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_list_workspaces_dict_response(self, mock_session_cls, client):
+    def test_list_workspaces_dict_response(self, client):
         """Should handle dict response with workspaces key."""
         mock_session = Mock()
         mock_response = Mock()
@@ -119,8 +118,7 @@ class TestListWorkspaces:
         assert len(result) == 2
         assert result[0]["id"] == "ws1"
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_list_workspaces_list_response(self, mock_session_cls, client):
+    def test_list_workspaces_list_response(self, client):
         """Should handle list response directly."""
         mock_session = Mock()
         mock_response = Mock()
@@ -137,8 +135,7 @@ class TestListWorkspaces:
         assert len(result) == 1
         assert result[0]["id"] == "ws1"
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_list_workspaces_error(self, mock_session_cls, client):
+    def test_list_workspaces_error(self, client):
         """Should return empty list on error."""
         mock_session = Mock()
         mock_session.request.side_effect = Exception("API error")
@@ -152,8 +149,7 @@ class TestListWorkspaces:
 class TestUploadDocument:
     """Test document upload."""
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_upload_success(self, mock_session_cls, client, tmp_path):
+    def test_upload_success(self, client, tmp_path):
         """Should upload document successfully."""
         # Create test file
         test_file = tmp_path / "test.md"
@@ -177,8 +173,7 @@ class TestUploadDocument:
         assert result.workspace_id == "ws1"
         assert result.filename == "test.md"
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_upload_with_workspace_ids(self, mock_session_cls, client, tmp_path):
+    def test_upload_with_workspace_ids(self, client, tmp_path):
         """Should include workspace IDs in request."""
         test_file = tmp_path / "test.md"
         test_file.write_text("# Test")
@@ -202,8 +197,7 @@ class TestUploadDocument:
         assert "data" in kwargs
         assert kwargs["data"]["addToWorkspaces"] == "ws1,ws2"
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_upload_with_metadata(self, mock_session_cls, client, tmp_path):
+    def test_upload_with_metadata(self, client, tmp_path):
         """Should include metadata in request."""
         test_file = tmp_path / "test.md"
         test_file.write_text("# Test")
@@ -232,8 +226,7 @@ class TestUploadDocument:
         assert result.success is False
         assert "not found" in result.error.lower()
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_upload_http_error(self, mock_session_cls, client, tmp_path):
+    def test_upload_http_error(self, client, tmp_path):
         """Should handle HTTP errors."""
         test_file = tmp_path / "test.md"
         test_file.write_text("# Test")
@@ -251,8 +244,7 @@ class TestUploadDocument:
         assert result.success is False
         assert "500" in result.error
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_upload_network_error(self, mock_session_cls, client, tmp_path):
+    def test_upload_network_error(self, client, tmp_path):
         """Should handle network errors."""
         test_file = tmp_path / "test.md"
         test_file.write_text("# Test")
@@ -270,9 +262,8 @@ class TestUploadDocument:
 class TestRetryLogic:
     """Test retry logic."""
 
-    @patch("app.services.anythingllm_client.requests.Session")
     @patch("app.services.anythingllm_client.time.sleep")
-    def test_retries_on_500_error(self, mock_sleep, mock_session_cls, client):
+    def test_retries_on_500_error(self, mock_sleep, client):
         """Should retry on 500 errors."""
         mock_session = Mock()
         mock_response_fail = Mock()

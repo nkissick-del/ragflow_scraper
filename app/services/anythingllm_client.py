@@ -44,7 +44,7 @@ class AnythingLLMClient:
         api_key: Optional[str] = None,
         workspace_id: Optional[str] = None,
         timeout: int = 60,
-        max_retries: int = 3,
+        max_attempts: int = 3,
     ) -> None:
         """
         Initialize AnythingLLM client.
@@ -56,7 +56,7 @@ class AnythingLLMClient:
             api_key: API key for authentication (defaults to Config.ANYTHINGLLM_API_KEY)
             workspace_id: Default workspace slug (defaults to Config.ANYTHINGLLM_WORKSPACE_ID)
             timeout: Request timeout in seconds
-            max_retries: Maximum number of retry attempts
+            max_attempts: Maximum number of attempts (including the first attempt)
         """
         # Strip /api suffix if present to avoid double /api/api prefix
         api_url_clean = (api_url or Config.ANYTHINGLLM_API_URL or "").rstrip("/")
@@ -68,7 +68,7 @@ class AnythingLLMClient:
         self.workspace_id = workspace_id or Config.ANYTHINGLLM_WORKSPACE_ID or ""
         self.timeout = timeout
         # Ensure at least one attempt is made
-        self.max_retries = max(1, max_retries)
+        self.max_attempts = max(1, max_attempts)
         self.session: Session = requests.Session()
         self.logger = get_logger("anythingllm.client")
 
@@ -76,6 +76,7 @@ class AnythingLLMClient:
         """Close the session and release connection pool resources."""
         if hasattr(self, "session") and self.session:
             self.session.close()
+            self.session = None
 
     def __enter__(self) -> "AnythingLLMClient":
         """Enter context manager."""
@@ -106,10 +107,10 @@ class AnythingLLMClient:
         kwargs.setdefault("timeout", self.timeout)
         url = f"{self.api_url}{path}"
 
-        for attempt in range(1, self.max_retries + 1):
+        for attempt in range(1, self.max_attempts + 1):
             try:
                 resp = self.session.request(method, url, headers=headers, **kwargs)
-                if resp.status_code >= 500 and attempt < self.max_retries:
+                if resp.status_code >= 500 and attempt < self.max_attempts:
                     self.logger.warning(
                         f"{method} {path} returned {resp.status_code}, retrying..."
                     )
@@ -117,13 +118,13 @@ class AnythingLLMClient:
                     continue
                 return resp
             except requests.RequestException as exc:
-                if attempt == self.max_retries:
+                if attempt == self.max_attempts:
                     raise
                 self.logger.warning(f"{method} {url} failed (attempt {attempt}): {exc}")
                 time.sleep(0.5 * attempt)
 
         raise RuntimeError(
-            f"Request failed after {self.max_retries} attempts: {method} {path}"
+            f"Request failed after {self.max_attempts} attempts: {method} {path}"
         )
 
     def test_connection(self) -> bool:
@@ -216,29 +217,45 @@ class AnythingLLMClient:
 
             if resp.ok:
                 response_data = resp.json()
-                # Handle different response formats
-                if isinstance(response_data, dict):
-                    # Check for documents array (actual API format)
-                    if "documents" in response_data and response_data["documents"]:
-                        doc = response_data["documents"][0]
+                # Validate response_data is a dict
+                if not isinstance(response_data, dict):
+                    self.logger.warning(
+                        f"Upload response is not a dict: {type(response_data).__name__} - {response_data}"
+                    )
+                    return UploadResult(
+                        success=True,
+                        filename=filepath.name,
+                        workspace_id=self.workspace_id,
+                    )
+
+                # Check for documents array (actual API format)
+                if "documents" in response_data and response_data["documents"]:
+                    doc = response_data["documents"][0]
+                    # Validate doc is a dict before accessing fields
+                    if not isinstance(doc, dict):
+                        self.logger.warning(
+                            f"Document item is not a dict: {type(doc).__name__} - {doc}"
+                        )
                         return UploadResult(
                             success=True,
-                            document_id=doc.get("id"),
                             filename=filepath.name,
                             workspace_id=self.workspace_id,
                         )
-                    # Fallback to direct fields
-                    doc_id = response_data.get("id") or response_data.get("document_id")
-                    workspace = response_data.get("workspace_id")
                     return UploadResult(
                         success=True,
-                        document_id=doc_id,
+                        document_id=doc.get("id"),
                         filename=filepath.name,
-                        workspace_id=workspace,
+                        workspace_id=self.workspace_id,
                     )
+
+                # Fallback to direct fields
+                doc_id = response_data.get("id") or response_data.get("document_id")
+                workspace = response_data.get("workspace_id")
                 return UploadResult(
                     success=True,
+                    document_id=doc_id,
                     filename=filepath.name,
+                    workspace_id=workspace,
                 )
 
             return UploadResult(

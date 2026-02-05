@@ -278,7 +278,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 5. Production validation (6-8h) - HIGH
 
 **Target Completion Criteria:**
-- 🟡 AnythingLLM backend fully functional (implemented, manual validation pending)
+- [ ] AnythingLLM backend fully functional (implemented, manual validation pending)
 - [ ] Paperless metadata upload working (correspondents + tags)
 - [ ] Jinja2 filename templating implemented
 - [ ] All 148 tests passing
