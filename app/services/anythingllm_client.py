@@ -1,0 +1,253 @@
+"""
+AnythingLLM client for document ingestion.
+
+Provides HTTP client for interacting with AnythingLLM API:
+- Document upload via multipart/form-data
+- Workspace management
+- Bearer token authentication
+- Metadata support
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+import requests
+from requests import Response, Session
+
+from app.config import Config
+from app.utils import get_logger
+from app.utils.logging_config import log_exception
+
+
+@dataclass
+class UploadResult:
+    """Result of document upload operation."""
+
+    success: bool
+    document_id: Optional[str] = None
+    filename: Optional[str] = None
+    error: Optional[str] = None
+    workspace_id: Optional[str] = None
+
+
+class AnythingLLMClient:
+    """Client for AnythingLLM API."""
+
+    def __init__(
+        self,
+        api_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        workspace_id: Optional[str] = None,
+        timeout: int = 60,
+        max_retries: int = 3,
+    ) -> None:
+        """
+        Initialize AnythingLLM client.
+
+        Args:
+            api_url: AnythingLLM base URL (e.g., 'http://localhost:3001').
+                     The client appends '/api/v1/...' paths automatically.
+                     If URL ends with '/api', it will be stripped.
+            api_key: API key for authentication (defaults to Config.ANYTHINGLLM_API_KEY)
+            workspace_id: Default workspace slug (defaults to Config.ANYTHINGLLM_WORKSPACE_ID)
+            timeout: Request timeout in seconds
+            max_retries: Maximum number of retry attempts
+        """
+        # Strip /api suffix if present to avoid double /api/api prefix
+        api_url_clean = (api_url or Config.ANYTHINGLLM_API_URL or "").rstrip("/")
+        if api_url_clean.endswith("/api"):
+            api_url_clean = api_url_clean[:-4]
+
+        self.api_url = api_url_clean
+        self.api_key = api_key or Config.ANYTHINGLLM_API_KEY or ""
+        self.workspace_id = workspace_id or Config.ANYTHINGLLM_WORKSPACE_ID or ""
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.session: Session = requests.Session()
+        self.logger = get_logger("anythingllm.client")
+
+    def _request(self, method: str, path: str, **kwargs) -> Response:
+        """
+        Make HTTP request with retry logic.
+
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            path: API path (e.g., '/api/v1/workspaces')
+            **kwargs: Additional arguments for requests
+
+        Returns:
+            Response object
+
+        Raises:
+            requests.RequestException: If request fails after retries
+        """
+        headers = kwargs.pop("headers", {})
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        kwargs.setdefault("timeout", self.timeout)
+        url = f"{self.api_url}{path}"
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                resp = self.session.request(method, url, headers=headers, **kwargs)
+                if resp.status_code >= 500 and attempt < self.max_retries:
+                    self.logger.warning(
+                        f"{method} {path} returned {resp.status_code}, retrying..."
+                    )
+                    time.sleep(0.5 * attempt)
+                    continue
+                return resp
+            except requests.RequestException as exc:
+                if attempt == self.max_retries:
+                    raise
+                self.logger.warning(f"{method} {url} failed (attempt {attempt}): {exc}")
+                time.sleep(0.5 * attempt)
+
+        raise RuntimeError(
+            f"Request failed after {self.max_retries} attempts: {method} {path}"
+        )
+
+    def test_connection(self) -> bool:
+        """
+        Test connection to AnythingLLM API.
+
+        Returns:
+            True if connection successful, False otherwise
+        """
+        try:
+            # Try to list workspaces as a connectivity test
+            resp = self._request("GET", "/api/v1/workspaces")
+            return resp.ok
+        except Exception as exc:
+            log_exception(self.logger, exc, "anythingllm.test_connection")
+            return False
+
+    def list_workspaces(self) -> list[dict]:
+        """
+        List available workspaces.
+
+        Returns:
+            List of workspace dictionaries
+        """
+        try:
+            resp = self._request("GET", "/api/v1/workspaces")
+            if resp.ok:
+                data = resp.json()
+                # Handle different response formats
+                if isinstance(data, dict):
+                    return data.get("workspaces", [])
+                elif isinstance(data, list):
+                    return data
+                return []
+            return []
+        except Exception as exc:
+            log_exception(self.logger, exc, "anythingllm.list_workspaces")
+            return []
+
+    def upload_document(
+        self,
+        filepath: Path,
+        folder_name: str = "default",
+        workspace_ids: Optional[list[str]] = None,
+        metadata: Optional[dict] = None,
+    ) -> UploadResult:
+        """
+        Upload document to AnythingLLM.
+
+        Args:
+            filepath: Path to file to upload
+            folder_name: Folder name for organization (default: "default")
+            workspace_ids: List of workspace IDs to add document to
+            metadata: Optional metadata dictionary
+
+        Returns:
+            UploadResult with success status and document ID
+        """
+        if not filepath.exists():
+            return UploadResult(
+                success=False,
+                error=f"File not found: {filepath}",
+                filename=filepath.name,
+            )
+
+        try:
+            # Prepare multipart form data
+            files = {"file": open(filepath, "rb")}
+            data = {}
+
+            # Add workspace IDs if provided
+            if workspace_ids:
+                data["addToWorkspaces"] = ",".join(workspace_ids)
+            elif self.workspace_id:
+                data["addToWorkspaces"] = self.workspace_id
+
+            # Add metadata if provided
+            if metadata:
+                # AnythingLLM expects metadata as JSON string or individual fields
+                import json
+
+                data["metadata"] = json.dumps(metadata)
+
+            try:
+                resp = self._request(
+                    "POST",
+                    "/api/v1/document/upload",
+                    files=files,
+                    data=data,
+                )
+
+                if resp.ok:
+                    response_data = resp.json()
+                    # Handle different response formats
+                    if isinstance(response_data, dict):
+                        # Check for documents array (actual API format)
+                        if "documents" in response_data and response_data["documents"]:
+                            doc = response_data["documents"][0]
+                            return UploadResult(
+                                success=True,
+                                document_id=doc.get("id"),
+                                filename=filepath.name,
+                                workspace_id=self.workspace_id,
+                            )
+                        # Fallback to direct fields
+                        doc_id = response_data.get("id") or response_data.get(
+                            "document_id"
+                        )
+                        workspace = response_data.get("workspace_id")
+                        return UploadResult(
+                            success=True,
+                            document_id=doc_id,
+                            filename=filepath.name,
+                            workspace_id=workspace,
+                        )
+                    return UploadResult(
+                        success=True,
+                        filename=filepath.name,
+                    )
+
+                return UploadResult(
+                    success=False,
+                    error=f"Upload failed: {resp.status_code} - {resp.text}",
+                    filename=filepath.name,
+                )
+            finally:
+                files["file"].close()
+
+        except Exception as exc:
+            error_msg = f"Upload failed: {exc}"
+            log_exception(self.logger, exc, "anythingllm.upload_document")
+            return UploadResult(
+                success=False,
+                error=error_msg,
+                filename=filepath.name,
+            )
+
+
+__all__ = [
+    "AnythingLLMClient",
+    "UploadResult",
+]

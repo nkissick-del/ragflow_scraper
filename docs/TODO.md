@@ -79,21 +79,278 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 - Auth check: `curl -sS --fail -H "Authorization: Bearer $RAGFLOW_API_KEY" http://localhost:9380/api/v1/datasets`
 - Scraper dry-run example: `docker compose exec scraper python scripts/run_scraper.py --scraper aemo --max-pages 1 --dry-run`
 
+## 4) Phase 4: Pre-Deployment Readiness [Code/Local/External]
+
+**Status:** 🚧 In Progress  
+**Goal:** Complete critical features and validation before production deployment  
+**Target:** AnythingLLM as primary RAG backend (RAGFlow deferred)
+
+### Phase 4.1: AnythingLLM Implementation [Code] ✅ COMPLETE
+
+**Priority:** BLOCKER - ~~Currently stub implementation~~ **IMPLEMENTED**
+
+**Tasks:**
+- [x] Research AnythingLLM API documentation
+  - Document upload endpoints
+  - Workspace/collection management
+  - Authentication patterns
+  - Metadata support
+- [x] Implement `AnythingLLMBackend.test_connection()`
+  - Health check endpoint
+  - Workspace validation
+- [x] Implement `AnythingLLMBackend.ingest_document()`
+  - Document upload workflow
+  - Metadata mapping
+  - Workspace selection
+- [x] Create `AnythingLLMClient` service
+  - HTTP adapter with Bearer auth
+  - Multipart file upload
+  - Retry logic
+- [x] Add unit tests
+  - Client tests (17 tests)
+  - Backend tests (22 tests)
+  - Container integration tests (2 tests)
+- [x] Add integration tests (mocked API)
+  - Created but requires `responses` library
+- [ ] Manual testing with live AnythingLLM instance
+  - Connection test
+  - Document upload
+  - Metadata verification
+- [ ] E2E pipeline test
+
+**Files:**
+- ✅ `app/services/anythingllm_client.py` (NEW)
+- ✅ `app/backends/rag/anythingllm_adapter.py` (UPDATED)
+- ✅ `tests/unit/test_anythingllm_client.py` (NEW)
+- ✅ `tests/unit/test_anythingllm_backend.py` (NEW)
+- ✅ `tests/integration/test_anythingllm_integration.py` (NEW)
+
+**Test Results:** 41/41 unit tests passing ✅
+
+**Estimated Effort:** 8-12h  
+**Actual Effort:** ~4-5h hours
+
+---
+
+### Phase 4.2: Paperless Metadata Enhancement [Code] 🔴 CRITICAL
+
+**Priority:** BLOCKER - Metadata upload currently incomplete
+
+**Tasks:**
+- [ ] Implement correspondent ID lookup
+  - `get_or_create_correspondent(name: str) -> int`
+  - Cache lookups to reduce API calls
+  - Handle creation if not exists
+- [ ] Implement tag ID lookup
+  - `get_or_create_tags(names: list[str]) -> list[int]`
+  - Batch tag creation
+  - Cache tag mappings
+- [ ] Update `post_document()` to use ID lookups
+  - Replace string names with integer IDs
+  - Add validation
+  - Improve error messages
+- [ ] Add integration tests
+  - Test correspondent creation
+  - Test tag creation
+  - Test full metadata upload workflow
+- [ ] Remove TODO comments
+
+**Reference:** 
+- [app/services/paperless_client.py](file:///Users/nathankissick/docker_projects/scraper/app/services/paperless_client.py#L98-L113)
+- [docs/plans/paperless_metadata.md](file:///Users/nathankissick/docker_projects/scraper/docs/plans/paperless_metadata.md)
+
+**Estimated Effort:** 4-6 hours
+
+---
+
+### Phase 4.3: Jinja2 Filename Templating [Code] 🟡 HIGH
+
+**Priority:** HIGH - Improves file organization and consistency
+
+**Tasks:**
+- [ ] Verify `jinja2` in requirements.txt (already in constraints.txt)
+- [ ] Add filename template configuration
+  - Add `FILENAME_TEMPLATE` to Config
+  - Default: `"{{ date_prefix }}_{{ org }}_{{ title | slugify }}{{ extension }}"`
+  - Validate template on startup
+- [ ] Implement custom Jinja2 filters
+  - `slugify` - Convert to filesystem-safe names
+  - `shorten(n)` - Truncate long titles
+  - `secure_filename` - Remove dangerous characters
+- [ ] Update `generate_filename_from_template()`
+  - Use Jinja2 rendering
+  - Handle template errors gracefully
+  - Add template variable documentation
+- [ ] Add unit tests
+  - Test various template patterns
+  - Test filter functions
+  - Test error handling
+- [ ] Update documentation
+  - Document available template variables
+  - Provide example templates
+  - Add customization guide
+
+**Reference:**
+- [docs/plans/naming_strategy.md](file:///Users/nathankissick/docker_projects/scraper/docs/plans/naming_strategy.md)
+- [docs/plans/consolidated_architecture.md](file:///Users/nathankissick/docker_projects/scraper/docs/plans/consolidated_architecture.md#L60-L64)
+- [app/utils/file_utils.py](file:///Users/nathankissick/docker_projects/scraper/app/utils/file_utils.py)
+
+**Estimated Effort:** 3-4 hours
+
+---
+
+### Phase 4.4: Testing & Quality Assurance [Code/Local] 🟡 HIGH
+
+**Priority:** HIGH - Ensure stability before deployment
+
+**Tasks:**
+- [ ] Fix test collection errors (2 failing)
+  - Identify problematic test files
+  - Fix import/dependency issues
+  - Verify all 148 tests collect successfully
+- [ ] Create `.env.test` for local testing
+  - Override Docker-specific paths
+  - Document test environment setup
+  - Add to .gitignore
+- [ ] Expand integration test coverage
+  - E2E pipeline test (happy path)
+  - AnythingLLM integration test
+  - Paperless integration test
+  - Docling parser integration test
+- [ ] Add performance benchmarks (optional)
+  - PDF parsing benchmark
+  - Concurrent download benchmark
+  - Metadata merge benchmark
+
+**Reference:** [walkthrough.md](file:///Users/nathankissick/.gemini/antigravity/brain/ca76dfe9-5ce0-4f09-a2f6-8db2f54a5b5a/walkthrough.md)
+
+**Estimated Effort:** 8-12 hours
+
+---
+
+### Phase 4.5: Production Validation [Local/External] 🟡 HIGH
+
+**Priority:** HIGH - Validate with real services before deployment
+
+**Tasks:**
+- [ ] Test with live AnythingLLM instance
+  - Verify document upload
+  - Verify metadata handling
+  - Test workspace management
+  - Validate search/retrieval
+- [ ] Test with live Paperless-ngx instance
+  - Verify correspondent/tag creation
+  - Test document archiving
+  - Validate verification polling
+  - Check metadata accuracy
+- [ ] Test Docling parser with real PDFs
+  - Complex layouts (tables, images)
+  - Various PDF formats
+  - Metadata extraction accuracy
+- [ ] Test full pipeline end-to-end
+  - Run real scraper (AEMO, Guardian, etc.)
+  - Verify all stages complete
+  - Check file cleanup
+  - Validate metrics
+- [ ] Security validation
+  - Test TLS/HTTPS with reverse proxy
+  - Verify basic auth works
+  - Test CSRF protection
+  - Validate security headers
+- [ ] Backup/restore procedures
+  - Test state file backup
+  - Test metadata backup
+  - Test restore process
+
+**Estimated Effort:** 6-8 hours
+
+---
+
+## Phase 4 Summary
+
+**Total Estimated Effort:** 29-42 hours (4-6 days)
+
+**Critical Path:**
+1. AnythingLLM implementation (8-12h) - BLOCKER
+2. Paperless metadata (4-6h) - BLOCKER
+3. Jinja2 templating (3-4h) - HIGH
+4. Testing (8-12h) - HIGH
+5. Production validation (6-8h) - HIGH
+
+**Completion Criteria:**
+- ✅ AnythingLLM backend fully functional
+- ✅ Paperless metadata upload working (correspondents + tags)
+- ✅ Jinja2 filename templating implemented
+- ✅ All 148 tests passing
+- ✅ Integration tests for critical paths
+- ✅ Validated with live AnythingLLM instance
+- ✅ Validated with live Paperless instance
+- ✅ Security hardening verified
+
+---
+
+## 5) Future Enhancements (Post-Deployment) [Code/External]
+
+**Status:** Deferred - Not required for initial deployment
+
+### Optional Improvements
+
+**Gotenberg Archiver Refactoring** 🟢 LOW
+- Replace Selenium-based PDF generation with Gotenberg
+- Unified Markdown source for RAG and Archive
+- Simpler deployment (no Chrome dependency for archiving)
+- Reference: [docs/plans/archiver_refactoring.md](file:///Users/nathankissick/docker_projects/scraper/docs/plans/archiver_refactoring.md)
+
+**Apache Tika Integration** 🟢 LOW
+- Enhanced metadata extraction (page count, language, creation date)
+- Fallback for missing web metadata
+- Better search capabilities
+- Reference: [docs/plans/tika_integration.md](file:///Users/nathankissick/docker_projects/scraper/docs/plans/tika_integration.md)
+
+**Additional Parser Backends** 🟢 LOW
+- MinerU parser implementation
+- Tika parser implementation
+- Parser backend registry pattern
+
+**Additional Archive Backends** 🟢 LOW
+- S3 storage backend
+- Local filesystem backend
+- Multi-archive support
+
+**CI/CD Pipeline** 🟢 LOW
+- GitHub Actions workflow
+- Automated testing on PR
+- Security scanning (pip-audit)
+- Docker image builds
+
+**Monitoring & Observability** 🟢 LOW
+- Prometheus metrics endpoint
+- Grafana dashboard template
+- Health check endpoints
+- Alerting rules
+
+---
+
 ## Next Steps
 
-**Phase 3 Complete!** All operations and developer documentation delivered. System is now fully documented for production deployment and developer onboarding.
+**Immediate Actions (Phase 4.1-4.2):**
+1. 🔴 Implement AnythingLLM backend (8-12 hours)
+2. 🔴 Fix Paperless metadata mapping (4-6 hours)
+3. 🟡 Implement Jinja2 templating (3-4 hours)
 
-**Potential Future Work:**
+**Then (Phase 4.3-4.5):**
+4. 🟡 Fix test collection errors and expand coverage (8-12 hours)
+5. 🟡 Production validation with live services (6-8 hours)
 
-- External validation with live RAGFlow/FlareSolverr services
-- Performance benchmarking and optimization
-- Security hardening validation
-- Additional scraper implementations
+**Target:** Production-ready deployment in 4-6 days
+
+---
 
 ## Notes
 
-- Testing harness is in place with 140 passing tests
-- Documentation complete with 7 comprehensive guides (~1,700 lines)
-- System ready for production deployment and contributor onboarding
-- All code refactors complete (Phases 1-2)
-- All documentation complete (Phase 3)
+- Testing harness: 146/148 tests passing (98.6%)
+- Documentation: 7 comprehensive guides (~1,700 lines)
+- Architecture: Modular backend system complete
+- **RAGFlow:** Deferred - focusing on AnythingLLM
+- **Current blockers:** AnythingLLM stub, Paperless metadata
+- **Ready after Phase 4:** Production deployment

@@ -1,14 +1,15 @@
-"""AnythingLLM RAG backend adapter (stub implementation)."""
+"""AnythingLLM RAG backend adapter."""
 
 from pathlib import Path
 from typing import Optional
 
 from app.backends.rag.base import RAGBackend, RAGResult
+from app.services.anythingllm_client import AnythingLLMClient
 from app.utils import get_logger
 
 
 class AnythingLLMBackend(RAGBackend):
-    """RAG backend using AnythingLLM (not yet implemented)."""
+    """RAG backend using AnythingLLM."""
 
     def __init__(
         self,
@@ -24,9 +25,11 @@ class AnythingLLMBackend(RAGBackend):
             api_key: API key for authentication
             workspace_id: Default workspace ID
         """
-        self.api_url = api_url
-        self.api_key = api_key
-        self.workspace_id = workspace_id
+        self.client = AnythingLLMClient(
+            api_url=api_url,
+            api_key=api_key,
+            workspace_id=workspace_id,
+        )
         self.logger = get_logger("backends.rag.anythingllm")
 
     @property
@@ -36,12 +39,19 @@ class AnythingLLMBackend(RAGBackend):
 
     def is_configured(self) -> bool:
         """Check if AnythingLLM is properly configured."""
-        return bool(self.api_url and self.api_key)
+        return bool(self.client.api_url and self.client.api_key)
 
     def test_connection(self) -> bool:
         """Test connection to AnythingLLM service."""
-        self.logger.warning("AnythingLLM backend not implemented")
-        return False
+        if not self.is_configured():
+            self.logger.warning("AnythingLLM not configured (missing URL or API key)")
+            return False
+
+        try:
+            return self.client.test_connection()
+        except Exception as e:
+            self.logger.error(f"AnythingLLM connection test failed: {e}")
+            return False
 
     def ingest_document(
         self,
@@ -55,14 +65,105 @@ class AnythingLLMBackend(RAGBackend):
         Args:
             markdown_path: Path to Markdown file
             metadata: Document metadata dict
-            collection_id: Optional workspace ID
+            collection_id: Optional workspace ID (overrides default)
 
         Returns:
-            RAGResult with error (not implemented)
+            RAGResult with document_id and status
         """
-        error_msg = (
-            "AnythingLLM backend not yet implemented. "
-            "Please use RAGFlow backend or contribute implementation."
-        )
-        self.logger.warning(error_msg)
-        return RAGResult(success=False, error=error_msg, rag_name=self.name)
+        if not self.is_configured():
+            error_msg = "AnythingLLM not configured (missing URL or API key)"
+            self.logger.error(error_msg)
+            return RAGResult(success=False, error=error_msg, rag_name=self.name)
+
+        if not markdown_path.exists():
+            error_msg = f"Markdown file not found: {markdown_path}"
+            self.logger.error(error_msg)
+            return RAGResult(success=False, error=error_msg, rag_name=self.name)
+
+        try:
+            # Prepare metadata for AnythingLLM
+            anythingllm_metadata = self._prepare_metadata(metadata)
+
+            # Determine workspace ID
+            workspace_ids = None
+            if collection_id:
+                workspace_ids = [collection_id]
+            elif self.client.workspace_id:
+                workspace_ids = [self.client.workspace_id]
+
+            # Upload document
+            upload_result = self.client.upload_document(
+                filepath=markdown_path,
+                folder_name="scraped_documents",
+                workspace_ids=workspace_ids,
+                metadata=anythingllm_metadata,
+            )
+
+            if not upload_result.success:
+                error_msg = upload_result.error or "Unknown upload failure"
+                self.logger.error(f"AnythingLLM upload failed: {error_msg}")
+                return RAGResult(success=False, error=error_msg, rag_name=self.name)
+
+            self.logger.info(
+                f"Document ingested to AnythingLLM: {upload_result.document_id} "
+                f"(workspace={upload_result.workspace_id or collection_id or 'default'})"
+            )
+
+            return RAGResult(
+                success=True,
+                document_id=upload_result.document_id,
+                collection_id=upload_result.workspace_id or collection_id,
+                rag_name=self.name,
+            )
+
+        except Exception as e:
+            error_msg = f"AnythingLLM ingestion failed: {e}"
+            self.logger.error(error_msg)
+            return RAGResult(success=False, error=error_msg, rag_name=self.name)
+
+    def _prepare_metadata(self, metadata: dict) -> dict:
+        """
+        Prepare metadata for AnythingLLM ingestion.
+
+        Args:
+            metadata: Raw metadata dict from DocumentMetadata
+
+        Returns:
+            AnythingLLM-compatible metadata dict
+        """
+        # AnythingLLM accepts arbitrary metadata fields
+        # We'll pass through relevant fields and flatten nested structures
+        prepared = {}
+
+        # Core fields
+        for field in ["title", "url", "organization", "source", "document_type"]:
+            if field in metadata and metadata[field]:
+                prepared[field] = metadata[field]
+
+        # Date fields
+        for date_field in ["publication_date", "scraped_at"]:
+            if date_field in metadata and metadata[date_field]:
+                prepared[date_field] = str(metadata[date_field])
+
+        # Numeric fields
+        for num_field in ["file_size", "page_count"]:
+            if num_field in metadata and metadata[num_field] is not None:
+                prepared[num_field] = metadata[num_field]
+
+        # Hash for deduplication
+        if "hash" in metadata and metadata["hash"]:
+            prepared["file_hash"] = metadata["hash"]
+
+        # Flatten extra metadata
+        if "extra" in metadata and isinstance(metadata["extra"], dict):
+            for key, value in metadata["extra"].items():
+                if key not in prepared and value is not None:
+                    # Convert complex types to strings
+                    if isinstance(value, (dict, list)):
+                        import json
+
+                        prepared[f"extra_{key}"] = json.dumps(value)
+                    else:
+                        prepared[f"extra_{key}"] = str(value)
+
+        return prepared
