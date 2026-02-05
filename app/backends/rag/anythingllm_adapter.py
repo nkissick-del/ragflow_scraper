@@ -64,5 +64,5 @@ class AnythingLLMBackend(RAGBackend):
             "AnythingLLM backend not yet implemented. "
             "Please use RAGFlow backend or contribute implementation."
         )
-        self.logger.error(error_msg)
+        self.logger.warning(error_msg)
         return RAGResult(success=False, error=error_msg, rag_name=self.name)

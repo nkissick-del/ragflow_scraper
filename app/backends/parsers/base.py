@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from app.scrapers.models import DocumentMetadata
 
@@ -14,7 +14,7 @@ class ParserResult:
 
     success: bool
     markdown_path: Optional[Path] = None
-    metadata: Optional[dict] = None
+    metadata: Optional[dict[str, Any]] = None
     error: Optional[str] = None
     parser_name: str = ""
 
@@ -31,13 +31,13 @@ class ParserBackend(ABC):
 
     @abstractmethod
     def parse_document(
-        self, pdf_path: Path, context_metadata: DocumentMetadata
+        self, file_path: Path, context_metadata: DocumentMetadata
     ) -> ParserResult:
         """
-        Parse a PDF document to Markdown.
+        Parse a document to Markdown.
 
         Args:
-            pdf_path: Path to PDF file
+            file_path: Path to file
             context_metadata: Scraper-provided metadata (URL, date, org)
 
         Returns:

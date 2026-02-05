@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import copy
 import json
-from dataclasses import dataclass, field, asdict
+import logging
+from dataclasses import dataclass, field, asdict, fields
 from datetime import datetime
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -68,8 +72,9 @@ class DocumentMetadata:
         """
         from app.utils.errors import MetadataMergeError
 
-        # Create copy of current metadata as dict
-        merged = self.to_dict()
+        # Create deep copy of current metadata as dict to avoid mutating self.extra
+        merged = copy.deepcopy(self.to_dict())
+        standard_fields = {f.name for f in fields(DocumentMetadata)}
 
         if strategy == "smart":
             # Parser wins for content fields (title, author)
@@ -87,21 +92,53 @@ class DocumentMetadata:
                     merged["extra"][key] = parser_metadata[key]
 
         elif strategy == "parser_wins":
-            # Parser overwrites all matching fields
+            # Parser overwrites all matching fields with type validation
             for key, value in parser_metadata.items():
-                if key in merged and value is not None:
-                    merged[key] = value
-                elif value is not None:
+                if value is None:
+                    continue
+
+                if key in merged:
+                    # Type validation and safe coercion
+                    current_val = merged[key]
+                    if current_val is not None:
+                        current_type = type(current_val)
+                        if isinstance(value, current_type):
+                            merged[key] = value
+                        else:
+                            # Attempt safe coercion for known fields
+                            if key == "file_size" and isinstance(value, str):
+                                try:
+                                    merged[key] = int(value)
+                                    continue
+                                except (ValueError, TypeError):
+                                    pass
+
+                            logger.warning(
+                                f"Type mismatch for field '{key}': expected {current_type}, "
+                                f"got {type(value)}. Moving to extra."
+                            )
+                            merged["extra"][key] = value
+                    else:
+                        # Field is None, check DocumentMetadata types for safety if possible
+                        # For simplicity, if it's in standard fields, we accept it if it's a known field
+                        merged[key] = value
+                else:
                     # Add to extra if not a standard field
                     merged["extra"][key] = value
 
         elif strategy == "scraper_wins":
             # Only add new fields from parser, don't overwrite existing
             for key, value in parser_metadata.items():
-                if key not in merged or merged[key] is None:
-                    if key in ["title", "organization", "document_type"]:
+                if value is None:
+                    continue
+
+                # Treat any standard field as a top-level field
+                if key in standard_fields:
+                    if merged.get(key) is None:
                         merged[key] = value
-                    else:
+                else:
+                    # Truly unknown keys go to extra
+                    if key not in merged["extra"]:
                         merged["extra"][key] = value
 
         else:

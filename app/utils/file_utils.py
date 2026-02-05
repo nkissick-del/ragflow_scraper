@@ -8,11 +8,28 @@ import hashlib
 import logging
 import re
 import unicodedata
+import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class MetadataProtocol(Protocol):
+    """Protocol for metadata objects."""
+
+    def to_dict(self) -> dict[str, Any]: ...
+
+
+def _set_context_date_from_dt(context: dict[str, str], dt: datetime) -> None:
+    """Helper to set date fields in context from a datetime object."""
+    context["date_prefix"] = dt.strftime("%Y%m")
+    context["year"] = dt.strftime("%Y")
+    context["month"] = dt.strftime("%m")
+    context["day"] = dt.strftime("%d")
+
 
 # Standard chunk size for file I/O operations (64KB)
 CHUNK_SIZE = 65536
@@ -192,7 +209,7 @@ def parse_file_size(size_str: str) -> Optional[int]:
 
 
 def generate_filename_from_template(
-    metadata,
+    metadata: MetadataProtocol | dict[str, Any],
     template: str = "{{ date_prefix }}_{{ org }}_{{ original_name }}{{ extension }}",
 ) -> str:
     """
@@ -242,30 +259,19 @@ def generate_filename_from_template(
     if pub_date:
         try:
             dt = datetime.fromisoformat(pub_date.split("T")[0])
-            context["date_prefix"] = dt.strftime("%Y%m")
-            context["year"] = dt.strftime("%Y")
-            context["month"] = dt.strftime("%m")
-            context["day"] = dt.strftime("%d")
+            _set_context_date_from_dt(context, dt)
         except (ValueError, AttributeError):
-            now = datetime.now()
-            context["date_prefix"] = now.strftime("%Y%m")
-            context["year"] = now.strftime("%Y")
-            context["month"] = now.strftime("%m")
-            context["day"] = now.strftime("%d")
+            _set_context_date_from_dt(context, datetime.now())
             logger.warning(f"Could not parse date '{pub_date}', using current date")
     else:
-        now = datetime.now()
-        context["date_prefix"] = now.strftime("%Y%m")
-        context["year"] = now.strftime("%Y")
-        context["month"] = now.strftime("%m")
-        context["day"] = now.strftime("%d")
+        _set_context_date_from_dt(context, datetime.now())
 
     # Organization (uppercase)
-    org = meta_dict.get("organization", "Unknown")
+    org = meta_dict.get("organization") or "Unknown"
     context["org"] = org.upper()
 
     # Original filename (sanitized)
-    filename = meta_dict.get("filename", "unnamed")
+    filename = meta_dict.get("filename") or "unnamed"
     original_path = Path(filename)
     context["original_name"] = sanitize_filename(original_path.stem)
     context["extension"] = original_path.suffix
@@ -316,6 +322,11 @@ def generate_standardized_filename(
         ... )
         '202407_AEMO_report.pdf'
     """
+    warnings.warn(
+        "generate_standardized_filename is deprecated; use generate_filename_from_template()",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     original_name = original_path.stem
 
     # Parse publication date to YYYYMM format

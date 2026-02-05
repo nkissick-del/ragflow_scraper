@@ -3,10 +3,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 
-@dataclass
+@dataclass(frozen=True)
 class ArchiveResult:
     """Result from archiving a document."""
 
@@ -18,10 +18,16 @@ class ArchiveResult:
 
     def __post_init__(self):
         """Validate result consistency."""
-        if self.success and not self.document_id:
-            raise ValueError("Successful archive must include document_id")
-        if not self.success and not self.error:
-            raise ValueError("Failed archive must include error message")
+        if self.success:
+            if not self.document_id:
+                raise ValueError("Successful archive must include document_id")
+            if self.error:
+                raise ValueError("Successful archive cannot include error message")
+        else:
+            if not self.error:
+                raise ValueError("Failed archive must include error message")
+            if self.document_id:
+                raise ValueError("Failed archive cannot include document_id")
 
 
 class ArchiveBackend(ABC):
@@ -35,7 +41,7 @@ class ArchiveBackend(ABC):
         created: Optional[str] = None,
         correspondent: Optional[str] = None,
         tags: Optional[list[str]] = None,
-        metadata: Optional[dict] = None,
+        metadata: Optional[Mapping[str, Any]] = None,
     ) -> ArchiveResult:
         """
         Archive a document with metadata.

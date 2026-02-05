@@ -11,7 +11,6 @@ from app.backends import (
     RAGBackend,
     RAGResult,
 )
-from app.scrapers.models import DocumentMetadata
 
 
 class TestParserResult:
@@ -136,7 +135,7 @@ class TestParserBackend:
         """Valid implementation with all methods."""
 
         class ValidParser(ParserBackend):
-            def parse_document(self, pdf_path, context_metadata):
+            def parse_document(self, file_path, context_metadata):
                 return ParserResult(
                     success=True,
                     markdown_path=Path("/tmp/test.md"),
@@ -158,6 +157,13 @@ class TestParserBackend:
         assert parser.is_available()
         assert parser.get_supported_formats() == [".pdf"]
         assert parser.name == "valid"
+
+        # Verify full ParserBackend implementation
+        result = parser.parse_document(Path("/tmp/test.pdf"), {})
+        assert result.success
+        assert result.markdown_path == Path("/tmp/test.md")
+        assert result.metadata == {}
+        assert result.parser_name == "valid"
 
 
 class TestArchiveBackend:
@@ -190,7 +196,13 @@ class TestArchiveBackend:
 
         class ValidArchive(ArchiveBackend):
             def archive_document(
-                self, file_path, title, created=None, correspondent=None, tags=None, metadata=None
+                self,
+                file_path,
+                title,
+                created=None,
+                correspondent=None,
+                tags=None,
+                metadata=None,
             ):
                 return ArchiveResult(
                     success=True, document_id="123", archive_name="valid"
@@ -209,6 +221,13 @@ class TestArchiveBackend:
         archive = ValidArchive()
         assert archive.is_configured()
         assert archive.name == "valid"
+
+        # Verify full ArchiveBackend implementation
+        result = archive.archive_document(Path("/tmp/test.pdf"), "Test Doc")
+        assert result.success
+        assert result.document_id == "123"
+        assert result.archive_name == "valid"
+        assert archive.verify_document("123") is True
 
 
 class TestRAGBackend:
@@ -257,3 +276,9 @@ class TestRAGBackend:
         assert rag.is_configured()
         assert rag.test_connection()
         assert rag.name == "valid"
+
+        # Verify full RAGBackend implementation
+        result = rag.ingest_document(Path("/tmp/test.md"), {}, "col1")
+        assert result.success
+        assert result.document_id == "abc"
+        assert result.rag_name == "valid"

@@ -32,6 +32,10 @@ class RAGFlowBackend(RAGBackend):
 
     def test_connection(self) -> bool:
         """Test connection to RAGFlow service."""
+        if not self.is_configured():
+            self.logger.warning("RAGFlow not configured (missing URL or API key)")
+            return False
+
         try:
             # Try to list datasets as a connectivity test
             datasets = self.client.list_datasets()
@@ -73,12 +77,18 @@ class RAGFlowBackend(RAGBackend):
             # Try to get first dataset as default
             try:
                 datasets = self.client.list_datasets()
-                if not datasets:
-                    error_msg = "No RAGFlow datasets found and no collection_id provided"
-                    self.logger.error(error_msg)
-                    return RAGResult(
-                        success=False, error=error_msg, rag_name=self.name
+                if (
+                    not datasets
+                    or not isinstance(datasets, list)
+                    or not isinstance(datasets[0], dict)
+                    or "id" not in datasets[0]
+                ):
+                    error_msg = (
+                        "No RAGFlow datasets found or invalid dataset response, "
+                        "and no collection_id provided"
                     )
+                    self.logger.error(error_msg)
+                    return RAGResult(success=False, error=error_msg, rag_name=self.name)
                 dataset_id = datasets[0]["id"]
                 self.logger.info(f"Using default dataset: {dataset_id}")
             except Exception as e:
@@ -97,12 +107,20 @@ class RAGFlowBackend(RAGBackend):
             )
 
             if not upload_result or not upload_result[0].success:
+                # Coalesce error message to ensure it's never None
+                error_info = ""
+                if upload_result and upload_result[0]:
+                    res = upload_result[0]
+                    error_info = (
+                        res.error or res.get("error") if hasattr(res, "get") else None
+                    ) or f"Status: {getattr(res, 'status', 'Unknown')}"
+
                 error_msg = (
-                    upload_result[0].error
-                    if upload_result
-                    else "Unknown upload failure"
+                    f"RAGFlow upload failure: {error_info}"
+                    if error_info
+                    else "Unknown RAGFlow upload failure"
                 )
-                self.logger.error(f"RAGFlow upload failed: {error_msg}")
+                self.logger.error(error_msg)
                 return RAGResult(success=False, error=error_msg, rag_name=self.name)
 
             result = upload_result[0]
@@ -133,6 +151,7 @@ class RAGFlowBackend(RAGBackend):
         Returns:
             RAGFlow-compatible metadata dict
         """
+        # Local import to avoid circular dependency with ragflow_metadata
         from app.services.ragflow_metadata import prepare_metadata_for_ragflow
 
         # Use existing helper to prepare metadata

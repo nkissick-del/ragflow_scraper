@@ -57,22 +57,22 @@ class PaperlessArchiveBackend(ArchiveBackend):
         if not self.is_configured():
             error_msg = "Paperless not configured (missing URL or token)"
             self.logger.error(error_msg)
-            return ArchiveResult(
-                success=False, error=error_msg, archive_name=self.name
-            )
+            return ArchiveResult(success=False, error=error_msg, archive_name=self.name)
 
         if not file_path.exists():
             error_msg = f"File not found: {file_path}"
             self.logger.error(error_msg)
-            return ArchiveResult(
-                success=False, error=error_msg, archive_name=self.name
-            )
+            return ArchiveResult(success=False, error=error_msg, archive_name=self.name)
 
         # Convert created string to datetime if provided
         created_dt = None
         if created:
             try:
-                created_dt = datetime.fromisoformat(created)
+                # Normalize 'Z' to '+00:00' for ISO format parsing
+                normalized_date = (
+                    created.replace("Z", "+00:00") if created.endswith("Z") else created
+                )
+                created_dt = datetime.fromisoformat(normalized_date)
             except ValueError as e:
                 self.logger.warning(f"Invalid date format '{created}': {e}")
 
@@ -88,9 +88,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
         if not task_id:
             error_msg = "Paperless upload failed (no task_id returned)"
             self.logger.error(error_msg)
-            return ArchiveResult(
-                success=False, error=error_msg, archive_name=self.name
-            )
+            return ArchiveResult(success=False, error=error_msg, archive_name=self.name)
 
         self.logger.info(f"Document archived to Paperless: task_id={task_id}")
         return ArchiveResult(
@@ -118,3 +116,4 @@ class PaperlessArchiveBackend(ArchiveBackend):
         return self.client.verify_document_exists(
             task_id=document_id, timeout=timeout, poll_interval=2
         )
+

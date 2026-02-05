@@ -87,7 +87,7 @@ class ScraperAlreadyRunningError(ScraperError):
         super().__init__(message, **kwargs)
 
 
-class ParserError(ScraperError):
+class ParserBackendError(ScraperError):
     """Parser backend failures (non-recoverable by default)."""
 
     def __init__(self, message: str, **kwargs: Any) -> None:

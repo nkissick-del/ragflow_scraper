@@ -20,6 +20,8 @@ class RAGResult:
         """Validate result consistency."""
         if not self.success and not self.error:
             raise ValueError("Failed RAG ingestion must include error message")
+        if self.success and self.error:
+            raise ValueError("Successful RAG ingestion must not include error message")
 
 
 class RAGBackend(ABC):

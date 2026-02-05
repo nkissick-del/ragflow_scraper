@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import requests
+import time
 
 from app.config import Config
 from app.utils import get_logger
@@ -86,22 +87,31 @@ class PaperlessClient:
             data["created"] = created.isoformat()
 
         if correspondent:
-            # Paperless API requires IDs for correspondents, but we are receiving a name.
-            # TODO: Implement lookup/creation helper (get_or_create_correspondent).
-            self.logger.warning(
-                f"Paperless API requires IDs, received name: '{correspondent}'. "
-                "This may fail if ID is expected. TODO: Implement lookup."
-            )
-            data["correspondent"] = correspondent
+            # Paperless API requires IDs (integers). Omit if it looks like a name.
+            if isinstance(correspondent, int) or (
+                isinstance(correspondent, str) and correspondent.isdigit()
+            ):
+                data["correspondent"] = correspondent
+            else:
+                self.logger.warning(
+                    f"Paperless API requires IDs, received name: '{correspondent}'. "
+                    "Skipping correspondent field. TODO: Implement lookup."
+                )
 
         if tags:
-            # Paperless API requires IDs for tags, but we are receiving names.
-            # TODO: Implement lookup/creation helper (get_or_create_tag(s)).
-            self.logger.warning(
-                f"Paperless API requires IDs, received tags: {tags}. "
-                "This may fail if IDs are expected. TODO: Implement lookup."
-            )
-            data["tags"] = tags
+            # Paperless API requires IDs (integers). Omit if they are names.
+            numeric_tags = []
+            for t in tags:
+                if isinstance(t, int) or (isinstance(t, str) and t.isdigit()):
+                    numeric_tags.append(t)
+
+            if numeric_tags:
+                data["tags"] = numeric_tags
+            if len(numeric_tags) < len(tags):
+                self.logger.warning(
+                    f"Paperless API requires IDs, received tags: {tags}. "
+                    "Non-numeric tags were omitted. TODO: Implement lookup."
+                )
 
         self.logger.info(f"Uploading to Paperless: {title}")
 
@@ -146,25 +156,21 @@ class PaperlessClient:
             task_id: Task ID returned from post_document()
 
         Returns:
-            Task status dict with keys: 'status', 'document_id', etc.
+            Task status dict
             None if task not found or API error
         """
         if not self.is_configured:
             return None
 
-        endpoint = f"{self.url}/api/tasks/"
+        # Use direct task endpoint for better performance
+        endpoint = f"{self.url}/api/tasks/{task_id}/"
         try:
             response = self.session.get(endpoint, timeout=10)
+            if response.status_code == 404:
+                self.logger.warning(f"Task {task_id} not found at {endpoint}")
+                return None
             response.raise_for_status()
-            tasks = response.json()
-
-            # Find task by ID
-            for task in tasks:
-                if task.get("task_id") == task_id:
-                    return task
-
-            self.logger.warning(f"Task {task_id} not found in task list")
-            return None
+            return response.json()
 
         except Exception as e:
             self.logger.error(f"Failed to query task status: {e}")
@@ -184,7 +190,6 @@ class PaperlessClient:
         Returns:
             True if document verified successfully
         """
-        import time
 
         if not self.is_configured:
             return False

@@ -161,7 +161,7 @@ class Scheduler:
                 scraper_name=scraper_name,
                 upload_to_ragflow=True,  # Default to True from config
                 upload_to_paperless=True,  # Default to True
-                wait_for_parsing=False,  # Don't block scheduler thread for parsing
+                verify_document_timeout=60,  # Standard timeout
             )
 
             log_event(

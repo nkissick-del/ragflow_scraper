@@ -7,7 +7,7 @@ Provides lazy-loading and singleton pattern for efficiency.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from app.config import Config
 from app.orchestrator.scheduler import Scheduler
@@ -16,6 +16,9 @@ from app.services.ragflow_client import RAGFlowClient
 from app.services.flaresolverr_client import FlareSolverrClient
 from app.services.state_tracker import StateTracker
 from app.utils import get_logger
+
+if TYPE_CHECKING:
+    from app.backends import ParserBackend, ArchiveBackend, RAGBackend
 
 
 class ServiceContainer:
@@ -48,9 +51,9 @@ class ServiceContainer:
         self._scheduler: Optional[Scheduler] = None
 
         # Backend instances (lazy-loaded)
-        self._parser_backend = None
-        self._archive_backend = None
-        self._rag_backend = None
+        self._parser_backend: Optional[ParserBackend] = None
+        self._archive_backend: Optional[ArchiveBackend] = None
+        self._rag_backend: Optional[RAGBackend] = None
 
         # State trackers (cached by scraper name)
         self._state_trackers: dict[str, StateTracker] = {}
@@ -87,7 +90,9 @@ class ServiceContainer:
         """
         if self._ragflow_client is None:
             if not Config.RAGFLOW_API_URL or not Config.RAGFLOW_API_KEY:
-                raise ValueError("RAGFlow configuration missing: RAGFLOW_API_URL and RAGFLOW_API_KEY are required")
+                raise ValueError(
+                    "RAGFlow configuration missing: RAGFLOW_API_URL and RAGFLOW_API_KEY are required"
+                )
 
             self._ragflow_client = RAGFlowClient(
                 api_url=Config.RAGFLOW_API_URL,
@@ -143,7 +148,7 @@ class ServiceContainer:
         return self._state_trackers[scraper_name]
 
     @property
-    def parser_backend(self):
+    def parser_backend(self) -> Optional[ParserBackend]:
         """
         Get parser backend (lazy-loaded singleton).
 
@@ -154,8 +159,6 @@ class ServiceContainer:
             ParserBackend instance
         """
         if self._parser_backend is None:
-            from app.backends import ParserBackend
-
             backend_name = Config.PARSER_BACKEND
 
             if backend_name == "docling":
@@ -179,19 +182,18 @@ class ServiceContainer:
         return self._parser_backend
 
     @property
-    def archive_backend(self):
+    def archive_backend(self) -> Optional[ArchiveBackend]:
         """
         Get archive backend (lazy-loaded singleton).
 
         Raises:
             ValueError: If backend name is invalid
+            RuntimeError: If backend is unavailable
 
         Returns:
             ArchiveBackend instance
         """
         if self._archive_backend is None:
-            from app.backends import ArchiveBackend
-
             backend_name = Config.ARCHIVE_BACKEND
 
             if backend_name == "paperless":
@@ -201,17 +203,27 @@ class ServiceContainer:
 
                 self._archive_backend = PaperlessArchiveBackend()
             elif backend_name == "s3":
-                raise ValueError(f"Archive backend '{backend_name}' not yet implemented")
+                raise ValueError(
+                    f"Archive backend '{backend_name}' not yet implemented"
+                )
             elif backend_name == "local":
-                raise ValueError(f"Archive backend '{backend_name}' not yet implemented")
+                raise ValueError(
+                    f"Archive backend '{backend_name}' not yet implemented"
+                )
             else:
                 raise ValueError(f"Unknown archive backend: {backend_name}")
+
+            if not self._archive_backend.is_available():
+                raise RuntimeError(
+                    f"Archive backend '{backend_name}' not available "
+                    "(check dependencies and configuration)"
+                )
 
             self.logger.info(f"Initialized archive backend: {backend_name}")
         return self._archive_backend
 
     @property
-    def rag_backend(self):
+    def rag_backend(self) -> Optional[RAGBackend]:
         """
         Get RAG backend (lazy-loaded singleton).
 
@@ -222,8 +234,6 @@ class ServiceContainer:
             RAGBackend instance
         """
         if self._rag_backend is None:
-            from app.backends import RAGBackend
-
             backend_name = Config.RAG_BACKEND
 
             if backend_name == "ragflow":
@@ -231,6 +241,12 @@ class ServiceContainer:
 
                 self._rag_backend = RAGFlowBackend()
             elif backend_name == "anythingllm":
+                if not Config.ANYTHINGLLM_API_URL or not Config.ANYTHINGLLM_API_KEY:
+                    raise ValueError(
+                        "AnythingLLM configuration missing: "
+                        "ANYTHINGLLM_API_URL and ANYTHINGLLM_API_KEY are required"
+                    )
+
                 from app.backends.rag.anythingllm_adapter import AnythingLLMBackend
 
                 self._rag_backend = AnythingLLMBackend(

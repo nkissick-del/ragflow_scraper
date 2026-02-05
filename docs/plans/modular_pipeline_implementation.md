@@ -69,8 +69,8 @@ The PDF Scraper now uses a modular backend architecture with swappable Parser, A
 ```python
 class ParserBackend(ABC):
     @abstractmethod
-    def parse_document(self, pdf_path: Path, context_metadata: DocumentMetadata) -> ParserResult:
-        """Parse PDF to Markdown and extract metadata."""
+    def parse_document(self, file_path: Path, context_metadata: DocumentMetadata) -> ParserResult:
+        """Parse document to Markdown and extract metadata."""
 
     @abstractmethod
     def is_available(self) -> bool:
@@ -225,7 +225,7 @@ rag = container.rag_backend          # Configured based on RAG_BACKEND env var
 ### Error Handling
 
 **Fail Fast Errors (stop pipeline):**
-- `ParserError` - PDF parsing failed
+- `ParserBackendError` - PDF parsing failed
 - `ArchiveError` - Document archiving failed
 - `MetadataMergeError` - Invalid merge strategy
 
@@ -339,7 +339,7 @@ docs/plans/
 
 ### Modified Files (8)
 
-- `app/utils/errors.py` - Added ParserError, ArchiveError, RAGError, MetadataMergeError
+- `app/utils/errors.py` - Added ParserBackendError, ArchiveError, RAGError, MetadataMergeError
 - `app/services/paperless_client.py` - Added get_task_status(), verify_document_exists()
 - `app/config.py` - Added ENV vars and validation
 - `app/services/container.py` - Added backend factory properties

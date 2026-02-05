@@ -15,7 +15,7 @@ from app.container import get_container
 from app.scrapers import ScraperRegistry
 from app.scrapers.models import DocumentMetadata
 from app.utils import get_logger
-from app.utils.errors import ParserError, ArchiveError
+from app.utils.errors import ParserBackendError, ArchiveError
 from app.utils.file_utils import generate_filename_from_template
 from app.utils.logging_config import log_exception, log_event
 
@@ -83,7 +83,7 @@ class Pipeline:
         max_pages: Optional[int] = None,
         upload_to_ragflow: bool = True,
         upload_to_paperless: bool = True,
-        wait_for_parsing: bool = True,
+        verify_document_timeout: int = 60,
         container=None,
     ):
         """
@@ -102,7 +102,7 @@ class Pipeline:
         self.max_pages = max_pages
         self.upload_to_ragflow = upload_to_ragflow
         self.upload_to_paperless = upload_to_paperless
-        self.wait_for_parsing = wait_for_parsing
+        self.verify_document_timeout = verify_document_timeout
         self.container = container or get_container()
 
         self.logger = get_logger(f"pipeline.{scraper_name}")
@@ -163,7 +163,20 @@ class Pipeline:
             for doc_dict in scraper_result.documents:
                 try:
                     # Reconstruct DocumentMetadata from dict
-                    doc_metadata = DocumentMetadata(**doc_dict)
+                    # Filter keys to only include those known to DocumentMetadata
+                    from dataclasses import fields
+
+                    known_fields = {f.name for f in fields(DocumentMetadata)}
+                    filtered_dict = {
+                        k: v for k, v in doc_dict.items() if k in known_fields
+                    }
+
+                    try:
+                        doc_metadata = DocumentMetadata(**filtered_dict)
+                    except TypeError as e:
+                        self.logger.error(f"Failed to construct DocumentMetadata: {e}")
+                        result.failed_count += 1
+                        continue
 
                     # Get PDF path
                     pdf_path = doc_dict.get("pdf_path") or doc_dict.get("local_path")
@@ -197,10 +210,10 @@ class Pipeline:
                         result.rag_indexed_count += 1
                         result.uploaded_count += 1  # Legacy field
 
-                except (ParserError, ArchiveError) as e:
-                    # FAIL FAST errors
+                except (ParserBackendError, ArchiveError) as e:
+                    # document-level fatal errors
                     self.logger.error(
-                        f"Document processing failed (FAIL FAST): {doc_dict.get('title')} - {e}"
+                        f"Document processing failed: {doc_dict.get('title')} - {e}"
                     )
                     result.failed_count += 1
                     result.errors.append(
@@ -245,53 +258,6 @@ class Pipeline:
         self._step_times = step_times
         return self._finalize_result(result, start_time)
 
-    def _archive_to_paperless(self, documents: list[dict]) -> dict[str, int]:
-        """Upload PDFs to Paperless."""
-        from app.services.paperless_client import PaperlessClient
-
-        client = PaperlessClient()
-
-        if not client.is_configured:
-            return {"uploaded": 0, "failed": 0}
-
-        uploaded = 0
-        failed = 0
-
-        for doc in documents:
-            pdf_path = doc.get("pdf_path")
-            if not pdf_path or not Path(pdf_path).exists():
-                continue
-
-            try:
-                # Parse date
-                created = None
-                if doc.get("publication_date"):
-                    try:
-                        created = datetime.strptime(doc["publication_date"], "%Y-%m-%d")
-                    except ValueError:
-                        pass
-
-                task_id = client.post_document(
-                    file_path=pdf_path,
-                    title=doc.get("title", "Untitled"),
-                    created=created,
-                    correspondent=doc.get("organization")
-                    or doc.get("extra", {}).get("author"),
-                    tags=doc.get("tags"),
-                )
-
-                if task_id:
-                    doc["paperless_id"] = task_id
-                    uploaded += 1
-                    # Ideally update the metadata JSON on disk too, but skipping for speed
-                else:
-                    failed += 1
-            except Exception as e:
-                self.logger.error(f"Failed to archive document: {e}")
-                failed += 1
-
-        return {"uploaded": uploaded, "failed": failed}
-
     def _run_scraper(self):
         """Run the scraper."""
         scraper = ScraperRegistry.get_scraper(
@@ -304,7 +270,9 @@ class Pipeline:
 
         return scraper.run()
 
-    def _process_document(self, doc_metadata: DocumentMetadata, pdf_path: Path) -> dict:
+    def _process_document(
+        self, doc_metadata: DocumentMetadata, file_path: Path
+    ) -> dict:
         """
         Process a single document through the modular pipeline.
 
@@ -325,7 +293,7 @@ class Pipeline:
             Dict with keys: parsed, archived, verified, rag_indexed, error
 
         Raises:
-            ParserError: If parsing fails (FAIL FAST)
+            ParserBackendError: If parsing fails (FAIL FAST)
             ArchiveError: If archiving fails (FAIL FAST)
         """
         result = {
@@ -338,15 +306,15 @@ class Pipeline:
 
         try:
             # Step 1: Parse PDF → Markdown
-            if not pdf_path.exists():
-                raise ParserError(f"PDF file not found: {pdf_path}")
+            if not file_path.exists():
+                raise ParserBackendError(f"PDF file not found: {file_path}")
 
-            self.logger.info(f"Parsing document: {pdf_path.name}")
+            self.logger.info(f"Parsing document: {file_path.name}")
             parser = self.container.parser_backend
-            parse_result = parser.parse_document(pdf_path, doc_metadata)
+            parse_result = parser.parse_document(file_path, doc_metadata)
 
             if not parse_result.success:
-                raise ParserError(
+                raise ParserBackendError(
                     parse_result.error or "Parser failed without error message"
                 )
 
@@ -375,7 +343,7 @@ class Pipeline:
                 archive = self.container.archive_backend
 
                 archive_result = archive.archive_document(
-                    file_path=pdf_path,
+                    file_path=file_path,
                     title=merged_metadata.title,
                     created=merged_metadata.publication_date,
                     correspondent=merged_metadata.organization,
@@ -396,7 +364,7 @@ class Pipeline:
                 # Step 5: Verify document (Sonarr-style)
                 self.logger.info("Verifying document in archive...")
                 verified = archive.verify_document(
-                    archive_result.document_id, timeout=60
+                    archive_result.document_id, timeout=self.verify_document_timeout
                 )
                 result["verified"] = verified
 
@@ -438,11 +406,14 @@ class Pipeline:
             if should_delete:
                 self.logger.info("Deleting local files (archived/verified)")
                 try:
-                    pdf_path.unlink()
-                    if parse_result.markdown_path.exists():
+                    file_path.unlink()
+                    if (
+                        parse_result.markdown_path
+                        and parse_result.markdown_path.exists()
+                    ):
                         parse_result.markdown_path.unlink()
                     # Delete metadata JSON if exists
-                    metadata_path = pdf_path.with_suffix(".json")
+                    metadata_path = file_path.with_suffix(".json")
                     if metadata_path.exists():
                         metadata_path.unlink()
                     self.logger.debug("Local files deleted")
@@ -451,58 +422,15 @@ class Pipeline:
 
             return result
 
-        except (ParserError, ArchiveError) as e:
+        except (ParserBackendError, ArchiveError) as e:
             # FAIL FAST for parser/archive errors
             self.logger.error(f"Document processing failed: {e}")
-            result["error"] = str(e)
             raise
 
         except Exception as e:
             # Unexpected errors
             self.logger.error(f"Unexpected error processing document: {e}")
-            result["error"] = str(e)
             raise
-
-    def _upload_to_ragflow(self) -> dict[str, int]:
-        """Upload downloaded documents to RAGFlow."""
-        if not self.ragflow or not self.dataset_id:
-            return {"uploaded": 0, "failed": 0}
-
-        # Get list of downloaded files
-        # Prioritize Markdown, fall back to PDF if no MD
-        download_dir = Config.DOWNLOAD_DIR / self.scraper_name
-        if not download_dir.exists():
-            return {"uploaded": 0, "failed": 0}
-
-        files = list(download_dir.glob("*.md"))
-        # If no markdown, looks for pdfs (legacy behavior for pdf scrapers)
-        if not files:
-            files = list(download_dir.glob("*.pdf"))
-
-        if not files:
-            return {"uploaded": 0, "failed": 0}
-
-        # Upload files
-        results = self.ragflow.upload_documents(self.dataset_id, files)
-
-        uploaded = sum(1 for r in results if r.success)
-        failed = len(results) - uploaded
-
-        return {"uploaded": uploaded, "failed": failed}
-
-    def _trigger_parsing(self) -> bool:
-        """Trigger parsing in RAGFlow."""
-        if not self.ragflow or not self.dataset_id:
-            return False
-
-        return self.ragflow.trigger_parsing(self.dataset_id)
-
-    def _wait_for_parsing(self) -> bool:
-        """Wait for parsing to complete."""
-        if not self.ragflow or not self.dataset_id:
-            return False
-
-        return self.ragflow.wait_for_parsing(self.dataset_id)
 
     def _finalize_result(
         self,
@@ -550,7 +478,8 @@ def run_pipeline(
     dataset_id: Optional[str] = None,
     max_pages: Optional[int] = None,
     upload_to_ragflow: bool = True,
-    wait_for_parsing: bool = True,
+    upload_to_paperless: bool = True,
+    verify_document_timeout: int = 60,
 ) -> PipelineResult:
     """
     Convenience function to run a pipeline.
@@ -560,7 +489,8 @@ def run_pipeline(
         dataset_id: RAGFlow dataset ID
         max_pages: Maximum pages to scrape
         upload_to_ragflow: Whether to upload to RAGFlow
-        wait_for_parsing: Whether to wait for parsing
+        upload_to_paperless: Whether to upload to Paperless
+        verify_document_timeout: Timeout for archive verification
 
     Returns:
         PipelineResult with statistics
@@ -570,6 +500,7 @@ def run_pipeline(
         dataset_id=dataset_id,
         max_pages=max_pages,
         upload_to_ragflow=upload_to_ragflow,
-        wait_for_parsing=wait_for_parsing,
+        upload_to_paperless=upload_to_paperless,
+        verify_document_timeout=verify_document_timeout,
     )
     return pipeline.run()

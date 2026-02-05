@@ -107,10 +107,18 @@ class Config:
     ANYTHINGLLM_WORKSPACE_ID = os.getenv("ANYTHINGLLM_WORKSPACE_ID", "")
 
     # Backend Selection
-    PARSER_BACKEND = os.getenv("PARSER_BACKEND", "docling")  # docling, mineru, tika
-    ARCHIVE_BACKEND = os.getenv("ARCHIVE_BACKEND", "paperless")  # paperless, s3, local
-    RAG_BACKEND = os.getenv("RAG_BACKEND", "ragflow")  # ragflow, anythingllm
-    METADATA_MERGE_STRATEGY = os.getenv("METADATA_MERGE_STRATEGY", "smart")  # smart, parser_wins, scraper_wins
+    PARSER_BACKEND = (
+        os.getenv("PARSER_BACKEND", "docling").strip().lower()
+    )  # docling, mineru, tika
+    ARCHIVE_BACKEND = (
+        os.getenv("ARCHIVE_BACKEND", "paperless").strip().lower()
+    )  # paperless, s3, local
+    RAG_BACKEND = (
+        os.getenv("RAG_BACKEND", "ragflow").strip().lower()
+    )  # ragflow, anythingllm
+    METADATA_MERGE_STRATEGY = (
+        os.getenv("METADATA_MERGE_STRATEGY", "smart").strip().lower()
+    )  # smart, parser_wins, scraper_wins
 
     # Selenium
     SELENIUM_REMOTE_URL = os.getenv(
@@ -177,6 +185,12 @@ class Config:
             if not cls.BASIC_AUTH_USERNAME or not cls.BASIC_AUTH_PASSWORD:
                 raise ValueError(
                     "Invalid Config: BASIC_AUTH_ENABLED=true requires both BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD"
+                )
+
+        if cls.RAG_BACKEND == "anythingllm":
+            if not cls.ANYTHINGLLM_API_URL or not cls.ANYTHINGLLM_API_KEY:
+                raise ValueError(
+                    "Invalid Config: RAG_BACKEND='anythingllm' requires both ANYTHINGLLM_API_URL and ANYTHINGLLM_API_KEY"
                 )
 
         if cls.FLARESOLVERR_MAX_TIMEOUT < cls.FLARESOLVERR_TIMEOUT:

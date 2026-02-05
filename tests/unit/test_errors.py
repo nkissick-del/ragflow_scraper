@@ -1,8 +1,15 @@
-from app.utils.errors import ScraperError, NetworkError, ParsingError
+from app.utils.errors import (
+    ScraperError,
+    NetworkError,
+    ParsingError,
+    ParserBackendError,
+)
 
 
 def test_scraper_error_with_context():
-    error = ScraperError("Test error", scraper="demo", context={"url": "http://example.com"})
+    error = ScraperError(
+        "Test error", scraper="demo", context={"url": "http://example.com"}
+    )
     assert error.scraper == "demo"
     assert error.context["url"] == "http://example.com"
     assert error.recoverable is True
@@ -16,4 +23,9 @@ def test_network_error_recoverable_by_default():
 
 def test_parsing_error_not_recoverable_by_default():
     error = ParsingError("Parse failed", scraper="demo")
+    assert error.recoverable is False
+
+
+def test_parser_backend_error_not_recoverable_by_default():
+    error = ParserBackendError("PDF parsing failed", scraper="demo")
     assert error.recoverable is False

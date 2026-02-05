@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Optional
 
+
 from app.backends.parsers.base import ParserBackend, ParserResult
 from app.scrapers.models import DocumentMetadata
 from app.utils import get_logger
@@ -42,13 +43,13 @@ class DoclingParser(ParserBackend):
         return [".pdf", ".docx", ".pptx", ".html"]
 
     def parse_document(
-        self, pdf_path: Path, context_metadata: DocumentMetadata
+        self, file_path: Path, context_metadata: DocumentMetadata
     ) -> ParserResult:
         """
-        Parse PDF to Markdown using Docling.
+        Parse document to Markdown using Docling.
 
         Args:
-            pdf_path: Path to PDF file
+            file_path: Path to file
             context_metadata: Scraper-provided metadata (URL, date, org)
 
         Returns:
@@ -59,37 +60,58 @@ class DoclingParser(ParserBackend):
             self.logger.error(error_msg)
             return ParserResult(success=False, error=error_msg, parser_name=self.name)
 
-        if not pdf_path.exists():
-            error_msg = f"File not found: {pdf_path}"
+        if not file_path.exists():
+            error_msg = f"File not found: {file_path}"
             self.logger.error(error_msg)
             return ParserResult(success=False, error=error_msg, parser_name=self.name)
 
         # Lazy import
         try:
-            from docling.document_converter import DocumentConverter
+            from concurrent.futures import ProcessPoolExecutor, TimeoutError
         except ImportError as e:
-            error_msg = f"Failed to import Docling: {e}"
+            error_msg = f"Failed to import required modules: {e}"
             self.logger.error(error_msg)
             return ParserResult(success=False, error=error_msg, parser_name=self.name)
 
         try:
-            self.logger.info(f"Parsing document with Docling: {pdf_path.name}")
+            self.logger.info(f"Parsing document with Docling: {file_path.name}")
 
-            # Initialize converter
-            converter = DocumentConverter()
+            # Use a ProcessPoolExecutor to enforce a timeout on the potentially hanging convert call
+            with ProcessPoolExecutor(max_workers=1) as executor:
+                # We need a wrapper function because DocumentConverter is not picklable easily
+                # but for simplicity in this script we try a direct call if possible or a helper.
+                # Standard practice for Docling is often just direct call, but here we want timeout.
+                future = executor.submit(_run_conversion, str(file_path))
+                try:
+                    result = future.result(timeout=300)  # 5 minute timeout
+                except TimeoutError:
+                    error_msg = f"Docling conversion timed out for {file_path.name}"
+                    self.logger.error(error_msg)
+                    return ParserResult(
+                        success=False, error="timeout", parser_name=self.name
+                    )
 
-            # Convert document
-            result = converter.convert(str(pdf_path))
+            if result is None:
+                error_msg = f"Docling conversion failed for {file_path.name}"
+                self.logger.error(error_msg)
+                return ParserResult(
+                    success=False, error=error_msg, parser_name=self.name
+                )
 
             # Export to Markdown
-            markdown_content = result.document.export_to_markdown()
+            # Note: result here is a simplified dict or object returned from worker
+            markdown_content = result["markdown"]
+            docling_meta = result["metadata"]
+            page_count = result["page_count"]
 
-            # Write Markdown file next to PDF
-            markdown_path = pdf_path.with_suffix(".md")
+            # Write Markdown file next to artifact
+            markdown_path = file_path.with_suffix(".md")
             markdown_path.write_text(markdown_content, encoding="utf-8")
 
             # Extract metadata from parsed document
-            extracted_metadata = self._extract_metadata(result, context_metadata)
+            extracted_metadata = self._extract_metadata(
+                docling_meta, page_count, markdown_content
+            )
 
             self.logger.info(
                 f"Docling parse successful: {markdown_path.name} "
@@ -109,36 +131,34 @@ class DoclingParser(ParserBackend):
             return ParserResult(success=False, error=error_msg, parser_name=self.name)
 
     def _extract_metadata(
-        self, docling_result, context_metadata: DocumentMetadata
+        self, docling_meta: dict, page_count: Optional[int], markdown: str
     ) -> dict:
         """
         Extract metadata from Docling parse result.
 
         Args:
-            docling_result: Docling ConversionResult object
-            context_metadata: Original scraper metadata
+            docling_meta: Metadata dict from Docling
+            page_count: Number of pages
+            markdown: Pre-computed markdown content
 
         Returns:
             Metadata dict with title, author, etc.
         """
         metadata = {}
 
-        # Try to extract title from document metadata
-        doc = docling_result.document
-        if hasattr(doc, "metadata") and doc.metadata:
-            doc_meta = doc.metadata
-            if hasattr(doc_meta, "title") and doc_meta.title:
-                metadata["title"] = doc_meta.title
-            if hasattr(doc_meta, "author") and doc_meta.author:
-                metadata["author"] = doc_meta.author
-            if hasattr(doc_meta, "creation_date") and doc_meta.creation_date:
-                metadata["creation_date"] = str(doc_meta.creation_date)
+        # Use metadata from Docling if available
+        if docling_meta:
+            if docling_meta.get("title"):
+                metadata["title"] = docling_meta["title"]
+            if docling_meta.get("author"):
+                metadata["author"] = docling_meta["author"]
+            if docling_meta.get("creation_date"):
+                metadata["creation_date"] = str(docling_meta["creation_date"])
 
         # If no title found in metadata, try to extract from first heading
         if "title" not in metadata:
-            # Try to find first H1/H2 heading in markdown
-            markdown = doc.export_to_markdown()
-            for line in markdown.split("\n")[:20]:  # Check first 20 lines
+            # Check first 20 lines of the already computed markdown
+            for line in markdown.split("\n")[:20]:
                 line = line.strip()
                 if line.startswith("# "):
                     metadata["title"] = line.lstrip("# ").strip()
@@ -149,6 +169,36 @@ class DoclingParser(ParserBackend):
 
         # Add parser info
         metadata["parsed_by"] = self.name
-        metadata["page_count"] = len(doc.pages) if hasattr(doc, "pages") else None
+        metadata["page_count"] = page_count
 
         return metadata
+
+
+def _run_conversion(file_path: str) -> Optional[dict]:
+    """Helper function to run Docling conversion in a separate process."""
+    try:
+        from docling.document_converter import DocumentConverter
+
+        converter = DocumentConverter()
+        result = converter.convert(file_path)
+
+        # Extract what we need and return it (must be picklable)
+        doc = result.document
+        markdown_content = doc.export_to_markdown()
+
+        doc_meta = {}
+        if hasattr(doc, "metadata") and doc.metadata:
+            if hasattr(doc.metadata, "title"):
+                doc_meta["title"] = doc.metadata.title
+            if hasattr(doc.metadata, "author"):
+                doc_meta["author"] = doc.metadata.author
+            if hasattr(doc.metadata, "creation_date"):
+                doc_meta["creation_date"] = doc.metadata.creation_date
+
+        return {
+            "markdown": markdown_content,
+            "metadata": doc_meta,
+            "page_count": len(doc.pages) if hasattr(doc, "pages") else None,
+        }
+    except Exception:
+        return None

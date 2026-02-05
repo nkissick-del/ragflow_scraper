@@ -1,5 +1,3 @@
-import types
-
 from app.orchestrator.pipeline import Pipeline, PipelineResult
 from app.scrapers import ScraperRegistry
 
@@ -40,19 +38,29 @@ class DummyContainer:
 
 def test_pipeline_with_mocked_dependencies(monkeypatch):
     # Monkeypatch registry to return dummy scraper
-    monkeypatch.setattr(ScraperRegistry, "get_scraper", lambda *args, **kwargs: DummyScraper())
-
-    # Bypass real upload/parsing side effects
-    monkeypatch.setattr(Pipeline, "_upload_to_ragflow", lambda self: {"uploaded": 1, "failed": 0})
-    monkeypatch.setattr(Pipeline, "_trigger_parsing", lambda self: True)
-    monkeypatch.setattr(Pipeline, "_wait_for_parsing", lambda self: True)
+    monkeypatch.setattr(
+        ScraperRegistry, "get_scraper", lambda *args, **kwargs: DummyScraper()
+    )
 
     pipeline = Pipeline(
         scraper_name="dummy",
         dataset_id="ds",
         upload_to_ragflow=True,
-        wait_for_parsing=True,
+        verify_document_timeout=5,
         container=DummyContainer(),
+    )
+
+    # We need to mock _process_document because it calls real backend tools
+    monkeypatch.setattr(
+        Pipeline,
+        "_process_document",
+        lambda self, meta, path: {
+            "parsed": True,
+            "archived": True,
+            "verified": True,
+            "rag_indexed": True,
+            "error": None,
+        },
     )
 
     result = pipeline.run()

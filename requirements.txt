@@ -4,7 +4,7 @@
 # Web Framework
 flask
 Flask-WTF
-jinja2  # For filename templates (already a Flask dependency, but explicit)
+jinja2  # Used directly in file_utils.py for filename templates
 
 # Scraping
 selenium

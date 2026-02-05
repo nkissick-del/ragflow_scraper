@@ -58,3 +58,5 @@ htmlcov/
 # Random
 /docs/TODO.md
 docs/TODO.md
+coverage.xml
+coverage.xml
