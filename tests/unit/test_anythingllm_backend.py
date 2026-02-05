@@ -1,5 +1,7 @@
 """Tests for AnythingLLM backend adapter."""
 
+import json
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch
@@ -209,7 +211,7 @@ class TestPrepareMetadata:
         assert result["document_type"] == "article"
 
     def test_prepare_date_fields(self, backend):
-        """Should convert date fields to strings."""
+        """Should convert date fields to strings with expected format."""
         from datetime import datetime
 
         metadata = {
@@ -218,9 +220,8 @@ class TestPrepareMetadata:
         }
         result = backend._prepare_metadata(metadata)
 
-        assert "publication_date" in result
-        assert "scraped_at" in result
-        assert isinstance(result["publication_date"], str)
+        assert result["publication_date"] == "2024-01-15 00:00:00"
+        assert result["scraped_at"] == "2024-02-01"
 
     def test_prepare_numeric_fields(self, backend):
         """Should include numeric fields."""
@@ -241,7 +242,7 @@ class TestPrepareMetadata:
         assert result["file_hash"] == "abc123"
 
     def test_prepare_extra_metadata(self, backend):
-        """Should flatten extra metadata."""
+        """Should flatten extra metadata with JSON serialization for complex types."""
         metadata = {
             "extra": {
                 "author": "John Doe",
@@ -252,7 +253,7 @@ class TestPrepareMetadata:
         result = backend._prepare_metadata(metadata)
 
         assert result["extra_author"] == "John Doe"
-        assert "extra_tags" in result  # Should be JSON string
+        assert result["extra_tags"] == json.dumps(["energy", "report"])
         assert result["extra_custom_field"] == "value"
 
     def test_prepare_skips_none_values(self, backend):

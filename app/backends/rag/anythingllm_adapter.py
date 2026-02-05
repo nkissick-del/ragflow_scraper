@@ -1,5 +1,6 @@
 """AnythingLLM RAG backend adapter."""
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -160,8 +161,6 @@ class AnythingLLMBackend(RAGBackend):
                 if key not in prepared and value is not None:
                     # Convert complex types to strings
                     if isinstance(value, (dict, list)):
-                        import json
-
                         prepared[f"extra_{key}"] = json.dumps(value)
                     else:
                         prepared[f"extra_{key}"] = str(value)

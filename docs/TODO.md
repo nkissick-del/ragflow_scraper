@@ -85,9 +85,9 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 **Goal:** Complete critical features and validation before production deployment  
 **Target:** AnythingLLM as primary RAG backend (RAGFlow deferred)
 
-### Phase 4.1: AnythingLLM Implementation [Code] ✅ COMPLETE
+### Phase 4.1: AnythingLLM Implementation [Code] 🟡 MOSTLY COMPLETE
 
-**Priority:** BLOCKER - ~~Currently stub implementation~~ **IMPLEMENTED**
+**Priority:** BLOCKER - ~~Currently stub implementation~~ **IMPLEMENTED** (manual testing pending)
 
 **Tasks:**
 - [x] Research AnythingLLM API documentation
@@ -128,7 +128,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 **Test Results:** 41/41 unit tests passing ✅
 
 **Estimated Effort:** 8-12h  
-**Actual Effort:** ~4-5h hours
+**Actual Effort:** ~4-5h
 
 ---
 
@@ -156,8 +156,8 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 - [ ] Remove TODO comments
 
 **Reference:** 
-- [app/services/paperless_client.py](file:///Users/nathankissick/docker_projects/scraper/app/services/paperless_client.py#L98-L113)
-- [docs/plans/paperless_metadata.md](file:///Users/nathankissick/docker_projects/scraper/docs/plans/paperless_metadata.md)
+- [app/services/paperless_client.py](app/services/paperless_client.py#L98-L113)
+- [docs/plans/paperless_metadata.md](docs/plans/paperless_metadata.md)
 
 **Estimated Effort:** 4-6 hours
 
@@ -191,9 +191,9 @@ Status: Awaiting live services; keep after refactors unless blocking release.
   - Add customization guide
 
 **Reference:**
-- [docs/plans/naming_strategy.md](file:///Users/nathankissick/docker_projects/scraper/docs/plans/naming_strategy.md)
-- [docs/plans/consolidated_architecture.md](file:///Users/nathankissick/docker_projects/scraper/docs/plans/consolidated_architecture.md#L60-L64)
-- [app/utils/file_utils.py](file:///Users/nathankissick/docker_projects/scraper/app/utils/file_utils.py)
+- [docs/plans/naming_strategy.md](docs/plans/naming_strategy.md)
+- [docs/plans/consolidated_architecture.md](docs/plans/consolidated_architecture.md#L60-L64)
+- [app/utils/file_utils.py](app/utils/file_utils.py)
 
 **Estimated Effort:** 3-4 hours
 
@@ -222,7 +222,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
   - Concurrent download benchmark
   - Metadata merge benchmark
 
-**Reference:** [walkthrough.md](file:///Users/nathankissick/.gemini/antigravity/brain/ca76dfe9-5ce0-4f09-a2f6-8db2f54a5b5a/walkthrough.md)
+**Reference:** [walkthrough.md](../../../.gemini/antigravity/brain/ca76dfe9-5ce0-4f09-a2f6-8db2f54a5b5a/walkthrough.md)
 
 **Estimated Effort:** 8-12 hours
 
@@ -271,21 +271,28 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 **Total Estimated Effort:** 29-42 hours (4-6 days)
 
 **Critical Path:**
-1. AnythingLLM implementation (8-12h) - BLOCKER
+1. ✅ AnythingLLM implementation (8-12h) - COMPLETE (manual testing pending)
 2. Paperless metadata (4-6h) - BLOCKER
 3. Jinja2 templating (3-4h) - HIGH
 4. Testing (8-12h) - HIGH
 5. Production validation (6-8h) - HIGH
 
-**Completion Criteria:**
-- ✅ AnythingLLM backend fully functional
-- ✅ Paperless metadata upload working (correspondents + tags)
-- ✅ Jinja2 filename templating implemented
-- ✅ All 148 tests passing
-- ✅ Integration tests for critical paths
-- ✅ Validated with live AnythingLLM instance
-- ✅ Validated with live Paperless instance
-- ✅ Security hardening verified
+**Target Completion Criteria:**
+- 🟡 AnythingLLM backend fully functional (implemented, manual validation pending)
+- [ ] Paperless metadata upload working (correspondents + tags)
+- [ ] Jinja2 filename templating implemented
+- [ ] All 148 tests passing
+- [ ] Integration tests for critical paths
+- [ ] Validated with live AnythingLLM instance
+- [ ] Validated with live Paperless instance
+- [ ] Security hardening verified
+
+**Current Status:**
+- ✅ 146/148 tests passing (98.6%)
+- ✅ AnythingLLM backend implemented with 41 unit tests
+- 🔴 2 test collection errors to fix
+- 🔴 Paperless metadata mapping incomplete
+- 🔴 Jinja2 templating not started
 
 ---
 
@@ -299,13 +306,13 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 - Replace Selenium-based PDF generation with Gotenberg
 - Unified Markdown source for RAG and Archive
 - Simpler deployment (no Chrome dependency for archiving)
-- Reference: [docs/plans/archiver_refactoring.md](file:///Users/nathankissick/docker_projects/scraper/docs/plans/archiver_refactoring.md)
+- Reference: [docs/plans/archiver_refactoring.md](docs/plans/archiver_refactoring.md)
 
 **Apache Tika Integration** 🟢 LOW
 - Enhanced metadata extraction (page count, language, creation date)
 - Fallback for missing web metadata
 - Better search capabilities
-- Reference: [docs/plans/tika_integration.md](file:///Users/nathankissick/docker_projects/scraper/docs/plans/tika_integration.md)
+- Reference: [docs/plans/tika_integration.md](docs/plans/tika_integration.md)
 
 **Additional Parser Backends** 🟢 LOW
 - MinerU parser implementation
@@ -333,10 +340,10 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 
 ## Next Steps
 
-**Immediate Actions (Phase 4.1-4.2):**
-1. 🔴 Implement AnythingLLM backend (8-12 hours)
-2. 🔴 Fix Paperless metadata mapping (4-6 hours)
-3. 🟡 Implement Jinja2 templating (3-4 hours)
+**Immediate Actions (Phase 4.2-4.3):**
+1. 🔴 Fix Paperless metadata mapping (4-6 hours) - BLOCKER
+2. 🟡 Implement Jinja2 templating (3-4 hours)
+3. 🟡 Complete AnythingLLM manual testing (1-2 hours)
 
 **Then (Phase 4.3-4.5):**
 4. 🟡 Fix test collection errors and expand coverage (8-12 hours)
@@ -352,5 +359,5 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 - Documentation: 7 comprehensive guides (~1,700 lines)
 - Architecture: Modular backend system complete
 - **RAGFlow:** Deferred - focusing on AnythingLLM
-- **Current blockers:** AnythingLLM stub, Paperless metadata
+- **Current blockers:** Paperless metadata mapping, AnythingLLM manual validation pending
 - **Ready after Phase 4:** Production deployment

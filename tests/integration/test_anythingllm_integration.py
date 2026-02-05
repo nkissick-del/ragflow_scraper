@@ -1,8 +1,10 @@
 """Integration tests for AnythingLLM backend."""
 
 import pytest
+import requests
 from unittest.mock import patch
 import responses
+from requests_toolbelt.multipart import decoder as multipart_decoder
 
 from app.backends.rag.anythingllm_adapter import AnythingLLMBackend
 from app.services.anythingllm_client import AnythingLLMClient
@@ -95,7 +97,7 @@ class TestDocumentUpload:
         # Mock upload endpoint
         responses.add(
             responses.POST,
-            "http://localhost:3001/api/document/upload/scraped_documents",
+            "http://localhost:3001/api/v1/document/upload",
             json={
                 "id": "doc-123",
                 "workspace_id": "test-workspace-123",
@@ -122,7 +124,7 @@ class TestDocumentUpload:
 
         responses.add(
             responses.POST,
-            "http://localhost:3001/api/document/upload/default",
+            "http://localhost:3001/api/v1/document/upload",
             json={"id": "doc-456"},
             status=200,
         )
@@ -139,10 +141,18 @@ class TestDocumentUpload:
         )
 
         assert result.success is True
-        # Verify request included metadata
+        # Verify request included metadata using callback validation
         assert len(responses.calls) == 1
         request = responses.calls[0].request
-        assert b"metadata" in request.body
+        # Parse multipart form data to verify metadata field exists
+        content_type = request.headers.get("Content-Type", "")
+        if "multipart" in content_type:
+            parsed = multipart_decoder.MultipartDecoder(request.body, content_type)
+            field_names = [
+                part.headers.get(b"Content-Disposition", b"").decode()
+                for part in parsed.parts
+            ]
+            assert any("metadata" in name for name in field_names)
 
     @responses.activate
     def test_upload_server_error(self, client, tmp_path):
@@ -152,7 +162,7 @@ class TestDocumentUpload:
 
         responses.add(
             responses.POST,
-            "http://localhost:3001/api/document/upload/default",
+            "http://localhost:3001/api/v1/document/upload",
             json={"error": "Internal server error"},
             status=500,
         )
@@ -176,7 +186,7 @@ class TestBackendIntegration:
         # Mock upload endpoint
         responses.add(
             responses.POST,
-            "http://localhost:3001/api/document/upload/scraped_documents",
+            "http://localhost:3001/api/v1/document/upload",
             json={
                 "id": "doc-789",
                 "workspace_id": "test-workspace-123",
@@ -212,7 +222,7 @@ class TestBackendIntegration:
 
         responses.add(
             responses.POST,
-            "http://localhost:3001/api/document/upload/scraped_documents",
+            "http://localhost:3001/api/v1/document/upload",
             json={"id": "doc-999"},
             status=200,
         )
@@ -237,7 +247,7 @@ class TestBackendIntegration:
 
         responses.add(
             responses.POST,
-            "http://localhost:3001/api/document/upload/scraped_documents",
+            "http://localhost:3001/api/v1/document/upload",
             json={"id": "doc-meta"},
             status=200,
         )
@@ -256,8 +266,8 @@ class TestBackendIntegration:
         # Verify metadata was included in request
         request = responses.calls[0].request
         assert b"metadata" in request.body
-        # Should have file_hash instead of hash
-        assert b"file_hash" in request.body or b"hash123" in request.body
+        # Adapter transforms 'hash' to 'file_hash' for AnythingLLM
+        assert b"file_hash" in request.body
 
 
 class TestErrorHandling:
@@ -269,10 +279,7 @@ class TestErrorHandling:
         test_file = tmp_path / "test.md"
         test_file.write_text("# Test")
 
-        # Simulate timeout by not adding any response
-        # This will cause a connection error
-        import requests
-
+        # Simulate timeout by patching session.request
         with patch.object(
             client.session, "request", side_effect=requests.Timeout("Timeout")
         ):
@@ -288,13 +295,15 @@ class TestErrorHandling:
 
         responses.add(
             responses.POST,
-            "http://localhost:3001/api/document/upload/default",
+            "http://localhost:3001/api/v1/document/upload",
             body="Invalid JSON",
             status=200,
         )
 
         result = client.upload_document(test_file)
 
-        # Should handle gracefully (might succeed with no document_id)
-        # or fail depending on implementation
-        assert isinstance(result.success, bool)
+        # Invalid JSON should cause upload to fail with parse-related error
+        # requests.JSONDecodeError produces messages like "Expecting value: line 1 column 1"
+        assert result.success is False
+        assert result.error is not None
+        assert "Expecting value" in result.error or "JSON" in result.error

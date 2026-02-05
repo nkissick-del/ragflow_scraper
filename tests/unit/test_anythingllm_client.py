@@ -53,8 +53,7 @@ class TestClientInitialization:
 class TestTestConnection:
     """Test connection testing."""
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_connection_success(self, mock_session_cls, client):
+    def test_connection_success(self, client):
         """Should return True when connection succeeds."""
         mock_session = Mock()
         mock_response = Mock()
@@ -72,8 +71,7 @@ class TestTestConnection:
         assert "/api/v1/workspaces" in args[1]
         assert kwargs["headers"]["Authorization"] == "Bearer test-key"
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_connection_failure(self, mock_session_cls, client):
+    def test_connection_failure(self, client):
         """Should return False when connection fails."""
         mock_session = Mock()
         mock_session.request.side_effect = requests.RequestException("Network error")
@@ -83,8 +81,7 @@ class TestTestConnection:
 
         assert result is False
 
-    @patch("app.services.anythingllm_client.requests.Session")
-    def test_connection_http_error(self, mock_session_cls, client):
+    def test_connection_http_error(self, client):
         """Should return False when HTTP error occurs."""
         mock_session = Mock()
         mock_response = Mock()
@@ -203,7 +200,7 @@ class TestUploadDocument:
         # Verify workspace IDs were included in request
         args, kwargs = mock_session.request.call_args
         assert "data" in kwargs
-        assert kwargs["data"]["add_to_workspaces"] == "ws1,ws2"
+        assert kwargs["data"]["addToWorkspaces"] == "ws1,ws2"
 
     @patch("app.services.anythingllm_client.requests.Session")
     def test_upload_with_metadata(self, mock_session_cls, client, tmp_path):
@@ -299,16 +296,16 @@ class TestRetryLogic:
         assert mock_session.request.call_count == 3
         assert mock_sleep.call_count == 2
 
-    @patch("app.services.anythingllm_client.requests.Session")
     @patch("app.services.anythingllm_client.time.sleep")
-    def test_max_retries_exceeded(self, mock_sleep, mock_session_cls, client):
-        """Should fail after max retries."""
+    def test_max_retries_exceeded(self, mock_sleep, client):
+        """Should fail after max retries using public API."""
         mock_session = Mock()
         mock_session.request.side_effect = requests.RequestException("Network error")
         client.session = mock_session
         client.max_retries = 3
 
-        with pytest.raises(requests.RequestException):
-            client._request("GET", "/api/test")
+        # Use public API which exercises retry logic internally
+        result = client.test_connection()
 
+        assert result is False
         assert mock_session.request.call_count == 3

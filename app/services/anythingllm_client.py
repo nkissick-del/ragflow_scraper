@@ -10,6 +10,7 @@ Provides HTTP client for interacting with AnythingLLM API:
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,9 +67,23 @@ class AnythingLLMClient:
         self.api_key = api_key or Config.ANYTHINGLLM_API_KEY or ""
         self.workspace_id = workspace_id or Config.ANYTHINGLLM_WORKSPACE_ID or ""
         self.timeout = timeout
-        self.max_retries = max_retries
+        # Ensure at least one attempt is made
+        self.max_retries = max(1, max_retries)
         self.session: Session = requests.Session()
         self.logger = get_logger("anythingllm.client")
+
+    def close(self) -> None:
+        """Close the session and release connection pool resources."""
+        if hasattr(self, "session") and self.session:
+            self.session.close()
+
+    def __enter__(self) -> "AnythingLLMClient":
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit context manager and close session."""
+        self.close()
 
     def _request(self, method: str, path: str, **kwargs) -> Response:
         """
@@ -176,7 +191,6 @@ class AnythingLLMClient:
 
         try:
             # Prepare multipart form data
-            files = {"file": open(filepath, "rb")}
             data = {}
 
             # Add workspace IDs if provided
@@ -188,11 +202,11 @@ class AnythingLLMClient:
             # Add metadata if provided
             if metadata:
                 # AnythingLLM expects metadata as JSON string or individual fields
-                import json
-
                 data["metadata"] = json.dumps(metadata)
 
-            try:
+            # Use context manager to ensure file is always closed
+            with open(filepath, "rb") as f:
+                files = {"file": f}
                 resp = self._request(
                     "POST",
                     "/api/v1/document/upload",
@@ -200,42 +214,38 @@ class AnythingLLMClient:
                     data=data,
                 )
 
-                if resp.ok:
-                    response_data = resp.json()
-                    # Handle different response formats
-                    if isinstance(response_data, dict):
-                        # Check for documents array (actual API format)
-                        if "documents" in response_data and response_data["documents"]:
-                            doc = response_data["documents"][0]
-                            return UploadResult(
-                                success=True,
-                                document_id=doc.get("id"),
-                                filename=filepath.name,
-                                workspace_id=self.workspace_id,
-                            )
-                        # Fallback to direct fields
-                        doc_id = response_data.get("id") or response_data.get(
-                            "document_id"
-                        )
-                        workspace = response_data.get("workspace_id")
+            if resp.ok:
+                response_data = resp.json()
+                # Handle different response formats
+                if isinstance(response_data, dict):
+                    # Check for documents array (actual API format)
+                    if "documents" in response_data and response_data["documents"]:
+                        doc = response_data["documents"][0]
                         return UploadResult(
                             success=True,
-                            document_id=doc_id,
+                            document_id=doc.get("id"),
                             filename=filepath.name,
-                            workspace_id=workspace,
+                            workspace_id=self.workspace_id,
                         )
+                    # Fallback to direct fields
+                    doc_id = response_data.get("id") or response_data.get("document_id")
+                    workspace = response_data.get("workspace_id")
                     return UploadResult(
                         success=True,
+                        document_id=doc_id,
                         filename=filepath.name,
+                        workspace_id=workspace,
                     )
-
                 return UploadResult(
-                    success=False,
-                    error=f"Upload failed: {resp.status_code} - {resp.text}",
+                    success=True,
                     filename=filepath.name,
                 )
-            finally:
-                files["file"].close()
+
+            return UploadResult(
+                success=False,
+                error=f"Upload failed: {resp.status_code} - {resp.text}",
+                filename=filepath.name,
+            )
 
         except Exception as exc:
             error_msg = f"Upload failed: {exc}"
