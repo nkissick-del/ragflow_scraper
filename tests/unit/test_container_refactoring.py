@@ -53,7 +53,7 @@ class TestServiceContainerRefactoring:
                 )
 
     def test_archive_backend_availability_check(self):
-        """archive_backend should raise ValueError if is_available() returns False."""
+        """archive_backend should raise ValueError if is_configured() returns False."""
         with patch("app.services.container.Config") as mock_config:
             mock_config.ARCHIVE_BACKEND = "paperless"
 
@@ -61,14 +61,15 @@ class TestServiceContainerRefactoring:
                 "app.backends.archives.paperless_adapter.PaperlessArchiveBackend"
             ) as mock_backend_cls:
                 mock_instance = mock_backend_cls.return_value
-                mock_instance.is_available.return_value = False
+                # Update mock to use is_configured instead of is_available
+                mock_instance.is_configured.return_value = False
 
                 container = get_container()
                 with pytest.raises(ValueError, match="not available"):
                     _ = container.archive_backend
 
     def test_archive_backend_success_if_available(self):
-        """archive_backend should succeed if is_available() returns True."""
+        """archive_backend should succeed if is_configured() returns True."""
         with patch("app.services.container.Config") as mock_config:
             mock_config.ARCHIVE_BACKEND = "paperless"
 
@@ -76,9 +77,10 @@ class TestServiceContainerRefactoring:
                 "app.backends.archives.paperless_adapter.PaperlessArchiveBackend"
             ) as mock_backend_cls:
                 mock_instance = mock_backend_cls.return_value
-                mock_instance.is_available.return_value = True
+                # Update mock to use is_configured instead of is_available
+                mock_instance.is_configured.return_value = True
 
                 container = get_container()
                 backend = container.archive_backend
                 assert backend is mock_instance
-                mock_instance.is_available.assert_called()
+                mock_instance.is_configured.assert_called()
