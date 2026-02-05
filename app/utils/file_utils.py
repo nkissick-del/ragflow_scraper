@@ -112,7 +112,9 @@ def get_file_hash(file_path: Path, algorithm: str = "sha256") -> str:
     """
     hash_obj = hashlib.new(algorithm)
     with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(CHUNK_SIZE), b""):
+        # Optimized reading loop using walrus operator (Python 3.8+)
+        # This avoids the overhead of creating a lambda and iterator for each chunk
+        while chunk := f.read(CHUNK_SIZE):
             hash_obj.update(chunk)
     return hash_obj.hexdigest()
 
