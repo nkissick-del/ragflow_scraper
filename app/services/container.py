@@ -212,7 +212,7 @@ class ServiceContainer:
             else:
                 raise ValueError(f"Unknown archive backend: {backend_name}")
 
-            if not self._archive_backend.is_available():
+            if not self._archive_backend.is_configured():
                 raise ValueError(
                     f"Archive backend '{backend_name}' not available "
                     "(check dependencies and configuration)"

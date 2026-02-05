@@ -81,7 +81,7 @@ class PaperlessClient:
         endpoint = f"{self.url}/api/documents/post_document/"
 
         # Prepare metadata
-        data = {"title": title}
+        data: dict[str, Union[str, int, list[int]]] = {"title": title}
 
         if created:
             data["created"] = created.isoformat()
@@ -91,7 +91,7 @@ class PaperlessClient:
             if isinstance(correspondent, int) or (
                 isinstance(correspondent, str) and correspondent.isdigit()
             ):
-                data["correspondent"] = correspondent
+                data["correspondent"] = int(correspondent)
             else:
                 self.logger.warning(
                     f"Paperless API requires IDs, received name: '{correspondent}'. "
@@ -102,8 +102,10 @@ class PaperlessClient:
             # Paperless API requires IDs (integers). Omit if they are names.
             numeric_tags = []
             for t in tags:
-                if isinstance(t, int) or (isinstance(t, str) and t.isdigit()):
+                if isinstance(t, int):
                     numeric_tags.append(t)
+                elif isinstance(t, str) and t.isdigit():
+                    numeric_tags.append(int(t))
 
             if numeric_tags:
                 data["tags"] = numeric_tags

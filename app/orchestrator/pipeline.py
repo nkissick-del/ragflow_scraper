@@ -316,6 +316,10 @@ class Pipeline:
                     parse_result.error or "Parser failed without error message"
                 )
 
+            # Ensure markdown_path is present (guaranteed by success=True per dataclass invariant)
+            if parse_result.markdown_path is None:
+                raise ParserBackendError("Parser reported success but no markdown path")
+
             result["parsed"] = True
             self.logger.info(
                 f"Parse successful: {parse_result.markdown_path.name} "
@@ -361,6 +365,9 @@ class Pipeline:
 
                 # Step 5: Verify document (Sonarr-style)
                 self.logger.info("Verifying document in archive...")
+                if archive_result.document_id is None:
+                    raise ArchiveError("Archive reported success but no document_id")
+
                 verified = archive.verify_document(
                     archive_result.document_id, timeout=self.verify_document_timeout
                 )
@@ -375,6 +382,7 @@ class Pipeline:
 
             # Step 6: Ingest to RAG (if enabled)
             if self.upload_to_ragflow and self.dataset_id:
+                # markdown_path is guaranteed not None by the check above
                 self.logger.info(f"Ingesting to RAG: {parse_result.markdown_path.name}")
                 rag = self.container.rag_backend
 
