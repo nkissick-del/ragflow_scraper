@@ -248,10 +248,11 @@ def generate_filename_from_template(
     from jinja2 import Template
 
     # Convert metadata to dict if needed
-    if hasattr(metadata, "to_dict"):
-        meta_dict = metadata.to_dict()
-    else:
+    meta_dict: dict[str, Any]
+    if isinstance(metadata, dict):
         meta_dict = metadata
+    else:
+        meta_dict = metadata.to_dict()
 
     # Build template context
     context = {}
