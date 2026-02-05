@@ -1,0 +1,1 @@
+Deploy Jijna as a templating engine to allow for the structuring of the cannonical filenaming conventions.

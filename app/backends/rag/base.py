@@ -1,0 +1,72 @@
+"""Abstract base class for RAG backends."""
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+
+@dataclass
+class RAGResult:
+    """Result from ingesting a document to RAG."""
+
+    success: bool
+    document_id: Optional[str] = None
+    collection_id: Optional[str] = None
+    error: Optional[str] = None
+    rag_name: str = ""
+
+    def __post_init__(self):
+        """Validate result consistency."""
+        if not self.success and not self.error:
+            raise ValueError("Failed RAG ingestion must include error message")
+
+
+class RAGBackend(ABC):
+    """Abstract base class for RAG systems."""
+
+    @abstractmethod
+    def ingest_document(
+        self,
+        markdown_path: Path,
+        metadata: dict,
+        collection_id: Optional[str] = None,
+    ) -> RAGResult:
+        """
+        Ingest a Markdown document into RAG system.
+
+        Args:
+            markdown_path: Path to Markdown file
+            metadata: Document metadata dict
+            collection_id: Optional collection/dataset ID
+
+        Returns:
+            RAGResult with document_id and status
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def is_configured(self) -> bool:
+        """
+        Check if RAG backend is properly configured.
+
+        Returns:
+            True if backend has valid configuration
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def test_connection(self) -> bool:
+        """
+        Test connection to RAG service.
+
+        Returns:
+            True if service is reachable
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Get RAG backend name for logging/identification."""
+        raise NotImplementedError

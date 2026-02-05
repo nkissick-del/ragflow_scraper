@@ -101,6 +101,17 @@ class Config:
         os.getenv("RAGFLOW_CHECK_DUPLICATES", "true").lower() == "true"
     )
 
+    # AnythingLLM (alternative RAG backend)
+    ANYTHINGLLM_API_URL = os.getenv("ANYTHINGLLM_API_URL", "")
+    ANYTHINGLLM_API_KEY = os.getenv("ANYTHINGLLM_API_KEY", "")
+    ANYTHINGLLM_WORKSPACE_ID = os.getenv("ANYTHINGLLM_WORKSPACE_ID", "")
+
+    # Backend Selection
+    PARSER_BACKEND = os.getenv("PARSER_BACKEND", "docling")  # docling, mineru, tika
+    ARCHIVE_BACKEND = os.getenv("ARCHIVE_BACKEND", "paperless")  # paperless, s3, local
+    RAG_BACKEND = os.getenv("RAG_BACKEND", "ragflow")  # ragflow, anythingllm
+    METADATA_MERGE_STRATEGY = os.getenv("METADATA_MERGE_STRATEGY", "smart")  # smart, parser_wins, scraper_wins
+
     # Selenium
     SELENIUM_REMOTE_URL = os.getenv(
         "SELENIUM_REMOTE_URL", "http://localhost:4444/wd/hub"
@@ -172,6 +183,35 @@ class Config:
             raise ValueError(
                 f"Invalid Config: FLARESOLVERR_MAX_TIMEOUT ({cls.FLARESOLVERR_MAX_TIMEOUT}) "
                 f"must be greater than or equal to FLARESOLVERR_TIMEOUT ({cls.FLARESOLVERR_TIMEOUT})"
+            )
+
+        # Validate backend selections
+        valid_parsers = ["docling", "mineru", "tika"]
+        if cls.PARSER_BACKEND not in valid_parsers:
+            raise ValueError(
+                f"Invalid PARSER_BACKEND '{cls.PARSER_BACKEND}'. "
+                f"Must be one of: {', '.join(valid_parsers)}"
+            )
+
+        valid_archives = ["paperless", "s3", "local"]
+        if cls.ARCHIVE_BACKEND not in valid_archives:
+            raise ValueError(
+                f"Invalid ARCHIVE_BACKEND '{cls.ARCHIVE_BACKEND}'. "
+                f"Must be one of: {', '.join(valid_archives)}"
+            )
+
+        valid_rags = ["ragflow", "anythingllm"]
+        if cls.RAG_BACKEND not in valid_rags:
+            raise ValueError(
+                f"Invalid RAG_BACKEND '{cls.RAG_BACKEND}'. "
+                f"Must be one of: {', '.join(valid_rags)}"
+            )
+
+        valid_strategies = ["smart", "parser_wins", "scraper_wins"]
+        if cls.METADATA_MERGE_STRATEGY not in valid_strategies:
+            raise ValueError(
+                f"Invalid METADATA_MERGE_STRATEGY '{cls.METADATA_MERGE_STRATEGY}'. "
+                f"Must be one of: {', '.join(valid_strategies)}"
             )
 
     @classmethod

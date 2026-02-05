@@ -26,7 +26,7 @@ class DocumentMetadata:
     extra: dict = field(default_factory=dict)
 
     # Paperless integration
-    paperless_id: Optional[int] = None
+    paperless_id: Optional[str] = None
     pdf_path: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -47,6 +47,71 @@ class DocumentMetadata:
         if abstract:
             metadata["abstract"] = abstract
         return metadata
+
+    def merge_parser_metadata(
+        self, parser_metadata: dict, strategy: str = "smart"
+    ) -> DocumentMetadata:
+        """
+        Merge parser-extracted metadata with scraper context.
+
+        Strategy:
+        - "smart": Context (URL, date, org) from scraper; Content (title, author) from parser
+        - "parser_wins": Parser overwrites all fields
+        - "scraper_wins": Keep scraper metadata, only add new fields from parser
+
+        Args:
+            parser_metadata: Metadata extracted by parser backend
+            strategy: Merge strategy ("smart", "parser_wins", "scraper_wins")
+
+        Returns:
+            New DocumentMetadata instance with merged data
+        """
+        from app.utils.errors import MetadataMergeError
+
+        # Create copy of current metadata as dict
+        merged = self.to_dict()
+
+        if strategy == "smart":
+            # Parser wins for content fields (title, author)
+            if parser_metadata.get("title"):
+                merged["title"] = parser_metadata["title"]
+
+            # Add author to extra if available
+            if parser_metadata.get("author"):
+                merged["extra"]["author"] = parser_metadata["author"]
+
+            # Scraper wins for context fields (URL, date, org) - already in merged
+            # Add other parser fields to extra
+            for key in ["page_count", "parsed_by", "creation_date"]:
+                if key in parser_metadata:
+                    merged["extra"][key] = parser_metadata[key]
+
+        elif strategy == "parser_wins":
+            # Parser overwrites all matching fields
+            for key, value in parser_metadata.items():
+                if key in merged and value is not None:
+                    merged[key] = value
+                elif value is not None:
+                    # Add to extra if not a standard field
+                    merged["extra"][key] = value
+
+        elif strategy == "scraper_wins":
+            # Only add new fields from parser, don't overwrite existing
+            for key, value in parser_metadata.items():
+                if key not in merged or merged[key] is None:
+                    if key in ["title", "organization", "document_type"]:
+                        merged[key] = value
+                    else:
+                        merged["extra"][key] = value
+
+        else:
+            raise MetadataMergeError(
+                f"Invalid merge strategy '{strategy}'. "
+                "Must be one of: smart, parser_wins, scraper_wins"
+            )
+
+        # Return new DocumentMetadata instance
+        return DocumentMetadata(**merged)
 
 
 @dataclass

@@ -85,3 +85,35 @@ class ScraperAlreadyRunningError(ScraperError):
     def __init__(self, message: str, **kwargs: Any) -> None:
         kwargs.setdefault("recoverable", False)
         super().__init__(message, **kwargs)
+
+
+class ParserError(ScraperError):
+    """Parser backend failures (non-recoverable by default)."""
+
+    def __init__(self, message: str, **kwargs: Any) -> None:
+        kwargs.setdefault("recoverable", False)
+        super().__init__(message, **kwargs)
+
+
+class ArchiveError(ScraperError):
+    """Archive backend failures (non-recoverable by default)."""
+
+    def __init__(self, message: str, **kwargs: Any) -> None:
+        kwargs.setdefault("recoverable", False)
+        super().__init__(message, **kwargs)
+
+
+class RAGError(ScraperError):
+    """RAG backend failures (recoverable by default - non-fatal)."""
+
+    def __init__(self, message: str, **kwargs: Any) -> None:
+        kwargs.setdefault("recoverable", True)
+        super().__init__(message, **kwargs)
+
+
+class MetadataMergeError(ScraperError):
+    """Metadata merge strategy failures."""
+
+    def __init__(self, message: str, **kwargs: Any) -> None:
+        kwargs.setdefault("recoverable", False)
+        super().__init__(message, **kwargs)

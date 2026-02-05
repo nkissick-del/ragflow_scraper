@@ -53,13 +53,47 @@ Notes:
 
 1) Plan: State brief intent and steps. 2) Change: Apply minimal diffs. 3) Verify: Run the smallest relevant tests/commands. 4) Report: One-sentence status and next optional step.
 
+## Backend Architecture (v2.0)
+
+**Modular Pipeline** with swappable backends:
+- **Parser**: PDF → Markdown (Docling, MinerU, Tika)
+- **Archive**: Document storage (Paperless-ngx, S3, local)
+- **RAG**: Vector indexing (RAGFlow, AnythingLLM)
+
+**Pipeline Flow:**
+1. Scraper downloads PDF
+2. Parser converts PDF → Markdown + extracts metadata
+3. Metadata merge (smart strategy: context from scraper, content from parser)
+4. Jinja2 canonical filename generation
+5. Archive to Paperless (source of truth for originals)
+6. Verify document (Sonarr-style polling)
+7. RAG ingest Markdown (not PDF)
+8. Delete local files (after verification)
+
+**Configuration (ENV vars):**
+- `PARSER_BACKEND=docling` (docling, mineru, tika)
+- `ARCHIVE_BACKEND=paperless` (paperless, s3, local)
+- `RAG_BACKEND=ragflow` (ragflow, anythingllm)
+- `METADATA_MERGE_STRATEGY=smart` (smart, parser_wins, scraper_wins)
+
+**ServiceContainer access:**
+```python
+parser = container.parser_backend  # ParserBackend instance
+archive = container.archive_backend  # ArchiveBackend instance
+rag = container.rag_backend  # RAGBackend instance
+```
+
+**Error handling:**
+- Parser/Archive failures: FAIL FAST (raise error, stop pipeline)
+- RAG failures: Non-fatal (log error, continue to cleanup)
+
 ## Coding Guidelines
 
-- Respect public APIs; don’t rename or move modules casually.
+- Respect public APIs; don't rename or move modules casually.
 - Add types where obvious; avoid intrusive annotation rewrites.
 - Prefer existing utilities (logging, retry, metadata prep) over duplicates.
 - Data/State/Logs paths must remain under `/app/data` inside the container.
-- ServiceContainer: use properties (`settings`, `ragflow_client`, `flaresolverr_client`, `state_tracker()`, `scheduler`); legacy getters are removed.
+- ServiceContainer: use properties (`settings`, `ragflow_client`, `flaresolverr_client`, `parser_backend`, `archive_backend`, `rag_backend`, `state_tracker()`, `scheduler`); legacy getters are removed.
 
 ## Testing & Rebuild Rules
 

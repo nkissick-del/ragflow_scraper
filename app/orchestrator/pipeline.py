@@ -13,7 +13,10 @@ from typing import Optional
 from app.config import Config
 from app.container import get_container
 from app.scrapers import ScraperRegistry
+from app.scrapers.models import DocumentMetadata
 from app.utils import get_logger
+from app.utils.errors import ParserError, ArchiveError
+from app.utils.file_utils import generate_filename_from_template
 from app.utils.logging_config import log_exception, log_event
 
 
@@ -27,11 +30,15 @@ class PipelineResult:
     downloaded_count: int = 0
     uploaded_count: int = 0
     parsed_count: int = 0
+    archived_count: int = 0
+    verified_count: int = 0
+    rag_indexed_count: int = 0
     failed_count: int = 0
     duration_seconds: float = 0.0
     started_at: str = field(default_factory=lambda: datetime.now().isoformat())
     completed_at: Optional[str] = None
     errors: list[str] = field(default_factory=list)
+    uploaded_to_paperless: int = 0  # Legacy field for backward compatibility
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -42,11 +49,15 @@ class PipelineResult:
             "downloaded_count": self.downloaded_count,
             "uploaded_count": self.uploaded_count,
             "parsed_count": self.parsed_count,
+            "archived_count": self.archived_count,
+            "verified_count": self.verified_count,
+            "rag_indexed_count": self.rag_indexed_count,
             "failed_count": self.failed_count,
             "duration_seconds": self.duration_seconds,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "errors": self.errors,
+            "uploaded_to_paperless": self.uploaded_to_paperless,
         }
 
     def to_json(self) -> str:
@@ -135,84 +146,85 @@ class Pipeline:
                 return self._finalize_result(result, start_time)
 
             if result.downloaded_count == 0:
-                self.logger.info("No new documents downloaded, skipping upload")
+                self.logger.info("No new documents downloaded, skipping processing")
                 result.status = "completed"
                 return self._finalize_result(result, start_time)
 
-            # Step 2: Archive to Paperless
-            if self.upload_to_paperless:
-                archive_start = time.perf_counter()
-                log_event(
-                    self.logger,
-                    "info",
-                    "pipeline.archive.start",
-                    scraper=self.scraper_name,
-                )
+            # Step 2: Process documents through modular pipeline
+            process_start = time.perf_counter()
+            log_event(
+                self.logger,
+                "info",
+                "pipeline.process.start",
+                scraper=self.scraper_name,
+                document_count=len(scraper_result.documents),
+            )
 
-                archive_result = self._archive_to_paperless(scraper_result.documents)
-                result.uploaded_to_paperless = archive_result["uploaded"]
+            for doc_dict in scraper_result.documents:
+                try:
+                    # Reconstruct DocumentMetadata from dict
+                    doc_metadata = DocumentMetadata(**doc_dict)
 
-                step_times["archive"] = time.perf_counter() - archive_start
-                self._step_times = step_times
+                    # Get PDF path
+                    pdf_path = doc_dict.get("pdf_path") or doc_dict.get("local_path")
+                    if not pdf_path:
+                        self.logger.warning(
+                            f"Skipping document (no PDF path): {doc_dict.get('title')}"
+                        )
+                        result.failed_count += 1
+                        continue
 
-                if archive_result["failed"] > 0:
+                    pdf_path = Path(pdf_path)
+                    if not pdf_path.exists():
+                        self.logger.warning(
+                            f"Skipping document (PDF not found): {pdf_path}"
+                        )
+                        result.failed_count += 1
+                        continue
+
+                    # Process document through modular pipeline
+                    process_result = self._process_document(doc_metadata, pdf_path)
+
+                    # Update counters
+                    if process_result["parsed"]:
+                        result.parsed_count += 1
+                    if process_result["archived"]:
+                        result.archived_count += 1
+                        result.uploaded_to_paperless += 1  # Legacy field
+                    if process_result["verified"]:
+                        result.verified_count += 1
+                    if process_result["rag_indexed"]:
+                        result.rag_indexed_count += 1
+                        result.uploaded_count += 1  # Legacy field
+
+                except (ParserError, ArchiveError) as e:
+                    # FAIL FAST errors
+                    self.logger.error(
+                        f"Document processing failed (FAIL FAST): {doc_dict.get('title')} - {e}"
+                    )
+                    result.failed_count += 1
                     result.errors.append(
-                        f"{archive_result['failed']} documents failed to archive to Paperless"
+                        f"{doc_dict.get('title', 'Unknown')}: {str(e)}"
+                    )
+                    # Continue processing other documents instead of stopping pipeline
+
+                except Exception as e:
+                    # Unexpected errors
+                    self.logger.error(
+                        f"Unexpected error processing document: {doc_dict.get('title')} - {e}"
+                    )
+                    result.failed_count += 1
+                    result.errors.append(
+                        f"{doc_dict.get('title', 'Unknown')}: {str(e)}"
                     )
 
-            # Step 3: Upload to RAGFlow (Ingest Path)
-            if self.upload_to_ragflow and self.dataset_id:
-                upload_start = time.perf_counter()
-
-                # Determine file pattern based on scraper type or just look for both
-                # Ideally, we upload the Source file (MD) if available, otherwise PDF
-                # For now, let's upload all MD and PDF files found that match scraped docs
-
-                log_event(
-                    self.logger,
-                    "info",
-                    "pipeline.upload.start",
-                    scraper=self.scraper_name,
-                    dataset_id=self.dataset_id,
-                )
-
-                upload_result = self._upload_to_ragflow()
-                result.uploaded_count = upload_result["uploaded"]
-                result.failed_count += upload_result["failed"]
-                step_times["upload"] = time.perf_counter() - upload_start
-                self._step_times = step_times
-                self.logger.info(
-                    f"Upload step completed in {step_times['upload']:.2f}s"
-                )
-
-                if upload_result["failed"] > 0:
-                    result.errors.append(
-                        f"{upload_result['failed']} documents failed to upload to RAGFlow"
-                    )
-
-                # Step 4: Trigger parsing
-                if result.uploaded_count > 0:
-                    self.logger.info("Step 4: Triggering parsing...")
-                    if self._trigger_parsing():
-                        # Step 5: Wait for parsing
-                        if self.wait_for_parsing:
-                            parse_start = time.time()
-                            self.logger.info("Step 5: Waiting for parsing...")
-                            if self._wait_for_parsing():
-                                result.parsed_count = result.uploaded_count
-                                step_times["parse_wait"] = time.time() - parse_start
-                                self._step_times = step_times
-                                log_event(
-                                    self.logger,
-                                    "info",
-                                    "pipeline.parse.wait.complete",
-                                    scraper=self.scraper_name,
-                                    duration_s=step_times["parse_wait"],
-                                )
-                            else:
-                                result.errors.append("Parsing did not complete")
-                    else:
-                        result.errors.append("Failed to trigger parsing")
+            step_times["process"] = time.perf_counter() - process_start
+            self._step_times = step_times
+            self.logger.info(
+                f"Document processing completed in {step_times['process']:.2f}s: "
+                f"{result.parsed_count} parsed, {result.archived_count} archived, "
+                f"{result.verified_count} verified, {result.rag_indexed_count} indexed"
+            )
 
             # Determine final status
             if result.failed_count > 0:
@@ -259,7 +271,7 @@ class Pipeline:
                     except ValueError:
                         pass
 
-                doc_id = client.post_document(
+                task_id = client.post_document(
                     file_path=pdf_path,
                     title=doc.get("title", "Untitled"),
                     created=created,
@@ -268,8 +280,8 @@ class Pipeline:
                     tags=doc.get("tags"),
                 )
 
-                if doc_id:
-                    doc["paperless_id"] = doc_id
+                if task_id:
+                    doc["paperless_id"] = task_id
                     uploaded += 1
                     # Ideally update the metadata JSON on disk too, but skipping for speed
                 else:
@@ -291,6 +303,165 @@ class Pipeline:
             raise ValueError(f"Scraper not found: {self.scraper_name}")
 
         return scraper.run()
+
+    def _process_document(self, doc_metadata: DocumentMetadata, pdf_path: Path) -> dict:
+        """
+        Process a single document through the modular pipeline.
+
+        Flow:
+        1. Parse PDF → Markdown (using parser backend)
+        2. Merge metadata (smart strategy)
+        3. Generate canonical filename
+        4. Archive to Paperless (using archive backend)
+        5. Verify document archived (Sonarr-style)
+        6. Ingest Markdown to RAG (using RAG backend)
+        7. Delete local files (if verified)
+
+        Args:
+            doc_metadata: Document metadata from scraper
+            pdf_path: Path to PDF file
+
+        Returns:
+            Dict with keys: parsed, archived, verified, rag_indexed, error
+
+        Raises:
+            ParserError: If parsing fails (FAIL FAST)
+            ArchiveError: If archiving fails (FAIL FAST)
+        """
+        result = {
+            "parsed": False,
+            "archived": False,
+            "verified": False,
+            "rag_indexed": False,
+            "error": None,
+        }
+
+        try:
+            # Step 1: Parse PDF → Markdown
+            if not pdf_path.exists():
+                raise ParserError(f"PDF file not found: {pdf_path}")
+
+            self.logger.info(f"Parsing document: {pdf_path.name}")
+            parser = self.container.parser_backend
+            parse_result = parser.parse_document(pdf_path, doc_metadata)
+
+            if not parse_result.success:
+                raise ParserError(
+                    parse_result.error or "Parser failed without error message"
+                )
+
+            result["parsed"] = True
+            self.logger.info(
+                f"Parse successful: {parse_result.markdown_path.name} "
+                f"({parse_result.parser_name})"
+            )
+
+            # Step 2: Merge metadata
+            merged_metadata = doc_metadata.merge_parser_metadata(
+                parse_result.metadata or {},
+                strategy=Config.METADATA_MERGE_STRATEGY,
+            )
+            self.logger.debug(
+                f"Metadata merged using '{Config.METADATA_MERGE_STRATEGY}' strategy"
+            )
+
+            # Step 3: Generate canonical filename (for archive title)
+            canonical_name = generate_filename_from_template(merged_metadata)
+            self.logger.debug(f"Canonical filename: {canonical_name}")
+
+            # Step 4: Archive to Paperless (if enabled)
+            if self.upload_to_paperless:
+                self.logger.info(f"Archiving to Paperless: {canonical_name}")
+                archive = self.container.archive_backend
+
+                archive_result = archive.archive_document(
+                    file_path=pdf_path,
+                    title=merged_metadata.title,
+                    created=merged_metadata.publication_date,
+                    correspondent=merged_metadata.organization,
+                    tags=merged_metadata.tags,
+                    metadata=merged_metadata.to_dict(),
+                )
+
+                if not archive_result.success:
+                    raise ArchiveError(
+                        archive_result.error or "Archive failed without error message"
+                    )
+
+                result["archived"] = True
+                self.logger.info(
+                    f"Archive successful: document_id={archive_result.document_id}"
+                )
+
+                # Step 5: Verify document (Sonarr-style)
+                self.logger.info("Verifying document in archive...")
+                verified = archive.verify_document(
+                    archive_result.document_id, timeout=60
+                )
+                result["verified"] = verified
+
+                if verified:
+                    self.logger.info(f"Document verified: {archive_result.document_id}")
+                else:
+                    self.logger.warning(
+                        f"Document verification timed out: {archive_result.document_id}"
+                    )
+
+            # Step 6: Ingest to RAG (if enabled)
+            if self.upload_to_ragflow and self.dataset_id:
+                self.logger.info(f"Ingesting to RAG: {parse_result.markdown_path.name}")
+                rag = self.container.rag_backend
+
+                rag_result = rag.ingest_document(
+                    markdown_path=parse_result.markdown_path,
+                    metadata=merged_metadata.to_dict(),
+                    collection_id=self.dataset_id,
+                )
+
+                # RAG failure is non-fatal (log and continue)
+                if rag_result.success:
+                    result["rag_indexed"] = True
+                    self.logger.info(
+                        f"RAG ingestion successful: {rag_result.document_id}"
+                    )
+                else:
+                    self.logger.error(f"RAG ingestion failed: {rag_result.error}")
+                    # Don't raise - RAG failure is non-fatal
+
+            # Step 7: Delete local files (if verified or RAG-only mode)
+            should_delete = False
+            if self.upload_to_paperless and result["verified"]:
+                should_delete = True
+            elif not self.upload_to_paperless and result["rag_indexed"]:
+                should_delete = True
+
+            if should_delete:
+                self.logger.info("Deleting local files (archived/verified)")
+                try:
+                    pdf_path.unlink()
+                    if parse_result.markdown_path.exists():
+                        parse_result.markdown_path.unlink()
+                    # Delete metadata JSON if exists
+                    metadata_path = pdf_path.with_suffix(".json")
+                    if metadata_path.exists():
+                        metadata_path.unlink()
+                    self.logger.debug("Local files deleted")
+                except Exception as e:
+                    self.logger.warning(f"Failed to delete local files: {e}")
+
+            return result
+
+        except (ParserError, ArchiveError) as e:
+            # FAIL FAST for parser/archive errors
+            self.logger.error(f"Document processing failed: {e}")
+            result["error"] = str(e)
+            raise
+
+        except Exception as e:
+            # Unexpected errors
+            self.logger.error(f"Unexpected error processing document: {e}")
+            result["error"] = str(e)
+            raise
 
     def _upload_to_ragflow(self) -> dict[str, int]:
         """Upload downloaded documents to RAGFlow."""
@@ -347,8 +518,10 @@ class Pipeline:
         self.logger.info(
             f"Pipeline completed: {result.status} - "
             f"{result.downloaded_count} downloaded, "
-            f"{result.uploaded_count} uploaded, "
             f"{result.parsed_count} parsed, "
+            f"{result.archived_count} archived, "
+            f"{result.verified_count} verified, "
+            f"{result.rag_indexed_count} indexed, "
             f"{result.failed_count} failed"
         )
 
@@ -359,8 +532,11 @@ class Pipeline:
             scraper=self.scraper_name,
             status=result.status,
             downloaded=result.downloaded_count,
-            uploaded=result.uploaded_count,
             parsed=result.parsed_count,
+            archived=result.archived_count,
+            verified=result.verified_count,
+            rag_indexed=result.rag_indexed_count,
+            uploaded=result.uploaded_count,  # Legacy
             failed=result.failed_count,
             duration_s=result.duration_seconds,
             step_times=self._step_times,

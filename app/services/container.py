@@ -47,6 +47,11 @@ class ServiceContainer:
         self._flaresolverr_client: Optional[FlareSolverrClient] = None
         self._scheduler: Optional[Scheduler] = None
 
+        # Backend instances (lazy-loaded)
+        self._parser_backend = None
+        self._archive_backend = None
+        self._rag_backend = None
+
         # State trackers (cached by scraper name)
         self._state_trackers: dict[str, StateTracker] = {}
 
@@ -137,6 +142,108 @@ class ServiceContainer:
             self.logger.debug(f"Initialized StateTracker for {scraper_name}")
         return self._state_trackers[scraper_name]
 
+    @property
+    def parser_backend(self):
+        """
+        Get parser backend (lazy-loaded singleton).
+
+        Raises:
+            ValueError: If backend name is invalid or backend is unavailable
+
+        Returns:
+            ParserBackend instance
+        """
+        if self._parser_backend is None:
+            from app.backends import ParserBackend
+
+            backend_name = Config.PARSER_BACKEND
+
+            if backend_name == "docling":
+                from app.backends.parsers.docling_parser import DoclingParser
+
+                self._parser_backend = DoclingParser()
+            elif backend_name == "mineru":
+                raise ValueError(f"Parser backend '{backend_name}' not yet implemented")
+            elif backend_name == "tika":
+                raise ValueError(f"Parser backend '{backend_name}' not yet implemented")
+            else:
+                raise ValueError(f"Unknown parser backend: {backend_name}")
+
+            if not self._parser_backend.is_available():
+                raise ValueError(
+                    f"Parser backend '{backend_name}' not available "
+                    "(check dependencies)"
+                )
+
+            self.logger.info(f"Initialized parser backend: {backend_name}")
+        return self._parser_backend
+
+    @property
+    def archive_backend(self):
+        """
+        Get archive backend (lazy-loaded singleton).
+
+        Raises:
+            ValueError: If backend name is invalid
+
+        Returns:
+            ArchiveBackend instance
+        """
+        if self._archive_backend is None:
+            from app.backends import ArchiveBackend
+
+            backend_name = Config.ARCHIVE_BACKEND
+
+            if backend_name == "paperless":
+                from app.backends.archives.paperless_adapter import (
+                    PaperlessArchiveBackend,
+                )
+
+                self._archive_backend = PaperlessArchiveBackend()
+            elif backend_name == "s3":
+                raise ValueError(f"Archive backend '{backend_name}' not yet implemented")
+            elif backend_name == "local":
+                raise ValueError(f"Archive backend '{backend_name}' not yet implemented")
+            else:
+                raise ValueError(f"Unknown archive backend: {backend_name}")
+
+            self.logger.info(f"Initialized archive backend: {backend_name}")
+        return self._archive_backend
+
+    @property
+    def rag_backend(self):
+        """
+        Get RAG backend (lazy-loaded singleton).
+
+        Raises:
+            ValueError: If backend name is invalid
+
+        Returns:
+            RAGBackend instance
+        """
+        if self._rag_backend is None:
+            from app.backends import RAGBackend
+
+            backend_name = Config.RAG_BACKEND
+
+            if backend_name == "ragflow":
+                from app.backends.rag.ragflow_adapter import RAGFlowBackend
+
+                self._rag_backend = RAGFlowBackend()
+            elif backend_name == "anythingllm":
+                from app.backends.rag.anythingllm_adapter import AnythingLLMBackend
+
+                self._rag_backend = AnythingLLMBackend(
+                    api_url=Config.ANYTHINGLLM_API_URL,
+                    api_key=Config.ANYTHINGLLM_API_KEY,
+                    workspace_id=Config.ANYTHINGLLM_WORKSPACE_ID,
+                )
+            else:
+                raise ValueError(f"Unknown RAG backend: {backend_name}")
+
+            self.logger.info(f"Initialized RAG backend: {backend_name}")
+        return self._rag_backend
+
     def reset(self):
         """
         Reset all cached service instances.
@@ -148,6 +255,9 @@ class ServiceContainer:
         self._flaresolverr_client = None
         self._state_trackers = {}
         self._scheduler = None
+        self._parser_backend = None
+        self._archive_backend = None
+        self._rag_backend = None
         self.logger.debug("Service container reset")
 
 

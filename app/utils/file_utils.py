@@ -191,14 +191,112 @@ def parse_file_size(size_str: str) -> Optional[int]:
     return int(value * multipliers.get(unit, 1))
 
 
+def generate_filename_from_template(
+    metadata,
+    template: str = "{{ date_prefix }}_{{ org }}_{{ original_name }}{{ extension }}",
+) -> str:
+    """
+    Generate filename from Jinja2 template using metadata.
+
+    Args:
+        metadata: DocumentMetadata instance or dict
+        template: Jinja2 template string
+
+    Returns:
+        Sanitized filename generated from template
+
+    Available template variables:
+        - date_prefix: YYYYMM from publication_date
+        - org: Uppercase organization name
+        - original_name: Sanitized original filename
+        - extension: File extension (with dot)
+        - title: Document title (sanitized)
+        - year: YYYY from publication_date
+        - month: MM from publication_date
+        - day: DD from publication_date
+
+    Examples:
+        >>> meta = DocumentMetadata(...)
+        >>> generate_filename_from_template(meta)
+        '202407_AEMO_report.pdf'
+
+        >>> generate_filename_from_template(
+        ...     meta,
+        ...     template="{{ year }}/{{ org }}/{{ title }}{{ extension }}"
+        ... )
+        '2024/AEMO/Annual_Report.pdf'
+    """
+    from jinja2 import Template
+
+    # Convert metadata to dict if needed
+    if hasattr(metadata, "to_dict"):
+        meta_dict = metadata.to_dict()
+    else:
+        meta_dict = metadata
+
+    # Build template context
+    context = {}
+
+    # Parse publication date
+    pub_date = meta_dict.get("publication_date")
+    if pub_date:
+        try:
+            dt = datetime.fromisoformat(pub_date.split("T")[0])
+            context["date_prefix"] = dt.strftime("%Y%m")
+            context["year"] = dt.strftime("%Y")
+            context["month"] = dt.strftime("%m")
+            context["day"] = dt.strftime("%d")
+        except (ValueError, AttributeError):
+            now = datetime.now()
+            context["date_prefix"] = now.strftime("%Y%m")
+            context["year"] = now.strftime("%Y")
+            context["month"] = now.strftime("%m")
+            context["day"] = now.strftime("%d")
+            logger.warning(f"Could not parse date '{pub_date}', using current date")
+    else:
+        now = datetime.now()
+        context["date_prefix"] = now.strftime("%Y%m")
+        context["year"] = now.strftime("%Y")
+        context["month"] = now.strftime("%m")
+        context["day"] = now.strftime("%d")
+
+    # Organization (uppercase)
+    org = meta_dict.get("organization", "Unknown")
+    context["org"] = org.upper()
+
+    # Original filename (sanitized)
+    filename = meta_dict.get("filename", "unnamed")
+    original_path = Path(filename)
+    context["original_name"] = sanitize_filename(original_path.stem)
+    context["extension"] = original_path.suffix
+
+    # Title (sanitized)
+    title = meta_dict.get("title", "")
+    context["title"] = sanitize_filename(title) if title else context["original_name"]
+
+    # Render template
+    try:
+        tmpl = Template(template)
+        rendered = tmpl.render(**context)
+    except Exception as e:
+        logger.error(f"Jinja2 template rendering failed: {e}")
+        # Fallback to default format
+        rendered = f"{context['date_prefix']}_{context['org']}_{context['original_name']}{context['extension']}"
+
+    # Sanitize the final result
+    return sanitize_filename(rendered)
+
+
 def generate_standardized_filename(
     original_path: Path,
     publication_date: Optional[str],
     organization: str,
-    extension: Optional[str] = None
+    extension: Optional[str] = None,
 ) -> str:
     """
     Generate standardized filename: YYYYMM_Org_OriginalName.ext
+
+    DEPRECATED: Use generate_filename_from_template() for more flexibility.
 
     Args:
         original_path: Path to original file
@@ -224,14 +322,16 @@ def generate_standardized_filename(
     if publication_date:
         try:
             # Handle ISO format dates (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
-            pub_date = datetime.fromisoformat(publication_date.split('T')[0])
-            date_prefix = pub_date.strftime('%Y%m')
+            pub_date = datetime.fromisoformat(publication_date.split("T")[0])
+            date_prefix = pub_date.strftime("%Y%m")
         except (ValueError, AttributeError):
             # Fallback if date parsing fails
-            date_prefix = datetime.now().strftime('%Y%m')
-            logger.warning(f"Could not parse date '{publication_date}', using current date")
+            date_prefix = datetime.now().strftime("%Y%m")
+            logger.warning(
+                f"Could not parse date '{publication_date}', using current date"
+            )
     else:
-        date_prefix = datetime.now().strftime('%Y%m')
+        date_prefix = datetime.now().strftime("%Y%m")
         logger.warning(f"No publication_date for {original_name}, using current date")
 
     # Get organization abbreviation (uppercase)

@@ -32,7 +32,8 @@ class PaperlessClient:
             url: Base URL of Paperless instance (e.g. http://localhost:8000)
             token: API Token
         """
-        self.url = (url or Config.PAPERLESS_API_URL).rstrip("/")
+        base_url = url or Config.PAPERLESS_API_URL
+        self.url = base_url.rstrip("/") if base_url else None
         self.token = token or Config.PAPERLESS_API_TOKEN
         self.logger = get_logger("services.paperless")
 
@@ -52,7 +53,7 @@ class PaperlessClient:
         created: Optional[datetime] = None,
         correspondent: Optional[str] = None,
         tags: Optional[list[str]] = None,
-    ) -> Optional[int]:
+    ) -> Optional[str]:
         """
         Upload a document to Paperless.
 
@@ -64,7 +65,8 @@ class PaperlessClient:
             tags: List of tags
 
         Returns:
-            Document ID if successful (placeholder), None otherwise
+
+            Task ID if successful, None otherwise
         """
         if not self.is_configured:
             self.logger.warning("Paperless not configured, skipping upload")
@@ -84,14 +86,21 @@ class PaperlessClient:
             data["created"] = created.isoformat()
 
         if correspondent:
-            # Paperless API often requires IDs for correspondents.
-            # For now we attempt to pass the name, but usually this needs an ID lookup.
-            # We'll log a warning if this might fail, but attempt it.
-            # Ideally we should implement get_or_create_correspondent later.
+            # Paperless API requires IDs for correspondents, but we are receiving a name.
+            # TODO: Implement lookup/creation helper (get_or_create_correspondent).
+            self.logger.warning(
+                f"Paperless API requires IDs, received name: '{correspondent}'. "
+                "This may fail if ID is expected. TODO: Implement lookup."
+            )
             data["correspondent"] = correspondent
 
         if tags:
-            # Similar to correspondent, tags usually need IDs.
+            # Paperless API requires IDs for tags, but we are receiving names.
+            # TODO: Implement lookup/creation helper (get_or_create_tag(s)).
+            self.logger.warning(
+                f"Paperless API requires IDs, received tags: {tags}. "
+                "This may fail if IDs are expected. TODO: Implement lookup."
+            )
             data["tags"] = tags
 
         self.logger.info(f"Uploading to Paperless: {title}")
@@ -105,15 +114,15 @@ class PaperlessClient:
 
             response.raise_for_status()
 
-            # Paperless returns task_id. For now we assume success if 200 OK.
-            result = response.text
-            self.logger.info(f"Upload successful. Response: {result}")
+            # Paperless returns task_id (UUID string).
+            task_id = response.text
+            self.logger.info(f"Upload successful. Task ID: {task_id}")
 
-            # TODO: Poll task status to get real Doc ID. Returning 1 as success flag.
-            return 1
+            return task_id
 
         except requests.HTTPError as e:
-            self.logger.error(f"Paperless upload HTTP error: {e.response.text}")
+            error_text = getattr(e, "response", None) and e.response.text or str(e)
+            self.logger.error(f"Paperless upload HTTP error: {error_text}")
             return None
         except Exception as e:
             self.logger.error(f"Paperless upload failed: {e}")
@@ -128,3 +137,87 @@ class PaperlessClient:
             return res.status_code == 200
         except Exception:
             return False
+
+    def get_task_status(self, task_id: str) -> Optional[dict]:
+        """
+        Query task status from Paperless API.
+
+        Args:
+            task_id: Task ID returned from post_document()
+
+        Returns:
+            Task status dict with keys: 'status', 'document_id', etc.
+            None if task not found or API error
+        """
+        if not self.is_configured:
+            return None
+
+        endpoint = f"{self.url}/api/tasks/"
+        try:
+            response = self.session.get(endpoint, timeout=10)
+            response.raise_for_status()
+            tasks = response.json()
+
+            # Find task by ID
+            for task in tasks:
+                if task.get("task_id") == task_id:
+                    return task
+
+            self.logger.warning(f"Task {task_id} not found in task list")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Failed to query task status: {e}")
+            return None
+
+    def verify_document_exists(
+        self, task_id: str, timeout: int = 60, poll_interval: int = 2
+    ) -> bool:
+        """
+        Poll task status until document is verified (Sonarr-style).
+
+        Args:
+            task_id: Task ID from post_document()
+            timeout: Max seconds to wait
+            poll_interval: Seconds between polls
+
+        Returns:
+            True if document verified successfully
+        """
+        import time
+
+        if not self.is_configured:
+            return False
+
+        start_time = time.time()
+        self.logger.info(f"Verifying document for task {task_id}...")
+
+        while time.time() - start_time < timeout:
+            task_status = self.get_task_status(task_id)
+
+            if not task_status:
+                self.logger.warning(f"Task {task_id} not found, retrying...")
+                time.sleep(poll_interval)
+                continue
+
+            status = task_status.get("status")
+            document_id = task_status.get("related_document")
+
+            if status == "SUCCESS" and document_id:
+                self.logger.info(
+                    f"Document verified: task={task_id}, document_id={document_id}"
+                )
+                return True
+
+            if status == "FAILURE":
+                self.logger.error(f"Task {task_id} failed: {task_status}")
+                return False
+
+            # Status is PENDING or STARTED, keep polling
+            self.logger.debug(f"Task {task_id} status: {status}, waiting...")
+            time.sleep(poll_interval)
+
+        self.logger.warning(
+            f"Document verification timed out after {timeout}s for task {task_id}"
+        )
+        return False
