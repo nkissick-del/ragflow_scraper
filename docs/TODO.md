@@ -117,7 +117,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
   - ✅ Document upload (successful with doc ID)
   - ✅ Metadata verification (working)
   - ✅ Workspace assignment (working)
-  - See walkthrough documentation for details
+  - See [walkthrough.md](../../../.gemini/antigravity/brain/ca76dfe9-5ce0-4f09-a2f6-8db2f54a5b5a/walkthrough.md) for details
 
 **Files:**
 - ✅ `app/services/anythingllm_client.py` (NEW - 281 lines)

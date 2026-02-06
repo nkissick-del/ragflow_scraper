@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union, List
+from typing import Optional, Union
 
 import requests
 import time
@@ -67,22 +67,18 @@ class PaperlessClient:
         correspondents: dict[str, int] = {}
         next_url: Optional[str] = f"{self.url}/api/correspondents/"
 
-        try:
-            while next_url:
-                response = self.session.get(next_url, timeout=30)
-                response.raise_for_status()
-                data = response.json()
+        while next_url:
+            response = self.session.get(next_url, timeout=30)
+            response.raise_for_status()
+            data = response.json()
 
-                for item in data.get("results", []):
-                    name = item.get("name")
-                    corr_id = item.get("id")
-                    if name and corr_id:
-                        correspondents[name] = corr_id
+            for item in data.get("results", []):
+                name = item.get("name")
+                corr_id = item.get("id")
+                if name and corr_id:
+                    correspondents[name] = corr_id
 
-                next_url = data.get("next")
-
-        except Exception as e:
-            self.logger.error(f"Failed to fetch correspondents: {e}")
+            next_url = data.get("next")
 
         return correspondents
 
@@ -105,8 +101,16 @@ class PaperlessClient:
 
         # Populate cache if not yet fetched
         if not self._correspondent_cache_populated:
-            self._correspondent_cache = self._fetch_correspondents()
-            self._correspondent_cache_populated = True
+            try:
+                # Only set populated = True if fetch succeeds and returns data
+                # If it's an empty dict from a valid but empty result, we still mark it populated
+                # to avoid infinite loops, but we let exceptions bubble through to block the flag.
+                fetched = self._fetch_correspondents()
+                self._correspondent_cache = fetched
+                self._correspondent_cache_populated = True
+            except Exception as e:
+                self.logger.error(f"Failed to populate correspondent cache: {e}")
+                # Leave flag False for retries
 
         # Check if now in cache
         if name in self._correspondent_cache:
@@ -146,22 +150,18 @@ class PaperlessClient:
         tags: dict[str, int] = {}
         next_url: Optional[str] = f"{self.url}/api/tags/"
 
-        try:
-            while next_url:
-                response = self.session.get(next_url, timeout=30)
-                response.raise_for_status()
-                data = response.json()
+        while next_url:
+            response = self.session.get(next_url, timeout=30)
+            response.raise_for_status()
+            data = response.json()
 
-                for item in data.get("results", []):
-                    name = item.get("name")
-                    tag_id = item.get("id")
-                    if name and tag_id:
-                        tags[name] = tag_id
+            for item in data.get("results", []):
+                name = item.get("name")
+                tag_id = item.get("id")
+                if name and tag_id:
+                    tags[name] = tag_id
 
-                next_url = data.get("next")
-
-        except Exception as e:
-            self.logger.error(f"Failed to fetch tags: {e}")
+            next_url = data.get("next")
 
         return tags
 
@@ -180,8 +180,13 @@ class PaperlessClient:
 
         # Populate cache if not yet fetched
         if not self._tag_cache_populated:
-            self._tag_cache = self._fetch_tags()
-            self._tag_cache_populated = True
+            try:
+                fetched = self._fetch_tags()
+                self._tag_cache = fetched
+                self._tag_cache_populated = True
+            except Exception as e:
+                self.logger.error(f"Failed to populate tag cache: {e}")
+                # Leave flag False for retries
 
         result_ids: list[int] = []
 
@@ -221,7 +226,7 @@ class PaperlessClient:
         title: str,
         created: Optional[datetime] = None,
         correspondent: Optional[Union[str, int]] = None,
-        tags: Optional[List[Union[str, int]]] = None,
+        tags: Optional[list[Union[str, int]]] = None,
     ) -> Optional[str]:
         """
         Upload a document to Paperless.
