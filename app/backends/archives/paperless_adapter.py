@@ -82,7 +82,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
             title=title,
             created=created_dt,
             correspondent=correspondent,
-            tags=tags,
+            tags=tags,  # type: ignore
         )
 
         if not task_id:

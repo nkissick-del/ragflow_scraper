@@ -28,7 +28,7 @@ class DoclingParser(ParserBackend):
             return self._docling_available
 
         try:
-            import docling  # noqa: F401
+            import docling  # type: ignore # noqa: F401
 
             self._docling_available = True
             self.logger.info("Docling parser available")
@@ -181,7 +181,7 @@ def _run_conversion(file_path: str) -> dict:
     import traceback
 
     try:
-        from docling.document_converter import DocumentConverter
+        from docling.document_converter import DocumentConverter  # type: ignore
 
         converter = DocumentConverter()
         result = converter.convert(file_path)

@@ -69,7 +69,7 @@ class AnythingLLMClient:
         self.timeout = timeout
         # Ensure at least one attempt is made
         self.max_attempts = max(1, max_attempts)
-        self.session: Session = requests.Session()
+        self.session: Optional[Session] = requests.Session()
         self.logger = get_logger("anythingllm.client")
 
     def close(self) -> None:
@@ -106,6 +106,9 @@ class AnythingLLMClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         kwargs.setdefault("timeout", self.timeout)
         url = f"{self.api_url}{path}"
+
+        if not self.session:
+            raise RuntimeError("Session is closed")
 
         for attempt in range(1, self.max_attempts + 1):
             try:

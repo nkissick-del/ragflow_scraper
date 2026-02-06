@@ -11,7 +11,7 @@ import unicodedata
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Any, Protocol, runtime_checkable
+from typing import Optional, Any, Protocol, runtime_checkable, cast
 
 logger = logging.getLogger(__name__)
 
@@ -247,9 +247,9 @@ def generate_filename_from_template(
 
     # Convert metadata to dict if needed
     if hasattr(metadata, "to_dict"):
-        meta_dict = metadata.to_dict()
+        meta_dict = cast(dict[str, Any], metadata.to_dict())  # type: ignore
     else:
-        meta_dict = metadata
+        meta_dict = cast(dict[str, Any], metadata)
 
     # Build template context
     context = {}

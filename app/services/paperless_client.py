@@ -253,7 +253,7 @@ class PaperlessClient:
         endpoint = f"{self.url}/api/documents/post_document/"
 
         # Prepare metadata
-        data = {"title": title}
+        data: dict[str, Union[str, int, list[int]]] = {"title": title}
 
         if created:
             data["created"] = created.isoformat()

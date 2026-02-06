@@ -142,7 +142,7 @@ class Archiver:
             # Execute CDP command
             # selenium-webdriver doesn't have a direct 'print_to_pdf' method in all versions,
             # but usually can be accessed via `execute_cdp_cmd`
-            result = driver.execute_cdp_cmd("Page.printToPDF", print_options)
+            result = driver.execute_cdp_cmd("Page.printToPDF", print_options)  # type: ignore
 
             pdf_base64 = result.get("data")
             if not pdf_base64:

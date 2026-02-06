@@ -270,7 +270,7 @@ class Pipeline:
 
     def _process_document(
         self, doc_metadata: DocumentMetadata, file_path: Path
-    ) -> dict:
+    ) -> dict:  # type: ignore
         """
         Process a single document through the modular pipeline.
 
@@ -318,7 +318,7 @@ class Pipeline:
 
             result["parsed"] = True
             self.logger.info(
-                f"Parse successful: {parse_result.markdown_path.name} "
+                f"Parse successful: {parse_result.markdown_path.name if parse_result.markdown_path else 'Unknown'} "
                 f"({parse_result.parser_name})"
             )
 
@@ -375,11 +375,11 @@ class Pipeline:
 
             # Step 6: Ingest to RAG (if enabled)
             if self.upload_to_ragflow and self.dataset_id:
-                self.logger.info(f"Ingesting to RAG: {parse_result.markdown_path.name}")
+                self.logger.info(f"Ingesting to RAG: {parse_result.markdown_path.name if parse_result.markdown_path else 'Unknown'}")
                 rag = self.container.rag_backend
 
                 rag_result = rag.ingest_document(
-                    markdown_path=parse_result.markdown_path,
+                    markdown_path=parse_result.markdown_path,  # type: ignore
                     metadata=merged_metadata.to_dict(),
                     collection_id=self.dataset_id,
                 )

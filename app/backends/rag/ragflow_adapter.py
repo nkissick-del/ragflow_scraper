@@ -102,8 +102,8 @@ class RAGFlowBackend(RAGBackend):
 
             # Upload document with metadata using ingestion workflow
             upload_result = self.client.upload_documents_with_metadata(
-                dataset_id=dataset_id,
-                files_with_metadata=[(markdown_path, ragflow_metadata)],
+                dataset_id=dataset_id,  # type: ignore
+                files_with_metadata=[(markdown_path, ragflow_metadata)],  # type: ignore
             )
 
             if not upload_result or not upload_result[0].success:
