@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass, field, fields as dataclass_fields
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 from app.config import Config
 from app.container import get_container
@@ -362,7 +362,7 @@ class Pipeline:
                 # Step 5: Verify document (Sonarr-style)
                 self.logger.info("Verifying document in archive...")
                 verified = archive.verify_document(
-                    archive_result.document_id, timeout=self.verify_document_timeout
+                    cast(str, archive_result.document_id), timeout=self.verify_document_timeout
                 )
                 result["verified"] = verified
 
