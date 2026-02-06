@@ -13,3 +13,7 @@
 ## 2026-02-04 - Standardized Button Loading State
 **Learning:** HTMX buttons can easily support loading states by toggling visibility of text/loader elements based on the `htmx-request` class. This pattern is robust and should be applied to all async buttons.
 **Action:** Use `.btn-with-loader` wrapper with `.btn-text` and `.btn-loader` children, plus `hx-indicator` pointing to self.
+
+## 2026-02-05 - Button Context Accessibility
+**Learning:** Repetitive buttons like "Run" or "Cancel" in lists are ambiguous to screen readers.
+**Action:** Always include the specific item name in `aria-label` (e.g., `aria-label="Run {{ scraper.name }} scraper"`) to provide necessary context.

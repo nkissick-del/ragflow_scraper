@@ -20,6 +20,7 @@
                 hx-post="{{ url_for('scrapers.cancel_scraper', name=scraper.name) }}"
                 hx-target="#scraper-{{ scraper.name }} .status-badge"
                 hx-swap="outerHTML"
+                aria-label="{% if scraper.status == 'cancelling' %}Cancelling {{ scraper.name }} scraper{% else %}Cancel {{ scraper.name }} scraper{% endif %}"
                 {% if scraper.status == 'cancelling' %}disabled{% endif %}>
             {% if scraper.status == 'cancelling' %}Cancelling...{% else %}Cancel{% endif %}
         </button>
@@ -30,11 +31,12 @@
                 hx-target="#scraper-{{ scraper.name }}"
                 hx-swap="outerHTML"
                 hx-disabled-elt="this"
-                hx-indicator="#run-btn-card-{{ scraper.name }}">
+                hx-indicator="#run-btn-card-{{ scraper.name }}"
+                aria-label="Run {{ scraper.name }} scraper">
             <span class="btn-text">Run Now</span>
             <span class="btn-loader"><span class="loading-spinner"></span></span>
         </button>
         {% endif %}
-        <a href="{{ url_for('scrapers.scrapers_page') }}" class="btn btn-secondary">Configure</a>
+        <a href="{{ url_for('scrapers.scrapers_page') }}" class="btn btn-secondary" aria-label="Configure {{ scraper.name }} scraper">Configure</a>
     </div>
 </div>

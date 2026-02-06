@@ -36,11 +36,12 @@
                         hx-swap="outerHTML"
                         hx-disabled-elt="this"
                         hx-indicator="#run-btn-card-{{ scraper.name }}"
+                        aria-label="{% if scraper.status == 'running' %}Scraper {{ scraper.name }} is running{% else %}Run {{ scraper.name }} scraper{% endif %}"
                         {% if scraper.status == 'running' %}disabled{% endif %}>
                     <span class="btn-text">{% if scraper.status == 'running' %}Running...{% else %}Run Now{% endif %}</span>
                     <span class="btn-loader"><span class="loading-spinner"></span></span>
                 </button>
-                <a href="{{ url_for('scrapers.scrapers_page') }}" class="btn btn-secondary">Configure</a>
+                <a href="{{ url_for('scrapers.scrapers_page') }}" class="btn btn-secondary" aria-label="Configure {{ scraper.name }} scraper">Configure</a>
             </div>
         </div>
         {% else %}
