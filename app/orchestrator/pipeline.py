@@ -380,13 +380,10 @@ class Pipeline:
                 )
                 self.logger.error(error_msg)
                 result["verified"] = False
-                # Ensure result has an error field to track this anomaly
-                if "error" not in result:
-                    result["error"] = error_msg
-                elif result["error"] is None:
+                # Track this anomaly in the error field
+                if result["error"] is None:
                     result["error"] = error_msg
                 else:
-                    # Append to existing error
                     result["error"] = f"{result['error']}; {error_msg}"
             else:
                 self.logger.info("Verifying document in archive...")

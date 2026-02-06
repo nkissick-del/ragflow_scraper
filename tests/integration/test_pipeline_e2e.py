@@ -4,7 +4,6 @@ Tests the full workflow: scrape → parse → archive → RAG
 """
 
 import pytest
-import responses
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
@@ -19,7 +18,7 @@ from app.services.archiver import ArchiveResult
 class DummyScraperResult:
     """Mock scraper result with documents."""
 
-    def __init__(self, doc_count=1):
+    def __init__(self, doc_count=1, tmp_path=None):
         self.scraped_count = doc_count
         self.downloaded_count = doc_count
         self.errors = []
@@ -28,13 +27,19 @@ class DummyScraperResult:
 
         # Create mock documents
         for i in range(doc_count):
+            # Use tmp_path if provided, otherwise fallback to /tmp for backward compatibility
+            if tmp_path:
+                pdf_path = f"{tmp_path.as_posix()}/test_doc_{i + 1}.pdf"
+            else:
+                pdf_path = f"/tmp/test_doc_{i + 1}.pdf"
+
             self.documents.append(
                 {
                     "title": f"Test Document {i + 1}",
                     "url": f"http://example.com/doc{i + 1}",
                     "organization": "TestOrg",
                     "publication_date": "2024-01-15",
-                    "pdf_path": f"/tmp/test_doc_{i + 1}.pdf",
+                    "pdf_path": pdf_path,
                     "hash": f"hash{i + 1}",
                 }
             )
@@ -43,11 +48,12 @@ class DummyScraperResult:
 class DummyScraper:
     """Mock scraper."""
 
-    def __init__(self, doc_count=1):
+    def __init__(self, doc_count=1, tmp_path=None):
         self.doc_count = doc_count
+        self.tmp_path = tmp_path
 
     def run(self):
-        return DummyScraperResult(self.doc_count)
+        return DummyScraperResult(self.doc_count, self.tmp_path)
 
 
 @pytest.fixture
@@ -71,7 +77,6 @@ def temp_pdf(tmp_path):
 class TestE2EPipelineHappyPath:
     """Test successful end-to-end pipeline execution."""
 
-    @responses.activate
     def test_full_pipeline_success(self, mock_container, tmp_path, temp_pdf):
         """Should successfully process document through all stages."""
         # Setup: Create markdown output path
@@ -79,7 +84,7 @@ class TestE2EPipelineHappyPath:
         markdown_file.write_text("# Test Document 1\n\nContent here.")
 
         # Mock scraper
-        scraper = DummyScraper(doc_count=1)
+        scraper = DummyScraper(doc_count=1, tmp_path=tmp_path)
 
         # Mock parser backend
         parser_result = ParserResult(
@@ -152,7 +157,7 @@ class TestE2EPipelineHappyPath:
             markdown_file.write_text(f"# Test Document {i + 1}\n\nContent here.")
 
         # Mock scraper with 3 documents
-        scraper = DummyScraper(doc_count=3)
+        scraper = DummyScraper(doc_count=3, tmp_path=tmp_path)
 
         # Mock parser backend to return different results
         def mock_parse(file_path, context_metadata):
@@ -221,7 +226,7 @@ class TestE2EPipelineErrorHandling:
         markdown_file.write_text("# Test Document 2\n\nContent.")
 
         # Mock scraper with 2 documents
-        scraper = DummyScraper(doc_count=2)
+        scraper = DummyScraper(doc_count=2, tmp_path=tmp_path)
 
         # Mock parser: first fails, second succeeds
         def mock_parse(file_path, context_metadata):
@@ -268,7 +273,7 @@ class TestE2EPipelineErrorHandling:
         markdown_file = tmp_path / "test_doc_1.md"
         markdown_file.write_text("# Test\n\nContent.")
 
-        scraper = DummyScraper(doc_count=1)
+        scraper = DummyScraper(doc_count=1, tmp_path=tmp_path)
 
         # Parser succeeds
         mock_container.parser_backend.parse_document.return_value = ParserResult(
@@ -365,7 +370,7 @@ class TestE2EPipelineMetadata:
         markdown_file.write_text("# Test\n\nContent.")
 
         # Scraper provides URL, org, date
-        scraper = DummyScraper(doc_count=1)
+        scraper = DummyScraper(doc_count=1, tmp_path=tmp_path)
 
         # Parser provides title, author, page_count
         parser_result = ParserResult(
@@ -402,7 +407,24 @@ class TestE2EPipelineMetadata:
         archive_call = mock_container.archive_backend.archive_document.call_args
         assert archive_call is not None
 
-        # The merged metadata should have both scraper and parser data
-        # (exact verification depends on merge strategy in pipeline)
+        # Extract the metadata from call_args (args, kwargs)
+        call_kwargs = archive_call[1]
+        merged_metadata = call_kwargs.get("metadata")
+        assert merged_metadata is not None, (
+            "metadata should be passed to archive_document"
+        )
+
+        # Verify merged metadata contains expected scraper fields
+        assert merged_metadata.get("url") == "http://example.com/doc1"
+        assert merged_metadata.get("organization") == "TestOrg"
+        assert merged_metadata.get("publication_date") == "2024-01-15"
+
+        # Verify merged metadata contains expected parser fields
+        assert merged_metadata.get("author") == "Extracted Author"
+        assert merged_metadata.get("page_count") == 10
+
+        # Verify the title (could be from scraper or parser depending on merge strategy)
+        assert "title" in merged_metadata
+
         assert result.parsed_count == 1
         assert result.archived_count == 1

@@ -248,25 +248,37 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 **Priority:** HIGH - Validate with real services before deployment
 
 **Tasks:**
+- [ ] **Stack Tests** (NEW - Test against real Docker Compose services)
+  - [ ] Create stack test suite (`tests/stack/`)
+  - [ ] Add pytest markers (`@pytest.mark.stack`)
+  - [ ] Test Paperless integration with real API
+    - Document upload/archiving
+    - Correspondent/tag creation and caching
+    - Verification polling
+  - [ ] Test AnythingLLM integration with real API
+    - Document upload to real workspace
+    - Metadata handling
+    - Workspace management
+  - [ ] Test Docling parser with real PDFs
+    - Parse actual PDF files
+    - Verify markdown output quality
+    - Validate metadata extraction
+  - [ ] E2E pipeline with real stack
+    - Run scraper → parse → archive → RAG
+    - Verify all stages with real services
+    - Check file cleanup and metrics
+  - [ ] Update Makefile with `test-stack` target
+  - [ ] Document stack test setup in DEVELOPER_GUIDE.md
 - [x] Test with live AnythingLLM instance (Phase 4.1)
   - ✅ Verify document upload
   - ✅ Verify metadata handling
   - ✅ Test workspace management
   - Validate search/retrieval (deferred - use AnythingLLM UI)
-- [ ] Test with live Paperless-ngx instance
-  - Verify correspondent/tag creation
-  - Test document archiving
-  - Validate verification polling
-  - Check metadata accuracy
-- [ ] Test Docling parser with real PDFs
-  - Complex layouts (tables, images)
-  - Various PDF formats
-  - Metadata extraction accuracy
-- [ ] E2E pipeline test
-  - Run real scraper (AEMO, Guardian, etc.)
-  - Verify all stages complete (scrape → parse → archive → RAG)
-  - Check file cleanup
-  - Validate metrics
+- [ ] Manual validation with live Paperless-ngx
+  - Verify correspondent/tag creation via UI
+  - Test document archiving workflow
+  - Validate verification polling behavior
+  - Check metadata accuracy in Paperless UI
 - [ ] Security validation
   - Test TLS/HTTPS with reverse proxy
   - Verify basic auth works
@@ -277,7 +289,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
   - Test metadata backup
   - Test restore process
 
-**Estimated Effort:** 6-8 hours
+**Estimated Effort:** 10-14 hours (increased for stack tests)
 
 ---
 
@@ -297,7 +309,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 - [x] Validated with live AnythingLLM instance ✅
 - [x] Paperless metadata upload working (correspondents + tags) ✅
 - [x] Jinja2 filename templating implemented ✅
-- [x] 156/158 tests passing (98.7%) ✅
+- [x] 156/186 tests passing (83.9%) ✅
 - [x] Integration tests for critical paths ✅
 - [x] E2E pipeline test (scraper → parse → archive → RAG) ✅
 - [ ] Validated with live Paperless instance
@@ -309,8 +321,8 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 - ✅ Phase 4.3 COMPLETE - Jinja2 filename templating implemented
 - ✅ Phase 4.4 COMPLETE - Integration tests expanded, configuration audit done
 - ✅ 63 new tests added (30 integration + 33 unit)
-- ✅ 186+ total tests (estimated)
-- ✅ 156/158 tests passing (98.7%)
+- ✅ 186 total tests (123 baseline + 63 new)
+- ✅ 156/186 tests passing (83.9%)
 - ✅ Test collection errors fixed via `.env.test`
 
 ---

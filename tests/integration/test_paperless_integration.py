@@ -4,9 +4,9 @@ Tests document archiving, correspondent/tag management, and verification polling
 """
 
 import pytest
+import requests
 import responses
 from pathlib import Path
-from datetime import datetime
 from unittest.mock import patch
 
 from app.backends.archives.paperless_adapter import PaperlessArchiveBackend
@@ -42,11 +42,12 @@ class TestPaperlessDocumentArchiving:
     @responses.activate
     def test_archive_document_success(self, paperless_backend, test_pdf):
         """Should successfully archive document to Paperless."""
+        task_id = "00000000-0000-0000-0000-000000000001"
         # Mock upload endpoint
         responses.add(
             responses.POST,
             "http://localhost:8000/api/documents/post_document/",
-            json={"task_id": "task-123"},
+            json={"task_id": task_id},
             status=200,
         )
 
@@ -61,9 +62,9 @@ class TestPaperlessDocumentArchiving:
 
         # Verify
         assert result.success is True
-        assert result.document_id == "task-123"
+        assert result.document_id == task_id
         assert result.archive_name == "paperless"
-        assert "task-123" in result.url
+        assert task_id in result.url
 
     @responses.activate
     def test_archive_with_correspondent_lookup(
@@ -82,10 +83,11 @@ class TestPaperlessDocumentArchiving:
         )
 
         # Mock upload endpoint
+        task_id = "00000000-0000-0000-0000-000000000002"
         responses.add(
             responses.POST,
             "http://localhost:8000/api/documents/post_document/",
-            json={"task_id": "task-456"},
+            json={"task_id": task_id},
             status=200,
         )
 
@@ -98,11 +100,29 @@ class TestPaperlessDocumentArchiving:
 
         # Verify
         assert result.success is True
-        assert result.document_id == "task-456"
+        assert result.document_id == task_id
 
         # Verify correspondent was resolved to ID in request
         upload_request = responses.calls[-1].request
-        assert b"correspondent" in upload_request.body
+        # Parse multipart form data to verify correspondent ID
+        content_type = upload_request.headers.get("Content-Type", "")
+        # Extract boundary from Content-Type header
+        if "boundary=" in content_type:
+            body_str = upload_request.body.decode("utf-8", errors="ignore")
+            # Check that correspondent field has value "42"
+            assert 'name="correspondent"' in body_str
+            # Find the correspondent value in the multipart data
+            import re
+
+            correspondent_match = re.search(
+                r'name="correspondent"[^\r\n]*\r?\n\r?\n([^\r\n]+)', body_str
+            )
+            assert correspondent_match is not None, (
+                "Correspondent field not found in request"
+            )
+            assert correspondent_match.group(1) == "42", (
+                f"Expected correspondent ID 42, got {correspondent_match.group(1)}"
+            )
 
     @responses.activate
     def test_archive_with_tag_lookup(
@@ -124,10 +144,11 @@ class TestPaperlessDocumentArchiving:
         )
 
         # Mock upload endpoint
+        task_id = "00000000-0000-0000-0000-000000000003"
         responses.add(
             responses.POST,
             "http://localhost:8000/api/documents/post_document/",
-            json={"task_id": "task-789"},
+            json={"task_id": task_id},
             status=200,
         )
 
@@ -140,7 +161,7 @@ class TestPaperlessDocumentArchiving:
 
         # Verify
         assert result.success is True
-        assert result.document_id == "task-789"
+        assert result.document_id == task_id
 
     @responses.activate
     def test_archive_creates_missing_correspondent(
@@ -167,7 +188,7 @@ class TestPaperlessDocumentArchiving:
         responses.add(
             responses.POST,
             "http://localhost:8000/api/documents/post_document/",
-            json={"task_id": "task-new"},
+            json={"task_id": "00000000-0000-0000-0000-000000000004"},
             status=200,
         )
 
@@ -223,7 +244,7 @@ class TestPaperlessDocumentArchiving:
         responses.add(
             responses.POST,
             "http://localhost:8000/api/documents/post_document/",
-            json={"task_id": "task-tags"},
+            json={"task_id": "00000000-0000-0000-0000-000000000005"},
             status=200,
         )
 
@@ -244,6 +265,173 @@ class TestPaperlessDocumentArchiving:
         ]
         assert len(tag_posts) == 2
 
+    @responses.activate
+    def test_archive_pagination(self, paperless_client, paperless_backend, test_pdf):
+        """Should handle paginated API responses for correspondents and tags."""
+        # Mock paginated correspondent fetch (2 pages)
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/correspondents/",
+            json={
+                "count": 3,
+                "next": "http://localhost:8000/api/correspondents/?page=2",
+                "results": [
+                    {"id": 1, "name": "Org1"},
+                    {"id": 2, "name": "Org2"},
+                ],
+            },
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/correspondents/?page=2",
+            json={
+                "count": 3,
+                "next": None,
+                "results": [
+                    {"id": 3, "name": "TargetOrg"},
+                ],
+            },
+            status=200,
+        )
+
+        # Mock upload endpoint
+        task_id = "00000000-0000-0000-0000-000000000006"
+        responses.add(
+            responses.POST,
+            "http://localhost:8000/api/documents/post_document/",
+            json={"task_id": task_id},
+            status=200,
+        )
+
+        # Archive document with correspondent from page 2
+        result = paperless_backend.archive_document(
+            file_path=test_pdf,
+            title="Test Document",
+            correspondent="TargetOrg",
+        )
+
+        # Verify success
+        assert result.success is True
+        # Verify both pages were fetched
+        correspondent_gets = [
+            c
+            for c in responses.calls
+            if "correspondents" in c.request.url and c.request.method == "GET"
+        ]
+        assert len(correspondent_gets) == 2
+
+    @responses.activate
+    def test_archive_case_insensitive_matching(
+        self, paperless_client, paperless_backend, test_pdf
+    ):
+        """Should handle case-insensitive name matching for correspondents and tags."""
+        # Mock correspondent fetch with different casing
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/correspondents/",
+            json={
+                "count": 1,
+                "results": [{"id": 50, "name": "TestOrg"}],  # Mixed case
+            },
+            status=200,
+        )
+
+        # Mock tag fetch with different casing
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/tags/",
+            json={
+                "count": 1,
+                "results": [{"id": 100, "name": "ImportantTag"}],  # Mixed case
+            },
+            status=200,
+        )
+
+        # Mock upload endpoint
+        responses.add(
+            responses.POST,
+            "http://localhost:8000/api/documents/post_document/",
+            json={"task_id": "00000000-0000-0000-0000-000000000007"},
+            status=200,
+        )
+
+        # Archive document with lowercase names
+        result = paperless_backend.archive_document(
+            file_path=test_pdf,
+            title="Test Document",
+            correspondent="testorg",  # lowercase
+            tags=["importanttag"],  # lowercase
+        )
+
+        # Verify success (case-insensitive matching should work)
+        assert result.success is True
+
+    @responses.activate
+    def test_archive_concurrent_requests(
+        self, paperless_client, paperless_backend, test_pdf
+    ):
+        """Should handle concurrent archiving requests correctly."""
+        import threading
+
+        # Mock correspondent fetch
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/correspondents/",
+            json={
+                "count": 1,
+                "results": [{"id": 42, "name": "TestOrg"}],
+            },
+            status=200,
+        )
+
+        # Mock tag fetch
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/tags/",
+            json={
+                "count": 1,
+                "results": [{"id": 10, "name": "test"}],
+            },
+            status=200,
+        )
+
+        # Mock upload endpoint (multiple times for concurrent requests)
+        for i in range(3):
+            responses.add(
+                responses.POST,
+                "http://localhost:8000/api/documents/post_document/",
+                json={"task_id": f"00000000-0000-0000-0000-0000000000{i + 8:02d}"},
+                status=200,
+            )
+
+        # Archive documents concurrently
+        results = []
+        errors = []
+
+        def archive_doc(index):
+            try:
+                result = paperless_backend.archive_document(
+                    file_path=test_pdf,
+                    title=f"Test Document {index}",
+                    correspondent="TestOrg",
+                    tags=["test"],
+                )
+                results.append(result)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=archive_doc, args=(i,)) for i in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Verify all succeeded without errors
+        assert len(errors) == 0, f"Concurrent archiving had errors: {errors}"
+        assert len(results) == 3
+        assert all(r.success for r in results)
+
 
 class TestPaperlessVerification:
     """Test document verification polling."""
@@ -251,22 +439,21 @@ class TestPaperlessVerification:
     @responses.activate
     def test_verify_document_success(self, paperless_backend):
         """Should successfully verify document exists."""
+        task_id = "00000000-0000-0000-0000-000000000001"
         # Mock task status endpoint (SUCCESS)
         responses.add(
             responses.GET,
-            "http://localhost:8000/api/tasks/",
+            f"http://localhost:8000/api/tasks/{task_id}/",
             json={
-                "task-123": {
-                    "status": "SUCCESS",
-                    "result": {"document_id": 456},
-                }
+                "status": "SUCCESS",
+                "related_document": 456,
             },
             status=200,
         )
 
         # Verify document
         verified = paperless_backend.verify_document(
-            document_id="task-123",
+            document_id=task_id,
             timeout=5,
         )
 
@@ -276,23 +463,24 @@ class TestPaperlessVerification:
     @responses.activate
     def test_verify_document_timeout(self, paperless_backend):
         """Should timeout when document not verified."""
+        task_id = "00000000-0000-0000-0000-000000000002"
         # Mock task status endpoint (PENDING forever)
         responses.add(
             responses.GET,
-            "http://localhost:8000/api/tasks/",
+            f"http://localhost:8000/api/tasks/{task_id}/",
             json={
-                "task-456": {
-                    "status": "PENDING",
-                }
+                "status": "PENDING",
             },
             status=200,
         )
 
-        # Verify document (should timeout)
-        verified = paperless_backend.verify_document(
-            document_id="task-456",
-            timeout=2,  # Short timeout for test
-        )
+        # Mock time.sleep to avoid real delays
+        with patch("time.sleep"):
+            # Verify document (should timeout)
+            verified = paperless_backend.verify_document(
+                document_id=task_id,
+                timeout=2,  # Short timeout for test
+            )
 
         # Verify
         assert verified is False
@@ -300,22 +488,21 @@ class TestPaperlessVerification:
     @responses.activate
     def test_verify_document_failure(self, paperless_backend):
         """Should handle task failure."""
+        task_id = "00000000-0000-0000-0000-000000000003"
         # Mock task status endpoint (FAILURE)
         responses.add(
             responses.GET,
-            "http://localhost:8000/api/tasks/",
+            f"http://localhost:8000/api/tasks/{task_id}/",
             json={
-                "task-789": {
-                    "status": "FAILURE",
-                    "result": {"error": "Processing failed"},
-                }
+                "status": "FAILURE",
+                "result": "Processing failed",
             },
             status=200,
         )
 
         # Verify document
         verified = paperless_backend.verify_document(
-            document_id="task-789",
+            document_id=task_id,
             timeout=5,
         )
 
@@ -346,13 +533,13 @@ class TestPaperlessCaching:
         responses.add(
             responses.POST,
             "http://localhost:8000/api/documents/post_document/",
-            json={"task_id": "task-1"},
+            json={"task_id": "00000000-0000-0000-0000-000000000010"},
             status=200,
         )
         responses.add(
             responses.POST,
             "http://localhost:8000/api/documents/post_document/",
-            json={"task_id": "task-2"},
+            json={"task_id": "00000000-0000-0000-0000-000000000011"},
             status=200,
         )
 
@@ -396,13 +583,13 @@ class TestPaperlessCaching:
         responses.add(
             responses.POST,
             "http://localhost:8000/api/documents/post_document/",
-            json={"task_id": "task-1"},
+            json={"task_id": "00000000-0000-0000-0000-000000000012"},
             status=200,
         )
         responses.add(
             responses.POST,
             "http://localhost:8000/api/documents/post_document/",
-            json={"task_id": "task-2"},
+            json={"task_id": "00000000-0000-0000-0000-000000000013"},
             status=200,
         )
 
@@ -463,8 +650,6 @@ class TestPaperlessErrorHandling:
     def test_archive_network_timeout(self, paperless_backend, test_pdf):
         """Should handle network timeouts."""
         # Mock timeout
-        import requests
-
         with patch.object(
             paperless_backend.client.session,
             "post",
@@ -482,6 +667,6 @@ class TestPaperlessErrorHandling:
         """Should handle verification when not configured."""
         backend = PaperlessArchiveBackend(client=PaperlessClient(url=None, token=None))
 
-        verified = backend.verify_document("task-123")
+        verified = backend.verify_document("00000000-0000-0000-0000-000000000001")
 
         assert verified is False
