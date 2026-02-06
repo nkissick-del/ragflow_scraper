@@ -5,11 +5,13 @@ Archiver service for generating clean, archival-quality PDFs from content.
 from __future__ import annotations
 
 import base64
+import html
 import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -177,15 +179,51 @@ class Archiver:
                 except Exception:
                     pass
 
+    def _sanitize_content(self, content: str) -> str:
+        """
+        Sanitize HTML content by removing dangerous tags and attributes.
+        """
+        if not content:
+            return ""
+
+        soup = BeautifulSoup(content, "html.parser")
+
+        # Remove dangerous tags
+        for tag in soup(["script", "iframe", "object", "embed", "form", "meta", "style", "link"]):
+            tag.decompose()
+
+        # Remove event handlers (onclick, onload, etc.)
+        for tag in soup.find_all(True):
+            for attr in list(tag.attrs):
+                if attr.lower().startswith("on"):
+                    del tag[attr]
+                # Also check for javascript: protocol in href/src
+                if attr.lower() in ["href", "src"]:
+                    val = tag[attr]
+                    if isinstance(val, str) and val.strip().lower().startswith("javascript:"):
+                        del tag[attr]
+
+        return str(soup)
+
     def _synthesize_html(self, content: str, meta: DocumentMetadata) -> str:
         """Inject content into the Reader View template."""
+
+        # Escape metadata fields to prevent XSS in headers
+        safe_title = html.escape(meta.title or "")
+        safe_url = html.escape(meta.url or "")
+        safe_org = html.escape(meta.organization or "Unknown")
+        safe_date = html.escape(meta.publication_date or "Unknown")
+        safe_author = html.escape(meta.extra.get("author", "Unknown"))
+
+        # Sanitize the body content
+        safe_content = self._sanitize_content(content)
 
         # Format metadata for display
         meta_html = f"""
         <div class="metadata">
-            <div><strong>Source:</strong> <a href="{meta.url}">{meta.organization or "Unknown"}</a></div>
-            <div><strong>Date:</strong> {meta.publication_date or "Unknown"}</div>
-            <div><strong>Author:</strong> {meta.extra.get("author", "Unknown")}</div>
+            <div><strong>Source:</strong> <a href="{safe_url}">{safe_org}</a></div>
+            <div><strong>Date:</strong> {safe_date}</div>
+            <div><strong>Author:</strong> {safe_author}</div>
         </div>
         """
 
@@ -194,16 +232,16 @@ class Archiver:
         <html>
         <head>
             <meta charset="utf-8">
-            <title>{meta.title}</title>
+            <title>{safe_title}</title>
             <style>
                 {self.READER_CSS}
             </style>
         </head>
         <body>
-            <h1>{meta.title}</h1>
+            <h1>{safe_title}</h1>
             {meta_html}
             <div class="content">
-                {content}
+                {safe_content}
             </div>
             <div class="footer">
                 Archived by DeepMind Agent • {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}

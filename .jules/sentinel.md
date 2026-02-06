@@ -15,3 +15,8 @@
 **Vulnerability:** The Flask application was missing critical security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`), exposing it to clickjacking and MIME sniffing attacks.
 **Learning:** Security headers must be explicitly added via an `@app.after_request` hook in `app/web/__init__.py`, as Flask does not provide them by default.
 **Prevention:** Ensure `app/web/__init__.py` always includes the `add_security_headers` function and that integration tests verify their presence.
+
+## 2026-02-06 - Archiver Stored XSS Vulnerability
+**Vulnerability:** The `Archiver` service injected unescaped metadata and content into the HTML template used for PDF generation. This allowed Stored XSS attacks where malicious scripts in scraped content (or metadata) would execute within the Selenium WebDriver context.
+**Learning:** "Internal" components like PDF generators are valid XSS vectors. Existing documentation/memory claiming security controls exist must be verified against the code.
+**Prevention:** Always use `html.escape()` when inserting strings into HTML templates. Sanitize HTML content using libraries like `BeautifulSoup` or `bleach` before rendering.
