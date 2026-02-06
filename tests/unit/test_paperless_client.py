@@ -224,6 +224,7 @@ class TestGetOrCreateTags:
     def test_returns_cached_ids(self, client):
         """Should return cached IDs without API call."""
         client._tag_cache = {"Report": 10, "Energy": 20}
+        client._tag_cache_populated = True
 
         with patch.object(client.session, "get") as mock_get:
             result = client.get_or_create_tags(["Report", "Energy"])
