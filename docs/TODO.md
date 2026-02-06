@@ -163,39 +163,40 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 
 ---
 
-### Phase 4.3: Jinja2 Filename Templating [Code] 🔴 BLOCKER
+### Phase 4.3: Jinja2 Filename Templating [Code] ✅ COMPLETE
 
-**Priority:** 🔴 BLOCKER - Improves file organization and consistency
+**Priority:** BLOCKER - **IMPLEMENTED & VALIDATED**
 
 **Tasks:**
-- [ ] Verify `jinja2` in requirements.txt (already in constraints.txt)
-- [ ] Add filename template configuration
-  - Add `FILENAME_TEMPLATE` to Config
-  - Default: `"{{ date_prefix }}_{{ org }}_{{ title | slugify }}{{ extension }}"`
-  - Validate template on startup
-- [ ] Implement custom Jinja2 filters
-  - `slugify` - Convert to filesystem-safe names
-  - `shorten(n)` - Truncate long titles
-  - `secure_filename` - Remove dangerous characters
-- [ ] Update `generate_filename_from_template()`
-  - Use Jinja2 rendering
-  - Handle template errors gracefully
-  - Add template variable documentation
-- [ ] Add unit tests
-  - Test various template patterns
-  - Test filter functions
-  - Test error handling
-- [ ] Update documentation
-  - Document available template variables
-  - Provide example templates
-  - Add customization guide
+- [x] Verify `jinja2` in requirements.txt (already in constraints.txt)
+- [x] Add filename template configuration
+  - [x] Add `FILENAME_TEMPLATE` to Config
+  - [x] Default: `"{{ date_prefix }}_{{ org }}_{{ title | slugify }}{{ extension }}"`
+  - [x] Validate template on startup
+- [x] Implement custom Jinja2 filters
+  - [x] `slugify` - Convert to filesystem-safe names
+  - [x] `shorten(n)` - Truncate long titles
+  - [x] `secure_filename` - Remove dangerous characters
+- [x] Update `generate_filename_from_template()`
+  - [x] Use Jinja2 rendering
+  - [x] Handle template errors gracefully
+  - [x] Add template variable documentation
+- [x] Add unit tests
+  - [x] Test various template patterns
+  - [x] Test filter functions
+  - [x] Test error handling
+- [x] Update documentation
+  - [x] Document available template variables
+  - [x] Provide example templates
+  - [x] Add customization guide
 
 **Reference:**
 - [docs/plans/naming_strategy.md](docs/plans/naming_strategy.md)
 - [docs/plans/consolidated_architecture.md](docs/plans/consolidated_architecture.md#L60-L64)
 - [app/utils/file_utils.py](app/utils/file_utils.py)
+- [walkthrough.md](../../../.gemini/antigravity/brain/32c63d9a-c80a-4ced-b617-986bf81875ac/walkthrough.md) (Feb 6)
 
-**Estimated Effort:** 3-4 hours
+**Completed:** 2026-02-06
 
 ---
 
@@ -217,6 +218,10 @@ Status: Awaiting live services; keep after refactors unless blocking release.
   - AnythingLLM integration test
   - Paperless integration test
   - Docling parser integration test
+- [ ] Frontend Configuration Parity
+  - [ ] Audit all environment variables in `app/config.py`
+  - [ ] Ensure all relevant user-facing settings are manageable via Web UI (Settings page)
+  - [ ] Validate setting persistence/sync between UI and Backend
 - [ ] Add performance benchmarks (optional)
   - PDF parsing benchmark
   - Concurrent download benchmark
@@ -273,7 +278,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 **Critical Path:**
 1. ✅ AnythingLLM implementation (8-12h) - **COMPLETE** (2026-02-05)
 2. ✅ Paperless metadata (4-6h) - **COMPLETE** (2026-02-06)
-3. 🔴 Jinja2 templating (3-4h) - BLOCKER
+3. ✅ Jinja2 templating (3-4h) - **COMPLETE** (2026-02-06)
 4. 🟡 Testing (8-12h) - HIGH
 5. 🟡 Production validation (6-8h) - HIGH
 
@@ -281,7 +286,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 - [x] AnythingLLM backend fully functional ✅
 - [x] Validated with live AnythingLLM instance ✅
 - [x] Paperless metadata upload working (correspondents + tags) ✅
-- [ ] Jinja2 filename templating implemented
+- [x] Jinja2 filename templating implemented ✅
 - [ ] All 148 tests passing
 - [ ] Integration tests for critical paths
 - [ ] E2E pipeline test (scraper → parse → archive → RAG)
@@ -291,10 +296,11 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 **Current Status:**
 - ✅ Phase 4.1 COMPLETE - AnythingLLM backend validated
 - ✅ Phase 4.2 COMPLETE - Paperless metadata resolved via ID lookups
-- ✅ 24 new unit tests added (total test coverage expanded)
-- 🟡 146/148 baseline tests passing (98.6%)
-- 🔴 2 test collection errors fixed via `.env.test`, but 5 others remain
-- 🔴 Jinja2 templating not started (Next focus)
+- ✅ Phase 4.3 COMPLETE - Jinja2 filename templating implemented
+- ✅ 33 new unit tests added (total test coverage expanded)
+- 🟡 156/158 baseline tests passing (98.7%)
+- ✅ 2 test collection errors fixed via `.env.test`
+- 🟡 Fix remaining test collection errors (Next focus)
 
 ---
 
@@ -342,9 +348,9 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 
 ## Next Steps
 
-**Immediate Actions (Phase 4.3-4.4):**
-1. 🔴 Implement Jinja2 templating (3-4 hours) - BLOCKER
-2. 🟡 Fix remaining test collection errors (1-2 hours)
+**Immediate Actions (Phase 4.4):**
+1. 🟡 Fix remaining test collection errors (1-2 hours)
+2. 🟡 Frontend Configuration Parity audit
 
 **Then (Phase 4.4-4.5):**
 4. 🟡 Expand integration test coverage (6-8 hours)

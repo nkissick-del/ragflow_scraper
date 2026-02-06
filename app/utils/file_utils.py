@@ -54,6 +54,9 @@ def sanitize_filename(filename: str, max_length: int = 200) -> str:
     filename = re.sub(r'[<>:"/\\|?*]', "_", filename)
     filename = re.sub(r"[\x00-\x1f\x7f]", "", filename)  # Control characters
 
+    # Prevent directory traversal
+    filename = filename.replace("..", "__")
+
     # Replace multiple spaces/underscores with single
     filename = re.sub(r"[\s_]+", "_", filename)
 
@@ -208,42 +211,73 @@ def parse_file_size(size_str: str) -> Optional[int]:
     return int(value * multipliers.get(unit, 1))
 
 
+def slugify(value: str) -> str:
+    """
+    Convert a string to a filesystem-safe slug.
+    Example: "Hello World!" -> "hello-world"
+    """
+    if not value:
+        return ""
+    value = (
+        unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    )
+    value = re.sub(r"[^\w\s-]", "", value).strip().lower()
+    return re.sub(r"[-\s]+", "-", value)
+
+
+def shorten(value: str, length: int = 50) -> str:
+    """Truncate string to maximum length."""
+    if not value or len(value) <= length:
+        return value or ""
+    return value[:length].strip()
+
+
 def generate_filename_from_template(
     metadata: MetadataProtocol | dict[str, Any],
-    template: str = "{{ date_prefix }}_{{ org }}_{{ original_name }}{{ extension }}",
+    template: Optional[str] = None,
 ) -> str:
     """
     Generate filename from Jinja2 template using metadata.
 
     Args:
         metadata: DocumentMetadata instance or dict
-        template: Jinja2 template string
+        template: Jinja2 template string (defaults to Config.FILENAME_TEMPLATE)
 
     Returns:
         Sanitized filename generated from template
 
     Available template variables:
         - date_prefix: YYYYMM from publication_date
-        - org: Uppercase organization name
-        - original_name: Sanitized original filename
-        - extension: File extension (with dot)
-        - title: Document title (sanitized)
         - year: YYYY from publication_date
         - month: MM from publication_date
         - day: DD from publication_date
+        - org: Uppercase organization name
+        - title: Document title
+        - original_name: Original filename without extension
+        - extension: File extension (with dot)
+
+    Available filters:
+        - slugify: Convert to filesystem-safe slug
+        - shorten(n): Truncate to length n
+        - secure_filename: Sanitize filename
 
     Examples:
-        >>> meta = DocumentMetadata(...)
+        >>> meta = DocumentMetadata(title="Annual Report", organization="AEMO", ...)
         >>> generate_filename_from_template(meta)
-        '202407_AEMO_report.pdf'
+        '202407_AEMO_annual-report.pdf'
 
         >>> generate_filename_from_template(
         ...     meta,
-        ...     template="{{ year }}/{{ org }}/{{ title }}{{ extension }}"
+        ...     template="{{ year }}/{{ org }}/{{ title | slugify }}{{ extension }}"
         ... )
-        '2024/AEMO/Annual_Report.pdf'
+        '2024/AEMO/annual-report.pdf'
     """
-    from jinja2 import Template
+    from jinja2 import Environment, BaseLoader
+
+    if template is None:
+        from app.config import Config
+
+        template = Config.FILENAME_TEMPLATE
 
     # Convert metadata to dict if needed
     if hasattr(metadata, "to_dict"):
@@ -266,28 +300,31 @@ def generate_filename_from_template(
     else:
         _set_context_date_from_dt(context, datetime.now())
 
-    # Organization (uppercase)
-    org = meta_dict.get("organization") or "Unknown"
-    context["org"] = org.upper()
+    # Organization
+    context["org"] = (meta_dict.get("organization") or "Unknown").upper()
 
-    # Original filename (sanitized)
+    # Original filename info
     filename = meta_dict.get("filename") or "unnamed"
     original_path = Path(filename)
-    context["original_name"] = sanitize_filename(original_path.stem)
+    context["original_name"] = original_path.stem
     context["extension"] = original_path.suffix
 
-    # Title (sanitized)
-    title = meta_dict.get("title", "")
-    context["title"] = sanitize_filename(title) if title else context["original_name"]
+    # Title
+    context["title"] = meta_dict.get("title") or context["original_name"]
 
-    # Render template
+    # Render template using Environment for custom filters
+    env = Environment(loader=BaseLoader())
+    env.filters["slugify"] = slugify
+    env.filters["shorten"] = shorten
+    env.filters["secure_filename"] = sanitize_filename
+
     try:
-        tmpl = Template(template)
+        tmpl = env.from_string(template)
         rendered = tmpl.render(**context)
     except Exception as e:
         logger.error(f"Jinja2 template rendering failed: {e}")
-        # Fallback to default format
-        rendered = f"{context['date_prefix']}_{context['org']}_{context['original_name']}{context['extension']}"
+        # Default fallback format
+        rendered = f"{context['date_prefix']}_{context['org']}_{context['title']}{context['extension']}"
 
     # Sanitize the final result
     return sanitize_filename(rendered)

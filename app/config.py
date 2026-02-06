@@ -166,6 +166,12 @@ class Config:
     # Proxy handling (for correct host/proto when behind reverse proxies)
     TRUST_PROXY_COUNT = _parse_proxy_count(os.getenv("TRUST_PROXY_COUNT", "0"))
 
+    # File Naming
+    FILENAME_TEMPLATE = os.getenv(
+        "FILENAME_TEMPLATE",
+        "{{ date_prefix }}_{{ org }}_{{ title | slugify }}{{ extension }}",
+    )
+
     @classmethod
     def ensure_directories(cls):
         """Create required directories if they don't exist."""
@@ -227,6 +233,20 @@ class Config:
                 f"Invalid METADATA_MERGE_STRATEGY '{cls.METADATA_MERGE_STRATEGY}'. "
                 f"Must be one of: {', '.join(valid_strategies)}"
             )
+
+        # Validate FILENAME_TEMPLATE (basic Jinja2 syntax check)
+        if cls.FILENAME_TEMPLATE:
+            from jinja2 import Environment, BaseLoader, TemplateSyntaxError
+            from app.utils.file_utils import slugify, shorten, sanitize_filename
+
+            try:
+                env = Environment(loader=BaseLoader())
+                env.filters["slugify"] = slugify
+                env.filters["shorten"] = shorten
+                env.filters["secure_filename"] = sanitize_filename
+                env.from_string(cls.FILENAME_TEMPLATE)
+            except TemplateSyntaxError as e:
+                raise ValueError(f"Invalid FILENAME_TEMPLATE syntax: {e}")
 
     @classmethod
     def get_scraper_config_path(cls, scraper_name: str) -> Path:
