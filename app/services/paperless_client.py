@@ -266,7 +266,7 @@ class PaperlessClient:
                 data["correspondent"] = int(correspondent)
             else:
                 # Look up or create correspondent by name
-                corr_id = self.get_or_create_correspondent(correspondent)
+                corr_id = self.get_or_create_correspondent(str(correspondent))
                 if corr_id:
                     data["correspondent"] = corr_id
                 else:
@@ -293,7 +293,7 @@ class PaperlessClient:
                 tag_ids.extend(resolved_ids)
 
             if tag_ids:
-                data["tags"] = tag_ids
+                data["tags"] = tag_ids  # type: ignore
 
         self.logger.info(f"Uploading to Paperless: {title}")
 

@@ -247,16 +247,20 @@ def generate_filename_from_template(
 
     # Convert metadata to dict if needed
     if hasattr(metadata, "to_dict"):
-        meta_dict = metadata.to_dict()
-    else:
+        # We know it has to_dict because of the check, but cast for type checker
+        meta_dict: dict[str, Any] = metadata.to_dict()  # type: ignore
+    elif isinstance(metadata, dict):
         meta_dict = metadata
+    else:
+        # Should not happen given the type hint, but safe fallback
+        meta_dict = {}
 
     # Build template context
-    context = {}
+    context: dict[str, str] = {}
 
     # Parse publication date
     pub_date = meta_dict.get("publication_date")
-    if pub_date:
+    if pub_date and isinstance(pub_date, str):
         try:
             dt = datetime.fromisoformat(pub_date.split("T")[0])
             _set_context_date_from_dt(context, dt)
@@ -267,18 +271,25 @@ def generate_filename_from_template(
         _set_context_date_from_dt(context, datetime.now())
 
     # Organization (uppercase)
-    org = meta_dict.get("organization") or "Unknown"
+    org = meta_dict.get("organization")
+    if not isinstance(org, str):
+        org = "Unknown"
     context["org"] = org.upper()
 
     # Original filename (sanitized)
-    filename = meta_dict.get("filename") or "unnamed"
+    filename = meta_dict.get("filename")
+    if not isinstance(filename, str):
+        filename = "unnamed"
     original_path = Path(filename)
     context["original_name"] = sanitize_filename(original_path.stem)
     context["extension"] = original_path.suffix
 
     # Title (sanitized)
     title = meta_dict.get("title", "")
-    context["title"] = sanitize_filename(title) if title else context["original_name"]
+    if isinstance(title, str) and title:
+        context["title"] = sanitize_filename(title)
+    else:
+        context["title"] = context["original_name"]
 
     # Render template
     try:
