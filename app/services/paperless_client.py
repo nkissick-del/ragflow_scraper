@@ -326,13 +326,19 @@ class PaperlessClient:
                 ("{", "[")
             ):
                 try:
-                    data = response.json()
-                    if isinstance(data, dict):
-                        task_id = data.get("task_id")
-                    elif isinstance(data, list) and data and isinstance(data[0], dict):
-                        task_id = data[0].get("task_id")
+                    response_data = response.json()
+                    if isinstance(response_data, dict):
+                        task_id = response_data.get("task_id")
+                    elif (
+                        isinstance(response_data, list)
+                        and response_data
+                        and isinstance(response_data[0], dict)
+                    ):
+                        task_id = response_data[0].get("task_id")
                     else:
-                        task_id = data if isinstance(data, str) else None
+                        task_id = (
+                            response_data if isinstance(response_data, str) else None
+                        )
                 except Exception:
                     task_id = raw_text.strip("'\"")
             else:

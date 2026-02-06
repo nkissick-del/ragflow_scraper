@@ -60,41 +60,49 @@ class TestConfigValidation:
         """Test that anythingllm requires URL, KEY, and WORKSPACE_ID."""
         with patch.object(Config, "RAG_BACKEND", "anythingllm"):
             # Missing API_URL
-            with patch.object(Config, "ANYTHINGLLM_API_URL", ""):
-                with patch.object(Config, "ANYTHINGLLM_API_KEY", "key"):
-                    with patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", "workspace"):
-                        with pytest.raises(
-                            ValueError,
-                            match="requires ANYTHINGLLM_API_URL, ANYTHINGLLM_API_KEY, and ANYTHINGLLM_WORKSPACE_ID",
-                        ):
-                            Config.validate()
+            with (
+                patch.object(Config, "ANYTHINGLLM_API_URL", ""),
+                patch.object(Config, "ANYTHINGLLM_API_KEY", "key"),
+                patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", "workspace"),
+                pytest.raises(
+                    ValueError,
+                    match="requires ANYTHINGLLM_API_URL, ANYTHINGLLM_API_KEY, and ANYTHINGLLM_WORKSPACE_ID",
+                ),
+            ):
+                Config.validate()
 
             # Missing API_KEY
-            with patch.object(Config, "ANYTHINGLLM_API_URL", "http://localhost"):
-                with patch.object(Config, "ANYTHINGLLM_API_KEY", ""):
-                    with patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", "workspace"):
-                        with pytest.raises(
-                            ValueError,
-                            match="requires ANYTHINGLLM_API_URL, ANYTHINGLLM_API_KEY, and ANYTHINGLLM_WORKSPACE_ID",
-                        ):
-                            Config.validate()
+            with (
+                patch.object(Config, "ANYTHINGLLM_API_URL", "http://localhost"),
+                patch.object(Config, "ANYTHINGLLM_API_KEY", ""),
+                patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", "workspace"),
+                pytest.raises(
+                    ValueError,
+                    match="requires ANYTHINGLLM_API_URL, ANYTHINGLLM_API_KEY, and ANYTHINGLLM_WORKSPACE_ID",
+                ),
+            ):
+                Config.validate()
 
             # Missing WORKSPACE_ID
-            with patch.object(Config, "ANYTHINGLLM_API_URL", "http://localhost"):
-                with patch.object(Config, "ANYTHINGLLM_API_KEY", "key"):
-                    with patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", ""):
-                        with pytest.raises(
-                            ValueError,
-                            match="requires ANYTHINGLLM_API_URL, ANYTHINGLLM_API_KEY, and ANYTHINGLLM_WORKSPACE_ID",
-                        ):
-                            Config.validate()
+            with (
+                patch.object(Config, "ANYTHINGLLM_API_URL", "http://localhost"),
+                patch.object(Config, "ANYTHINGLLM_API_KEY", "key"),
+                patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", ""),
+                pytest.raises(
+                    ValueError,
+                    match="requires ANYTHINGLLM_API_URL, ANYTHINGLLM_API_KEY, and ANYTHINGLLM_WORKSPACE_ID",
+                ),
+            ):
+                Config.validate()
 
             # All fields present
-            with patch.object(Config, "ANYTHINGLLM_API_URL", "http://localhost"):
-                with patch.object(Config, "ANYTHINGLLM_API_KEY", "key"):
-                    with patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", "workspace"):
-                        # Should not raise
-                        Config.validate()
+            with (
+                patch.object(Config, "ANYTHINGLLM_API_URL", "http://localhost"),
+                patch.object(Config, "ANYTHINGLLM_API_KEY", "key"),
+                patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", "workspace"),
+            ):
+                # Should not raise
+                Config.validate()
 
     def test_backend_constants_extraction(self):
         """Test that backend lists are extracted into constants."""

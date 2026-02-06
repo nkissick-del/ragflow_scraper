@@ -221,13 +221,34 @@ def _run_conversion_to_queue(file_path: str, queue: multiprocessing.Queue):
         result = _run_conversion(file_path)
         queue.put(result)
     except Exception as e:
-        # Log and swallow exceptions to prevent process crash
+        # Build error payload to send to parent
         import traceback
+        import sys
+        import os
 
-        error_msg = f"Exception in _run_conversion_to_queue: {e}"
-        print(error_msg)  # Use print since logger may not work in subprocess
-        print(traceback.format_exc())
-        # Don't re-raise - let the process exit gracefully
+        error_payload = {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+        # Attempt to send error payload to queue
+        try:
+            queue.put(error_payload)
+        except Exception as queue_error:
+            # If blocking put fails, try non-blocking fallback
+            try:
+                queue.put_nowait(error_payload)
+            except Exception as nowait_error:
+                # Both queue operations failed - print to stderr and exit
+                print(
+                    f"FATAL: Failed to send error to queue: {queue_error}, {nowait_error}",
+                    file=sys.stderr,
+                )
+                print(f"Original error: {error_payload}", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+                # Exit worker process with non-zero code so parent can detect failure
+                os._exit(1)
 
 
 def _run_conversion(file_path: str) -> dict:

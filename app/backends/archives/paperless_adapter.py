@@ -38,7 +38,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
         created: Optional[str] = None,
         correspondent: Optional[str] = None,
         tags: Optional[list[str]] = None,
-        _metadata: Optional[dict] = None,  # Reserved for future use
+        metadata: Optional[dict] = None,  # Reserved for future use
     ) -> ArchiveResult:
         """
         Archive document to Paperless-ngx.
@@ -49,7 +49,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
             created: ISO format date string
             correspondent: Source organization
             tags: List of tags
-            _metadata: Additional metadata (currently unused by Paperless API)
+            metadata: Additional metadata (currently unused by Paperless API)
 
         Returns:
             ArchiveResult with task_id as document_id (Note: document_id is the Paperless task id)

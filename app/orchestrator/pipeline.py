@@ -64,13 +64,14 @@ class PipelineResult:
 
 class Pipeline:
     """
-    Pipeline for executing the full scrape -> upload -> parse workflow.
+    Pipeline for executing the full scrape -> parse -> archive workflow.
 
     Steps:
     1. Run scraper to download documents
-    2. Upload downloaded documents to RAGFlow
-    3. Trigger parsing in RAGFlow
-    4. Monitor parsing status
+    2. Parse documents locally using configured parser backend
+    3. Archive parsed documents to Paperless (with verification)
+    4. Optionally upload/ingest parsed content to RAG backend
+    5. Monitor archive status and clean up local files after verification
     """
 
     def __init__(
@@ -92,7 +93,8 @@ class Pipeline:
             max_pages: Maximum pages to scrape
             upload_to_ragflow: Whether to upload to RAGFlow
             upload_to_paperless: Whether to upload to Paperless
-            wait_for_parsing: Whether to wait for parsing to complete
+            verify_document_timeout: Timeout in seconds for archive document verification (default: 60)
+            container: Optional service container (uses default if not provided)
         """
         self.scraper_name = scraper_name
         self.dataset_id = dataset_id or Config.RAGFLOW_DATASET_ID
@@ -317,10 +319,19 @@ class Pipeline:
                 parse_result.error or "Parser failed without error message"
             )
 
+        # Validate markdown_path exists before using it
+        if not parse_result.markdown_path:
+            error_msg = f"Parser '{parse_result.parser_name}' succeeded but returned no markdown_path"
+            if parse_result.error:
+                error_msg += f": {parse_result.error}"
+            raise ParserBackendError(error_msg)
+
+        # Use local variable for validated path
+        md_path = parse_result.markdown_path
+
         result["parsed"] = True
         self.logger.info(
-            f"Parse successful: {parse_result.markdown_path.name} "
-            f"({parse_result.parser_name})"
+            f"Parse successful: {md_path.name} ({parse_result.parser_name})"
         )
 
         # Step 2: Merge metadata
@@ -361,26 +372,33 @@ class Pipeline:
             )
 
             # Step 5: Verify document (Sonarr-style)
-            self.logger.info("Verifying document in archive...")
-            verified = archive.verify_document(
-                archive_result.document_id, timeout=self.verify_document_timeout
-            )
-            result["verified"] = verified
-
-            if verified:
-                self.logger.info(f"Document verified: {archive_result.document_id}")
-            else:
+            if archive_result.document_id is None:
                 self.logger.warning(
-                    f"Document verification timed out: {archive_result.document_id}"
+                    f"Archive result has no document_id (archive_result={archive_result}), "
+                    "skipping verification"
                 )
+                result["verified"] = False
+            else:
+                self.logger.info("Verifying document in archive...")
+                verified = archive.verify_document(
+                    archive_result.document_id, timeout=self.verify_document_timeout
+                )
+                result["verified"] = verified
+
+                if verified:
+                    self.logger.info(f"Document verified: {archive_result.document_id}")
+                else:
+                    self.logger.warning(
+                        f"Document verification timed out: {archive_result.document_id}"
+                    )
 
         # Step 6: Ingest to RAG (if enabled)
         if self.upload_to_ragflow and self.dataset_id:
-            self.logger.info(f"Ingesting to RAG: {parse_result.markdown_path.name}")
+            self.logger.info(f"Ingesting to RAG: {md_path.name}")
             rag = self.container.rag_backend
 
             rag_result = rag.ingest_document(
-                markdown_path=parse_result.markdown_path,
+                markdown_path=md_path,
                 metadata=merged_metadata.to_dict(),
                 collection_id=self.dataset_id,
             )
@@ -404,8 +422,8 @@ class Pipeline:
             self.logger.info("Deleting local files (archived/verified)")
             try:
                 file_path.unlink()
-                if parse_result.markdown_path and parse_result.markdown_path.exists():
-                    parse_result.markdown_path.unlink()
+                if md_path and md_path.exists():
+                    md_path.unlink()
                 # Delete metadata JSON if exists
                 metadata_path = file_path.with_suffix(".json")
                 if metadata_path.exists():

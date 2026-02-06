@@ -146,7 +146,6 @@ class MetadataIOMixin:
                 temp_pdf_path = archiver.generate_pdf(html_content, article, output_dir)
             except Exception as e:
                 self.logger.error(f"Archiver failed for '{article.title}': {e}")
-                temp_pdf_path = None
                 # Don't fail the whole save, just log error for archive path
 
         temp_md_path = None

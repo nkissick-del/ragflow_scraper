@@ -127,8 +127,10 @@ class DocumentMetadata:
                                     value_float = float(value)
                                     if not value_float.is_integer():
                                         logger.debug(
-                                            f"Truncating decimal value for field '{key}': "
-                                            f"{value} -> {int(value_float)}"
+                                            "Truncating decimal value for field '%s': %s -> %s",
+                                            key,
+                                            value,
+                                            int(value_float),
                                         )
                                     merged[key] = int(value_float)
                                     continue

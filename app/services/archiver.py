@@ -170,12 +170,13 @@ class Archiver:
         title = html.escape(meta.title or "Untitled")
         org = html.escape(meta.organization or "Unknown")
         pub_date = html.escape(str(meta.publication_date or "Unknown"))
-        author = html.escape(meta.extra.get("author", "Unknown"))
+        extra = getattr(meta, "extra", {}) or {}
+        author = html.escape(extra.get("author", "Unknown"))
 
         # Validate URL scheme and escape
         raw_url = meta.url or "#"
         parsed = urlparse(raw_url)
-        if parsed.scheme.lower() in ("http", "https", "ftp"):
+        if parsed.scheme.lower() in ("http", "https"):
             url = html.escape(raw_url)
         else:
             url = "#"
@@ -227,8 +228,14 @@ class Archiver:
             "img": ["src", "alt", "title", "width", "height"],
             "*": ["class", "id"],
         }
+        # Restrict URL schemes to prevent javascript: and data: URI attacks
+        allowed_protocols = ["http", "https", "mailto"]
         sanitized_content = bleach.clean(
-            content, tags=allowed_tags, attributes=allowed_attrs, strip=True
+            content,
+            tags=allowed_tags,
+            attributes=allowed_attrs,
+            protocols=allowed_protocols,
+            strip=True,
         )
 
         return f"""

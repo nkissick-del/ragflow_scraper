@@ -300,8 +300,6 @@ def generate_filename_from_template(
         meta_dict = metadata.to_dict()
     elif isinstance(metadata, dict):
         meta_dict = metadata
-    elif isinstance(metadata, dict):
-        meta_dict = metadata
     else:
         raise TypeError(
             f"metadata must be MetadataProtocol or dict, got {type(metadata).__name__}"

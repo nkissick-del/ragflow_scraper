@@ -12,7 +12,7 @@ beautifulsoup4
 lxml
 trafilatura
 feedparser
-bleach
+bleach  # HTML sanitization for scraped content
 
 # HTTP
 requests
