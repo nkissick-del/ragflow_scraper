@@ -270,8 +270,10 @@ class AnythingLLMClient:
 
                 # Fallback to direct fields
                 doc_id = response_data.get("id") or response_data.get("document_id")
-                workspace = response_data.get("workspace_id") or (
-                    workspace_ids[0] if workspace_ids else self.workspace_id
+                workspace = (
+                    response_data.get("workspace_id")
+                    or response_data.get("workspaceId")
+                    or (workspace_ids[0] if workspace_ids else self.workspace_id)
                 )
                 return UploadResult(
                     success=True,

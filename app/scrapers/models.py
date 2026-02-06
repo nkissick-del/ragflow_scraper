@@ -33,7 +33,7 @@ class DocumentMetadata:
     extra: dict = field(default_factory=dict)
 
     # Paperless integration
-    paperless_id: Optional[str] = None
+    paperless_id: Optional[int] = None
     pdf_path: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -101,6 +101,8 @@ class DocumentMetadata:
 
         elif strategy == "parser_wins":
             # Parser overwrites all matching fields with type validation
+            # Cache type hints outside loop for performance
+            type_hints = get_type_hints(DocumentMetadata)
             for key, value in parser_metadata.items():
                 if value is None:
                     continue
@@ -122,7 +124,13 @@ class DocumentMetadata:
                                 value, (str, float, int)
                             ):
                                 try:
-                                    merged[key] = int(float(value))
+                                    value_float = float(value)
+                                    if not value_float.is_integer():
+                                        logger.debug(
+                                            f"Truncating decimal value for field '{key}': "
+                                            f"{value} -> {int(value_float)}"
+                                        )
+                                    merged[key] = int(value_float)
                                     continue
                                 except (ValueError, TypeError):
                                     pass
@@ -137,7 +145,6 @@ class DocumentMetadata:
                             merged["extra"][key] = value
                     else:
                         # Field is None, check DocumentMetadata types for safety
-                        type_hints = get_type_hints(DocumentMetadata)
                         expected_type = type_hints.get(key)
 
                         # Handle Optional[T] / Union[T, None]
@@ -176,9 +183,7 @@ class DocumentMetadata:
                             merged[key] = value
                 else:
                     # Add to extra if not a standard field
-                    if "parser_extra" not in merged["extra"] and not isinstance(
-                        value, dict
-                    ):
+                    if key not in merged["extra"] and not isinstance(value, dict):
                         merged["extra"][key] = value
                     elif isinstance(value, dict):
                         merged["extra"].update(value)

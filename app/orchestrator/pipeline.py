@@ -29,7 +29,6 @@ class PipelineResult:
     scraper_name: str
     scraped_count: int = 0
     downloaded_count: int = 0
-    uploaded_count: int = 0
     parsed_count: int = 0
     archived_count: int = 0
     verified_count: int = 0
@@ -39,7 +38,6 @@ class PipelineResult:
     started_at: str = field(default_factory=lambda: datetime.now().isoformat())
     completed_at: Optional[str] = None
     errors: list[str] = field(default_factory=list)
-    uploaded_to_paperless: int = 0  # Legacy field for backward compatibility
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -48,7 +46,6 @@ class PipelineResult:
             "scraper_name": self.scraper_name,
             "scraped_count": self.scraped_count,
             "downloaded_count": self.downloaded_count,
-            "uploaded_count": self.uploaded_count,
             "parsed_count": self.parsed_count,
             "archived_count": self.archived_count,
             "verified_count": self.verified_count,
@@ -58,7 +55,6 @@ class PipelineResult:
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "errors": self.errors,
-            "uploaded_to_paperless": self.uploaded_to_paperless,
         }
 
     def to_json(self) -> str:
@@ -210,12 +206,10 @@ class Pipeline:
                         result.parsed_count += 1
                     if process_result["archived"]:
                         result.archived_count += 1
-                        result.uploaded_to_paperless += 1  # Legacy field
                     if process_result["verified"]:
                         result.verified_count += 1
                     if process_result["rag_indexed"]:
                         result.rag_indexed_count += 1
-                        result.uploaded_count += 1  # Legacy field
 
                 except (ParserBackendError, ArchiveError) as e:
                     # document-level fatal errors
@@ -262,7 +256,6 @@ class Pipeline:
             result.status = "failed"
             result.errors.append(str(e))
 
-        self._step_times = step_times
         return self._finalize_result(result, start_time)
 
     def _run_scraper(self):
@@ -296,7 +289,6 @@ class Pipeline:
             doc_metadata: Document metadata from scraper
             file_path: Path to PDF file
 
-
         Returns:
             Dict with keys: parsed, archived, verified, rag_indexed, error
 
@@ -312,126 +304,117 @@ class Pipeline:
             "error": None,
         }
 
-        try:
-            # Step 1: Parse PDF → Markdown
-            if not file_path.exists():
-                raise ParserBackendError(f"PDF file not found: {file_path}")
+        # Step 1: Parse PDF → Markdown
+        if not file_path.exists():
+            raise ParserBackendError(f"PDF file not found: {file_path}")
 
-            self.logger.info(f"Parsing document: {file_path.name}")
-            parser = self.container.parser_backend
-            parse_result = parser.parse_document(file_path, doc_metadata)
+        self.logger.info(f"Parsing document: {file_path.name}")
+        parser = self.container.parser_backend
+        parse_result = parser.parse_document(file_path, doc_metadata)
 
-            if not parse_result.success:
-                raise ParserBackendError(
-                    parse_result.error or "Parser failed without error message"
+        if not parse_result.success:
+            raise ParserBackendError(
+                parse_result.error or "Parser failed without error message"
+            )
+
+        result["parsed"] = True
+        self.logger.info(
+            f"Parse successful: {parse_result.markdown_path.name} "
+            f"({parse_result.parser_name})"
+        )
+
+        # Step 2: Merge metadata
+        merged_metadata = doc_metadata.merge_parser_metadata(
+            parse_result.metadata or {},
+            strategy=Config.METADATA_MERGE_STRATEGY,
+        )
+        self.logger.debug(
+            f"Metadata merged using '{Config.METADATA_MERGE_STRATEGY}' strategy"
+        )
+
+        # Step 3: Generate canonical filename (for archive title)
+        canonical_name = generate_filename_from_template(merged_metadata)
+        self.logger.debug(f"Canonical filename: {canonical_name}")
+
+        # Step 4: Archive to Paperless (if enabled)
+        if self.upload_to_paperless:
+            self.logger.info(f"Archiving to Paperless: {canonical_name}")
+            archive = self.container.archive_backend
+
+            archive_result = archive.archive_document(
+                file_path=file_path,
+                title=merged_metadata.title,
+                created=merged_metadata.publication_date,
+                correspondent=merged_metadata.organization,
+                tags=merged_metadata.tags,
+                metadata=merged_metadata.to_dict(),
+            )
+
+            if not archive_result.success:
+                raise ArchiveError(
+                    archive_result.error or "Archive failed without error message"
                 )
 
-            result["parsed"] = True
+            result["archived"] = True
             self.logger.info(
-                f"Parse successful: {parse_result.markdown_path.name} "
-                f"({parse_result.parser_name})"
+                f"Archive successful: document_id={archive_result.document_id}"
             )
 
-            # Step 2: Merge metadata
-            merged_metadata = doc_metadata.merge_parser_metadata(
-                parse_result.metadata or {},
-                strategy=Config.METADATA_MERGE_STRATEGY,
+            # Step 5: Verify document (Sonarr-style)
+            self.logger.info("Verifying document in archive...")
+            verified = archive.verify_document(
+                archive_result.document_id, timeout=self.verify_document_timeout
             )
-            self.logger.debug(
-                f"Metadata merged using '{Config.METADATA_MERGE_STRATEGY}' strategy"
+            result["verified"] = verified
+
+            if verified:
+                self.logger.info(f"Document verified: {archive_result.document_id}")
+            else:
+                self.logger.warning(
+                    f"Document verification timed out: {archive_result.document_id}"
+                )
+
+        # Step 6: Ingest to RAG (if enabled)
+        if self.upload_to_ragflow and self.dataset_id:
+            self.logger.info(f"Ingesting to RAG: {parse_result.markdown_path.name}")
+            rag = self.container.rag_backend
+
+            rag_result = rag.ingest_document(
+                markdown_path=parse_result.markdown_path,
+                metadata=merged_metadata.to_dict(),
+                collection_id=self.dataset_id,
             )
 
-            # Step 3: Generate canonical filename (for archive title)
-            canonical_name = generate_filename_from_template(merged_metadata)
-            self.logger.debug(f"Canonical filename: {canonical_name}")
+            # RAG failure is non-fatal (log and continue)
+            if rag_result.success:
+                result["rag_indexed"] = True
+                self.logger.info(f"RAG ingestion successful: {rag_result.document_id}")
+            else:
+                self.logger.error(f"RAG ingestion failed: {rag_result.error}")
+                # Don't raise - RAG failure is non-fatal
 
-            # Step 4: Archive to Paperless (if enabled)
-            if self.upload_to_paperless:
-                self.logger.info(f"Archiving to Paperless: {canonical_name}")
-                archive = self.container.archive_backend
+        # Step 7: Delete local files (if verified or RAG-only mode)
+        should_delete = False
+        if self.upload_to_paperless and result["verified"]:
+            should_delete = True
+        elif not self.upload_to_paperless and result["rag_indexed"]:
+            should_delete = True
 
-                archive_result = archive.archive_document(
-                    file_path=file_path,
-                    title=merged_metadata.title,
-                    created=merged_metadata.publication_date,
-                    correspondent=merged_metadata.organization,
-                    tags=merged_metadata.tags,
-                    metadata=merged_metadata.to_dict(),
-                )
+        if should_delete:
+            self.logger.info("Deleting local files (archived/verified)")
+            try:
+                file_path.unlink()
+                if parse_result.markdown_path and parse_result.markdown_path.exists():
+                    parse_result.markdown_path.unlink()
+                # Delete metadata JSON if exists
+                metadata_path = file_path.with_suffix(".json")
+                if metadata_path.exists():
+                    metadata_path.unlink()
+                self.logger.debug("Local files deleted")
+            except Exception as e:
+                self.logger.warning(f"Failed to delete local files: {e}")
 
-                if not archive_result.success:
-                    raise ArchiveError(
-                        archive_result.error or "Archive failed without error message"
-                    )
-
-                result["archived"] = True
-                self.logger.info(
-                    f"Archive successful: document_id={archive_result.document_id}"
-                )
-
-                # Step 5: Verify document (Sonarr-style)
-                self.logger.info("Verifying document in archive...")
-                verified = archive.verify_document(
-                    archive_result.document_id, timeout=self.verify_document_timeout
-                )
-                result["verified"] = verified
-
-                if verified:
-                    self.logger.info(f"Document verified: {archive_result.document_id}")
-                else:
-                    self.logger.warning(
-                        f"Document verification timed out: {archive_result.document_id}"
-                    )
-
-            # Step 6: Ingest to RAG (if enabled)
-            if self.upload_to_ragflow and self.dataset_id:
-                self.logger.info(f"Ingesting to RAG: {parse_result.markdown_path.name}")
-                rag = self.container.rag_backend
-
-                rag_result = rag.ingest_document(
-                    markdown_path=parse_result.markdown_path,
-                    metadata=merged_metadata.to_dict(),
-                    collection_id=self.dataset_id,
-                )
-
-                # RAG failure is non-fatal (log and continue)
-                if rag_result.success:
-                    result["rag_indexed"] = True
-                    self.logger.info(
-                        f"RAG ingestion successful: {rag_result.document_id}"
-                    )
-                else:
-                    self.logger.error(f"RAG ingestion failed: {rag_result.error}")
-                    # Don't raise - RAG failure is non-fatal
-
-            # Step 7: Delete local files (if verified or RAG-only mode)
-            should_delete = False
-            if self.upload_to_paperless and result["verified"]:
-                should_delete = True
-            elif not self.upload_to_paperless and result["rag_indexed"]:
-                should_delete = True
-
-            if should_delete:
-                self.logger.info("Deleting local files (archived/verified)")
-                try:
-                    file_path.unlink()
-                    if (
-                        parse_result.markdown_path
-                        and parse_result.markdown_path.exists()
-                    ):
-                        parse_result.markdown_path.unlink()
-                    # Delete metadata JSON if exists
-                    metadata_path = file_path.with_suffix(".json")
-                    if metadata_path.exists():
-                        metadata_path.unlink()
-                    self.logger.debug("Local files deleted")
-                except Exception as e:
-                    self.logger.warning(f"Failed to delete local files: {e}")
-
-            return result
-
-        except (ParserBackendError, ArchiveError):
-            raise
+        return result
 
     def _finalize_result(
         self,
@@ -463,7 +446,6 @@ class Pipeline:
             archived=result.archived_count,
             verified=result.verified_count,
             rag_indexed=result.rag_indexed_count,
-            uploaded=result.uploaded_count,  # Legacy
             failed=result.failed_count,
             duration_s=result.duration_seconds,
             step_times=self._step_times,

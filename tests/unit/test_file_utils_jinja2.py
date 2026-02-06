@@ -1,5 +1,6 @@
 from datetime import datetime
 from unittest.mock import patch
+import pytest
 from app.utils.file_utils import generate_filename_from_template, slugify, shorten
 
 
@@ -78,8 +79,9 @@ def test_generate_filename_missing_date():
 
     with patch("app.utils.file_utils.datetime") as mock_datetime:
         mock_datetime.now.return_value = fixed_date
-        # We also need to mock fromisoformat if it's called, but here it's not
-        # since publication_date is missing.
+        # Expose fromisoformat and other methods from real datetime
+        mock_datetime.fromisoformat = datetime.fromisoformat
+        mock_datetime.strptime = datetime.strptime
 
         # Should use fixed_date
         filename = generate_filename_from_template(metadata)
@@ -129,36 +131,69 @@ def test_secure_filename_filter():
     assert filename == "Dangerous_Path_Traversal.pdf"
 
 
-def test_generate_filename_edge_cases():
-    # Missing/None organization and title
-    metadata = {"filename": "doc.pdf"}
-    filename = generate_filename_from_template(metadata)
-    assert "UNKNOWN" in filename
-    assert "doc" in filename  # title defaults to original_name
+@pytest.mark.parametrize(
+    "metadata,expected_in_filename",
+    [
+        ({"filename": "doc.pdf"}, ["UNKNOWN", "doc"]),
+        (
+            {"organization": None, "title": None, "filename": "doc.pdf"},
+            ["UNKNOWN", "doc"],
+        ),
+        ({}, ["UNKNOWN", "unnamed"]),
+    ],
+)
+def test_generate_filename_missing_fields(metadata, expected_in_filename):
+    """Test filename generation when organization or title is missing."""
+    fixed_date = datetime(2025, 2, 6)
+    with patch("app.utils.file_utils.datetime") as mock_datetime:
+        mock_datetime.now.return_value = fixed_date
+        mock_datetime.fromisoformat = datetime.fromisoformat
+        mock_datetime.strptime = datetime.strptime
 
-    metadata = {"organization": None, "title": None, "filename": "doc.pdf"}
-    filename = generate_filename_from_template(metadata)
-    assert "UNKNOWN" in filename
-    assert "doc" in filename
+        filename = generate_filename_from_template(metadata)
+        for expected in expected_in_filename:
+            assert expected in filename
 
-    # Filenames without extensions
+
+def test_generate_filename_without_extension():
+    """Test filename generation when the original filename has no extension."""
+    fixed_date = datetime(2025, 2, 6)
     metadata = {"organization": "NASA", "title": "Mission", "filename": "mars"}
-    filename = generate_filename_from_template(metadata)
-    assert filename.endswith("NASA_mission")
 
-    # Empty metadata dict
-    filename = generate_filename_from_template({})
-    assert "UNKNOWN" in filename
-    assert "unnamed" in filename
+    with patch("app.utils.file_utils.datetime") as mock_datetime:
+        mock_datetime.now.return_value = fixed_date
+        mock_datetime.fromisoformat = datetime.fromisoformat
+        mock_datetime.strptime = datetime.strptime
 
-    # Very long title/organization
+        filename = generate_filename_from_template(metadata)
+        assert filename.endswith("NASA_mission")
+
+
+def test_generate_filename_long_inputs():
+    """Test filename generation with very long title and organization."""
+    fixed_date = datetime(2025, 2, 6)
     long_str = "A" * 300
     metadata = {"organization": long_str, "title": long_str, "filename": "test.pdf"}
-    filename = generate_filename_from_template(metadata)
-    assert len(filename) <= 200
 
-    # Organization names with special characters
+    with patch("app.utils.file_utils.datetime") as mock_datetime:
+        mock_datetime.now.return_value = fixed_date
+        mock_datetime.fromisoformat = datetime.fromisoformat
+        mock_datetime.strptime = datetime.strptime
+
+        filename = generate_filename_from_template(metadata)
+        assert len(filename) <= 200
+
+
+def test_generate_filename_special_characters_in_org():
+    """Test filename generation when organization contains special characters."""
+    fixed_date = datetime(2025, 2, 6)
     metadata = {"organization": "NASA/JPL", "title": "Mars", "filename": "test.pdf"}
-    filename = generate_filename_from_template(metadata)
-    assert "NASA_JPL" in filename
-    assert "/" not in filename
+
+    with patch("app.utils.file_utils.datetime") as mock_datetime:
+        mock_datetime.now.return_value = fixed_date
+        mock_datetime.fromisoformat = datetime.fromisoformat
+        mock_datetime.strptime = datetime.strptime
+
+        filename = generate_filename_from_template(metadata)
+        assert "NASA_JPL" in filename
+        assert "/" not in filename

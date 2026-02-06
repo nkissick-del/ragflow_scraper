@@ -59,6 +59,27 @@ class TestConfigValidation:
     def test_anythingllm_validation(self):
         """Test that anythingllm requires URL, KEY, and WORKSPACE_ID."""
         with patch.object(Config, "RAG_BACKEND", "anythingllm"):
+            # Missing API_URL
+            with patch.object(Config, "ANYTHINGLLM_API_URL", ""):
+                with patch.object(Config, "ANYTHINGLLM_API_KEY", "key"):
+                    with patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", "workspace"):
+                        with pytest.raises(
+                            ValueError,
+                            match="requires ANYTHINGLLM_API_URL, ANYTHINGLLM_API_KEY, and ANYTHINGLLM_WORKSPACE_ID",
+                        ):
+                            Config.validate()
+
+            # Missing API_KEY
+            with patch.object(Config, "ANYTHINGLLM_API_URL", "http://localhost"):
+                with patch.object(Config, "ANYTHINGLLM_API_KEY", ""):
+                    with patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", "workspace"):
+                        with pytest.raises(
+                            ValueError,
+                            match="requires ANYTHINGLLM_API_URL, ANYTHINGLLM_API_KEY, and ANYTHINGLLM_WORKSPACE_ID",
+                        ):
+                            Config.validate()
+
+            # Missing WORKSPACE_ID
             with patch.object(Config, "ANYTHINGLLM_API_URL", "http://localhost"):
                 with patch.object(Config, "ANYTHINGLLM_API_KEY", "key"):
                     with patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", ""):
@@ -68,6 +89,9 @@ class TestConfigValidation:
                         ):
                             Config.validate()
 
+            # All fields present
+            with patch.object(Config, "ANYTHINGLLM_API_URL", "http://localhost"):
+                with patch.object(Config, "ANYTHINGLLM_API_KEY", "key"):
                     with patch.object(Config, "ANYTHINGLLM_WORKSPACE_ID", "workspace"):
                         # Should not raise
                         Config.validate()
@@ -126,6 +150,7 @@ class TestServiceContainerRAGValidation:
                 # Case 2: Available
                 reset_container()
                 container = get_container()
+                mock_instance.reset_mock()  # Reset mock to clear previous calls
                 mock_instance.is_available.return_value = True
                 backend = container.rag_backend
                 assert backend is mock_instance

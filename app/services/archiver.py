@@ -5,10 +5,13 @@ Archiver service for generating clean, archival-quality PDFs from content.
 from __future__ import annotations
 
 import base64
+import html
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse
 
+import bleach
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -163,18 +166,18 @@ class Archiver:
 
     def _synthesize_html(self, content: str, meta: DocumentMetadata) -> str:
         """Inject content into the Reader View template."""
-        from html import escape as html_escape
-        from datetime import timezone
-
         # Escape metadata fields
-        title = html_escape(meta.title or "Untitled")
-        org = html_escape(meta.organization or "Unknown")
-        pub_date = html_escape(str(meta.publication_date or "Unknown"))
-        author = html_escape(meta.extra.get("author", "Unknown"))
+        title = html.escape(meta.title or "Untitled")
+        org = html.escape(meta.organization or "Unknown")
+        pub_date = html.escape(str(meta.publication_date or "Unknown"))
+        author = html.escape(meta.extra.get("author", "Unknown"))
 
-        # Simple URL validation (prevent javascript: schemes)
-        url = meta.url or "#"
-        if url.lower().startswith("javascript:"):
+        # Validate URL scheme and escape
+        raw_url = meta.url or "#"
+        parsed = urlparse(raw_url)
+        if parsed.scheme.lower() in ("http", "https", "ftp"):
+            url = html.escape(raw_url)
+        else:
             url = "#"
 
         # Format metadata for display
@@ -186,8 +189,47 @@ class Archiver:
         </div>
         """
 
-        # For content, we assume it's already sanitized HTML from the scraper.
-        # If we wanted to be extremely safe, we could use bleach.clean(content) here.
+        # Sanitize HTML content to prevent XSS while preserving formatting
+        allowed_tags = [
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "p",
+            "br",
+            "hr",
+            "ul",
+            "ol",
+            "li",
+            "blockquote",
+            "pre",
+            "code",
+            "a",
+            "img",
+            "strong",
+            "em",
+            "b",
+            "i",
+            "u",
+            "span",
+            "div",
+            "table",
+            "thead",
+            "tbody",
+            "tr",
+            "th",
+            "td",
+        ]
+        allowed_attrs = {
+            "a": ["href", "title", "target"],
+            "img": ["src", "alt", "title", "width", "height"],
+            "*": ["class", "id"],
+        }
+        sanitized_content = bleach.clean(
+            content, tags=allowed_tags, attributes=allowed_attrs, strip=True
+        )
 
         return f"""
         <!DOCTYPE html>
@@ -203,7 +245,7 @@ class Archiver:
             <h1>{title}</h1>
             {meta_html}
             <div class="content">
-                {content}
+                {sanitized_content}
             </div>
             <div class="footer">
                 Archived by DeepMind Agent • {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")} UTC

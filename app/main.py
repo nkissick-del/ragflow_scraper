@@ -21,9 +21,17 @@ from app.web import create_app  # noqa: E402
 
 def main():
     """Run the Flask application."""
-    # Initialize configuration
-    Config.ensure_directories()
-    Config.validate()
+    # Initialize configuration (before logging is set up)
+    try:
+        Config.ensure_directories()
+        Config.validate()
+    except Exception as exc:
+        # Logging not yet configured, so use stderr for diagnostics
+        print(
+            f"FATAL: Configuration initialization failed: {exc.__class__.__name__}: {exc}",
+            file=sys.stderr,
+        )
+        raise
 
     # Setup logging
     setup_logging(name="scraper", level=Config.LOG_LEVEL)
@@ -52,8 +60,8 @@ def main():
                 )
                 for scraper_name in ScraperRegistry.get_scraper_names():
                     scheduler.run_now(scraper_name)
-    except Exception as exc:  # Keep the app booting even if scheduler fails
-        logger.error(f"Failed to initialize scheduler: {exc}")
+    except Exception:  # Keep the app booting even if scheduler fails
+        logger.exception("Failed to initialize scheduler")
 
     # Run the development server
     print(f"\n{'=' * 60}")

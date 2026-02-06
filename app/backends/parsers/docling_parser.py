@@ -67,7 +67,6 @@ class DoclingParser(ParserBackend):
             return ParserResult(success=False, error=error_msg, parser_name=self.name)
 
         # Standard imports
-        import multiprocessing
         from queue import Empty
 
         try:
@@ -102,6 +101,10 @@ class DoclingParser(ParserBackend):
                         process.kill()
                         process.join()
 
+                # Cleanup queue resources
+                queue.close()
+                queue.join_thread()
+
                 return ParserResult(
                     success=False, error=error_msg, parser_name=self.name
                 )
@@ -110,6 +113,9 @@ class DoclingParser(ParserBackend):
                 if process.is_alive():
                     process.terminate()
                     process.join()
+                # Cleanup queue resources
+                queue.close()
+                queue.join_thread()
 
             if not raw_result or not raw_result.get("success"):
                 error_msg = (
@@ -211,8 +217,17 @@ class DoclingParser(ParserBackend):
 
 def _run_conversion_to_queue(file_path: str, queue: multiprocessing.Queue):
     """Helper function to run Docling conversion and put result in a queue."""
-    result = _run_conversion(file_path)
-    queue.put(result)
+    try:
+        result = _run_conversion(file_path)
+        queue.put(result)
+    except Exception as e:
+        # Log and swallow exceptions to prevent process crash
+        import traceback
+
+        error_msg = f"Exception in _run_conversion_to_queue: {e}"
+        print(error_msg)  # Use print since logger may not work in subprocess
+        print(traceback.format_exc())
+        # Don't re-raise - let the process exit gracefully
 
 
 def _run_conversion(file_path: str) -> dict:

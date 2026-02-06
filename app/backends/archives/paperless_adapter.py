@@ -49,7 +49,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
             created: ISO format date string
             correspondent: Source organization
             tags: List of tags
-            metadata: Additional metadata (currently unused by Paperless API)
+            _metadata: Additional metadata (currently unused by Paperless API)
 
         Returns:
             ArchiveResult with task_id as document_id (Note: document_id is the Paperless task id)

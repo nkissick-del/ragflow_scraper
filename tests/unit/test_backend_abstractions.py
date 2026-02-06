@@ -83,6 +83,11 @@ class TestArchiveResult:
 class TestRAGResult:
     """Test RAGResult dataclass validation."""
 
+    def test_success_requires_document_id(self):
+        """Successful RAG ingestion must include document_id."""
+        with pytest.raises(ValueError, match="must include document_id"):
+            RAGResult(success=True, rag_name="test")
+
     def test_failure_requires_error(self):
         """Failed RAG ingestion must include error message."""
         with pytest.raises(ValueError, match="must include error message"):

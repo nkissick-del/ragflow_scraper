@@ -8,15 +8,15 @@ from typing import Any, Optional
 from app.scrapers.models import DocumentMetadata
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ParserResult:
     """Result from parsing a document."""
 
     success: bool
+    parser_name: str
     markdown_path: Optional[Path] = None
     metadata: Optional[dict[str, Any]] = None
     error: Optional[str] = None
-    parser_name: str = ""
 
     def __post_init__(self):
         """Validate result consistency."""

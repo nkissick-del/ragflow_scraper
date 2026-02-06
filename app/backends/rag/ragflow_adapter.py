@@ -110,7 +110,6 @@ class RAGFlowBackend(RAGBackend):
                 res = upload_result[0] if upload_result else None
                 error_info = (
                     getattr(res, "error", None)
-                    or (res.get("error") if isinstance(res, dict) else None)
                     or f"Status: {getattr(res, 'status', 'Unknown')}"
                 )
 

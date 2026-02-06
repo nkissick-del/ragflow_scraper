@@ -134,6 +134,7 @@ class MetadataIOMixin:
 
         # Determine if we should generate a PDF archive
         # We do this if html_content is provided (Archive Path)
+        temp_pdf_path = None
         if html_content:
             try:
                 from app.services.archiver import Archiver
@@ -198,7 +199,7 @@ class MetadataIOMixin:
             article.local_path = str(md_path)
             article.file_size = file_size
             article.hash = file_hash
-            if "temp_pdf_path" in locals() and temp_pdf_path:
+            if temp_pdf_path:
                 article.pdf_path = str(temp_pdf_path)
 
             self.logger.info(f"Saved: {md_path.name}")

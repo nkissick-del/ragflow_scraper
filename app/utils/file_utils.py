@@ -8,7 +8,6 @@ import hashlib
 import logging
 import re
 import unicodedata
-import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Any, Protocol, runtime_checkable
@@ -245,6 +244,12 @@ def shorten(value: str, length: int = 50) -> str:
     return value[:length].strip()
 
 
+# Register custom filters at module level (after functions are defined)
+JINJA_ENV.filters["slugify"] = slugify
+JINJA_ENV.filters["shorten"] = shorten
+JINJA_ENV.filters["secure_filename"] = sanitize_filename
+
+
 def generate_filename_from_template(
     metadata: MetadataProtocol | dict[str, Any],
     template: Optional[str] = None,
@@ -295,8 +300,12 @@ def generate_filename_from_template(
         meta_dict = metadata.to_dict()
     elif isinstance(metadata, dict):
         meta_dict = metadata
+    elif isinstance(metadata, dict):
+        meta_dict = metadata
     else:
-        meta_dict = metadata  # Fallback for unexpected types
+        raise TypeError(
+            f"metadata must be MetadataProtocol or dict, got {type(metadata).__name__}"
+        )
 
     # Build template context
     context = {}
@@ -325,11 +334,6 @@ def generate_filename_from_template(
     # Title
     context["title"] = meta_dict.get("title") or context["original_name"]
 
-    # Configure filters on the cached environment
-    JINJA_ENV.filters["slugify"] = slugify
-    JINJA_ENV.filters["shorten"] = shorten
-    JINJA_ENV.filters["secure_filename"] = sanitize_filename
-
     try:
         tmpl = JINJA_ENV.from_string(template)
         rendered = tmpl.render(**context)
@@ -343,71 +347,3 @@ def generate_filename_from_template(
 
     # Sanitize the final result
     return sanitize_filename(rendered)
-
-
-def generate_standardized_filename(
-    original_path: Path,
-    publication_date: Optional[str],
-    organization: str,
-    extension: Optional[str] = None,
-) -> str:
-    """
-    Generate standardized filename: YYYYMM_Org_OriginalName.ext
-
-    DEPRECATED: Use generate_filename_from_template() for more flexibility.
-
-    Args:
-        original_path: Path to original file
-        publication_date: ISO date string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
-        organization: Organization name/abbreviation
-        extension: File extension (if None, use original extension from path)
-
-    Returns:
-        Formatted filename like "202407_AEMO_original-document-name.pdf"
-
-    Examples:
-        >>> from pathlib import Path
-        >>> generate_standardized_filename(
-        ...     Path("report.pdf"),
-        ...     "2024-07-15",
-        ...     "AEMO"
-        ... )
-        '202407_AEMO_report.pdf'
-    """
-    warnings.warn(
-        "generate_standardized_filename is deprecated; use generate_filename_from_template()",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    original_name = original_path.stem
-
-    # Parse publication date to YYYYMM format
-    if publication_date:
-        try:
-            # Handle ISO format dates (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
-            pub_date = datetime.fromisoformat(publication_date.split("T")[0])
-            date_prefix = pub_date.strftime("%Y%m")
-        except (ValueError, AttributeError):
-            # Fallback if date parsing fails
-            date_prefix = datetime.now(timezone.utc).strftime("%Y%m")
-            logger.warning(
-                f"Could not parse date '{publication_date}', using current date"
-            )
-    else:
-        date_prefix = datetime.now(timezone.utc).strftime("%Y%m")
-        logger.warning(f"No publication_date for {original_name}, using current date")
-
-    # Get organization abbreviation (uppercase)
-    org = organization.upper()
-
-    # Sanitize original filename (remove problematic characters but preserve hyphens)
-    safe_original = sanitize_filename(original_name)
-
-    # Use original extension if not specified
-    if extension is None:
-        extension = original_path.suffix
-
-    # Combine components
-    new_filename = f"{date_prefix}_{org}_{safe_original}{extension}"
-
-    return new_filename

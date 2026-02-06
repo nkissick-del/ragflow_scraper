@@ -147,8 +147,6 @@ class PaperlessClient:
 
         return None
 
-        return None
-
     def _fetch_tags(self) -> dict[str, int]:
         """
         Fetch all tags from Paperless API with pagination.
@@ -323,23 +321,36 @@ class PaperlessClient:
             raw_text = response.text.strip()
 
             # Handle JSON response if applicable
-            try:
-                if (
-                    response.headers.get("Content-Type") == "application/json"
-                    or raw_text.startswith("{")
-                    or raw_text.startswith("[")
-                ):
+            content_type = response.headers.get("Content-Type", "")
+            if content_type.startswith("application/json") or raw_text.startswith(
+                ("{", "[")
+            ):
+                try:
                     data = response.json()
-                    task_id = data if isinstance(data, str) else data.get("task_id")
-                else:
-                    # Strip surrounding quotes if present
+                    if isinstance(data, dict):
+                        task_id = data.get("task_id")
+                    elif isinstance(data, list) and data and isinstance(data[0], dict):
+                        task_id = data[0].get("task_id")
+                    else:
+                        task_id = data if isinstance(data, str) else None
+                except Exception:
                     task_id = raw_text.strip("'\"")
-            except Exception:
+            else:
+                # Strip surrounding quotes if present
                 task_id = raw_text.strip("'\"")
 
-            # Validate task_id is a proper UUID or UUID-like string
-            if not task_id or not (len(task_id) >= 32):
-                self.logger.error(f"Invalid task_id received from Paperless: {task_id}")
+            # Validate task_id is a proper UUID
+            if task_id:
+                try:
+                    uuid.UUID(str(task_id))
+                    task_id = str(task_id)
+                except (ValueError, TypeError, AttributeError):
+                    self.logger.error(
+                        f"Invalid task_id received from Paperless: {task_id}"
+                    )
+                    return None
+            else:
+                self.logger.error("No task_id received from Paperless")
                 return None
 
             self.logger.info(f"Upload successful. Task ID: {task_id}")

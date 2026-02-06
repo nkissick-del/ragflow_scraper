@@ -28,22 +28,17 @@ def load_env():
     # Load the determined env file
     load_dotenv(env_file)
 
-    # Safeguards:
-    # 1. Refuse .env.test in non-test environments
-    if not is_test and env_file == ".env.test":
-        print("ERROR: Cannot load .env.test in non-test environment", file=sys.stderr)
-        sys.exit(1)
-
     # 2. Prevent accidental production use if .env.test sneaked in
     # (By checking if a known test-only variable or the file itself is present)
-    if (node_env == "production" or flask_env == "production") and os.path.exists(
-        ".env.test"
-    ):
-        # Even if we didn't explicitly load it, its presence is a risk
-        # But specifically check if it was loaded (e.g. by checking a var set in it)
-        # For now, follow the requirement: detect if the loaded file contains ".env.test"
-        # and throw if in production.
-        pass  # load_dotenv already handled explicit loading
+    if node_env == "production" or flask_env == "production":
+        # Check if .env.test file exists or if a test marker variable was loaded
+        if os.path.exists(".env.test") or os.getenv("TEST_ENV_LOADED"):
+            raise RuntimeError(
+                "FATAL: Production environment detected but .env.test file is present "
+                "or test configuration was loaded. This is a critical security risk. "
+                "Remove .env.test from the production environment and ensure only "
+                "production configuration is loaded via load_dotenv()."
+            )
 
     # 3. Abort if BASIC_AUTH_ENABLED is false in non-test env
     auth_enabled = os.getenv("BASIC_AUTH_ENABLED", "false").lower() == "true"
