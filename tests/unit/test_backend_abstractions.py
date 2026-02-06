@@ -19,12 +19,12 @@ class TestParserResult:
     def test_success_requires_markdown_path(self):
         """Successful parse must include markdown_path."""
         with pytest.raises(ValueError, match="must include markdown_path"):
-            ParserResult(success=True, metadata={})
+            ParserResult(success=True, metadata={}, parser_name="test")
 
     def test_failure_requires_error(self):
         """Failed parse must include error message."""
         with pytest.raises(ValueError, match="must include error message"):
-            ParserResult(success=False)
+            ParserResult(success=False, parser_name="test")
 
     def test_valid_success_result(self):
         """Valid success result."""
@@ -53,12 +53,12 @@ class TestArchiveResult:
     def test_success_requires_document_id(self):
         """Successful archive must include document_id."""
         with pytest.raises(ValueError, match="must include document_id"):
-            ArchiveResult(success=True, url="http://example.com")
+            ArchiveResult(success=True, url="http://example.com", archive_name="test")
 
     def test_failure_requires_error(self):
         """Failed archive must include error message."""
         with pytest.raises(ValueError, match="must include error message"):
-            ArchiveResult(success=False)
+            ArchiveResult(success=False, archive_name="test")
 
     def test_valid_success_result(self):
         """Valid success result."""
@@ -86,7 +86,7 @@ class TestRAGResult:
     def test_failure_requires_error(self):
         """Failed RAG ingestion must include error message."""
         with pytest.raises(ValueError, match="must include error message"):
-            RAGResult(success=False)
+            RAGResult(success=False, rag_name="test")
 
     def test_valid_success_result(self):
         """Valid success result."""

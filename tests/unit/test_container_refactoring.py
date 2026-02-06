@@ -21,20 +21,17 @@ class TestServiceContainerRefactoring:
 
     def test_anythingllm_requires_config(self):
         """rag_backend should raise if AnythingLLM config is missing."""
-        container = get_container()
-
         with patch("app.services.container.Config") as mock_config:
             mock_config.RAG_BACKEND = "anythingllm"
             mock_config.ANYTHINGLLM_API_URL = ""
             mock_config.ANYTHINGLLM_API_KEY = ""
 
+            container = get_container()
             with pytest.raises(ValueError, match="AnythingLLM configuration missing"):
                 _ = container.rag_backend
 
     def test_anythingllm_success_with_config(self):
         """rag_backend should succeed if AnythingLLM config is present."""
-        container = get_container()
-
         with patch("app.services.container.Config") as mock_config:
             mock_config.RAG_BACKEND = "anythingllm"
             mock_config.ANYTHINGLLM_API_URL = "http://localhost:3001"
@@ -44,6 +41,7 @@ class TestServiceContainerRefactoring:
             with patch(
                 "app.backends.rag.anythingllm_adapter.AnythingLLMBackend"
             ) as mock_backend:
+                container = get_container()
                 backend = container.rag_backend
                 assert backend is not None
                 mock_backend.assert_called_once_with(
@@ -81,4 +79,4 @@ class TestServiceContainerRefactoring:
                 container = get_container()
                 backend = container.archive_backend
                 assert backend is mock_instance
-                mock_instance.is_available.assert_called()
+                mock_instance.is_available.assert_called_once()

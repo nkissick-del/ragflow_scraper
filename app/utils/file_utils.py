@@ -9,9 +9,11 @@ import logging
 import re
 import unicodedata
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Any, Protocol, runtime_checkable
+
+from jinja2 import Environment, BaseLoader
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,10 @@ class MetadataProtocol(Protocol):
     """Protocol for metadata objects."""
 
     def to_dict(self) -> dict[str, Any]: ...
+
+
+# Shared Jinja2 Environment for filename generation
+JINJA_ENV = Environment(loader=BaseLoader())
 
 
 def _set_context_date_from_dt(context: dict[str, str], dt: datetime) -> None:
@@ -227,6 +233,13 @@ def slugify(value: str) -> str:
 
 def shorten(value: str, length: int = 50) -> str:
     """Truncate string to maximum length."""
+    if not isinstance(length, int):
+        raise ValueError(
+            f"shorten() length must be an integer, got {type(length).__name__}"
+        )
+
+    length = max(1, length)
+
     if not value or len(value) <= length:
         return value or ""
     return value[:length].strip()
@@ -272,18 +285,18 @@ def generate_filename_from_template(
         ... )
         '2024/AEMO/annual-report.pdf'
     """
-    from jinja2 import Environment, BaseLoader
-
     if template is None:
         from app.config import Config
 
         template = Config.FILENAME_TEMPLATE
 
     # Convert metadata to dict if needed
-    if hasattr(metadata, "to_dict"):
+    if isinstance(metadata, MetadataProtocol):
         meta_dict = metadata.to_dict()
-    else:
+    elif isinstance(metadata, dict):
         meta_dict = metadata
+    else:
+        meta_dict = metadata  # Fallback for unexpected types
 
     # Build template context
     context = {}
@@ -295,10 +308,10 @@ def generate_filename_from_template(
             dt = datetime.fromisoformat(pub_date.split("T")[0])
             _set_context_date_from_dt(context, dt)
         except (ValueError, AttributeError):
-            _set_context_date_from_dt(context, datetime.now())
+            _set_context_date_from_dt(context, datetime.now(timezone.utc))
             logger.warning(f"Could not parse date '{pub_date}', using current date")
     else:
-        _set_context_date_from_dt(context, datetime.now())
+        _set_context_date_from_dt(context, datetime.now(timezone.utc))
 
     # Organization
     context["org"] = (meta_dict.get("organization") or "Unknown").upper()
@@ -312,17 +325,19 @@ def generate_filename_from_template(
     # Title
     context["title"] = meta_dict.get("title") or context["original_name"]
 
-    # Render template using Environment for custom filters
-    env = Environment(loader=BaseLoader())
-    env.filters["slugify"] = slugify
-    env.filters["shorten"] = shorten
-    env.filters["secure_filename"] = sanitize_filename
+    # Configure filters on the cached environment
+    JINJA_ENV.filters["slugify"] = slugify
+    JINJA_ENV.filters["shorten"] = shorten
+    JINJA_ENV.filters["secure_filename"] = sanitize_filename
 
     try:
-        tmpl = env.from_string(template)
+        tmpl = JINJA_ENV.from_string(template)
         rendered = tmpl.render(**context)
     except Exception as e:
-        logger.error(f"Jinja2 template rendering failed: {e}")
+        logger.error(
+            f"Jinja2 template rendering failed ({e.__class__.__name__}): {e}",
+            exc_info=True,
+        )
         # Default fallback format
         rendered = f"{context['date_prefix']}_{context['org']}_{context['title']}{context['extension']}"
 
@@ -374,12 +389,12 @@ def generate_standardized_filename(
             date_prefix = pub_date.strftime("%Y%m")
         except (ValueError, AttributeError):
             # Fallback if date parsing fails
-            date_prefix = datetime.now().strftime("%Y%m")
+            date_prefix = datetime.now(timezone.utc).strftime("%Y%m")
             logger.warning(
                 f"Could not parse date '{publication_date}', using current date"
             )
     else:
-        date_prefix = datetime.now().strftime("%Y%m")
+        date_prefix = datetime.now(timezone.utc).strftime("%Y%m")
         logger.warning(f"No publication_date for {original_name}, using current date")
 
     # Get organization abbreviation (uppercase)

@@ -205,10 +205,10 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 **Priority:** HIGH - Ensure stability before deployment
 
 **Tasks:**
-- [ ] Fix test collection errors (2 failing)
-  - Identify problematic test files
-  - Fix import/dependency issues
-  - Verify all 148 tests collect successfully
+- [x] Fix test collection errors (2 failing)
+  - [x] Identify problematic test files
+  - [x] Fix import/dependency issues
+  - [x] Verify all 158 tests collect successfully (fixed via `.env.test`)
 - [ ] Create `.env.test` for local testing
   - Override Docker-specific paths
   - Document test environment setup
@@ -287,7 +287,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 - [x] Validated with live AnythingLLM instance ✅
 - [x] Paperless metadata upload working (correspondents + tags) ✅
 - [x] Jinja2 filename templating implemented ✅
-- [ ] All 148 tests passing
+- [ ] 156/158 tests passing (98.7%)
 - [ ] Integration tests for critical paths
 - [ ] E2E pipeline test (scraper → parse → archive → RAG)
 - [ ] Validated with live Paperless instance
@@ -298,9 +298,8 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 - ✅ Phase 4.2 COMPLETE - Paperless metadata resolved via ID lookups
 - ✅ Phase 4.3 COMPLETE - Jinja2 filename templating implemented
 - ✅ 33 new unit tests added (total test coverage expanded)
-- 🟡 156/158 baseline tests passing (98.7%)
-- ✅ 2 test collection errors fixed via `.env.test`
-- 🟡 Fix remaining test collection errors (Next focus)
+- ✅ 156/158 tests passing (98.7%)
+- ✅ Test collection errors fixed via `.env.test`
 
 ---
 
@@ -363,9 +362,9 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 
 ## Notes
 
-- Testing harness: 146/148 tests passing (98.6%)
+- Testing harness: 156/158 tests passing (98.7%)
 - Documentation: 7 comprehensive guides (~1,700 lines)
 - Architecture: Modular backend system complete
 - **RAGFlow:** Deferred - focusing on AnythingLLM
-- **Current blockers:** Paperless metadata mapping, AnythingLLM manual validation pending
+- **Current blockers:** None (Phase 4.1 and 4.2 complete)
 - **Ready after Phase 4:** Production deployment

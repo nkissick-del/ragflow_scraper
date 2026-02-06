@@ -20,6 +20,8 @@ class ParserResult:
 
     def __post_init__(self):
         """Validate result consistency."""
+        if not self.parser_name:
+            raise ValueError("parser_name must be provided and non-empty")
         if self.success and not self.markdown_path:
             raise ValueError("Successful parse must include markdown_path")
         if not self.success and not self.error:

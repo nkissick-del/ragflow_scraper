@@ -5,6 +5,7 @@ Pipeline execution for scrape -> upload -> parse workflows.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field, fields as dataclass_fields
 from datetime import datetime
 from pathlib import Path
@@ -116,8 +117,6 @@ class Pipeline:
         Returns:
             PipelineResult with statistics
         """
-        import time
-
         start_time = time.perf_counter()
         step_times: dict[str, float] = {}
 
@@ -165,6 +164,16 @@ class Pipeline:
             for doc_dict in scraper_result.documents:
                 try:
                     # Reconstruct DocumentMetadata from dict
+                    doc_keys = set(doc_dict.keys())
+                    dropped_fields = (
+                        doc_keys - known_fields - {"pdf_path", "local_path"}
+                    )
+                    if dropped_fields:
+                        self.logger.debug(
+                            f"Dropped fields from DocumentMetadata for {doc_dict.get('title', 'unknown')}: "
+                            f"{', '.join(sorted(dropped_fields))}"
+                        )
+
                     filtered_dict = {
                         k: v for k, v in doc_dict.items() if k in known_fields
                     }
@@ -285,7 +294,8 @@ class Pipeline:
 
         Args:
             doc_metadata: Document metadata from scraper
-            pdf_path: Path to PDF file
+            file_path: Path to PDF file
+
 
         Returns:
             Dict with keys: parsed, archived, verified, rag_indexed, error
@@ -429,8 +439,6 @@ class Pipeline:
         start_time: float,
     ) -> PipelineResult:
         """Finalize the result with timing information."""
-        import time
-
         result.duration_seconds = time.perf_counter() - start_time
         result.completed_at = datetime.now().isoformat()
 

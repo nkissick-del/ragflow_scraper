@@ -12,15 +12,19 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.config import Config
-from app.container import get_container
-from app.scrapers import ScraperRegistry
-from app.utils import get_logger, setup_logging
-from app.web import create_app
+from app.config import Config  # noqa: E402
+from app.container import get_container  # noqa: E402
+from app.scrapers import ScraperRegistry  # noqa: E402
+from app.utils import get_logger, setup_logging  # noqa: E402
+from app.web import create_app  # noqa: E402
 
 
 def main():
     """Run the Flask application."""
+    # Initialize configuration
+    Config.ensure_directories()
+    Config.validate()
+
     # Setup logging
     setup_logging(name="scraper", level=Config.LOG_LEVEL)
 
@@ -38,10 +42,14 @@ def main():
             scheduler = container.scheduler
             scheduler.load_schedules()
             scheduler.start()
-            logger.info("Scheduler enabled; loaded schedules and started background loop")
+            logger.info(
+                "Scheduler enabled; loaded schedules and started background loop"
+            )
 
             if scheduler_settings.get("run_on_startup"):
-                logger.info("Scheduler run_on_startup enabled; triggering all scrapers once")
+                logger.info(
+                    "Scheduler run_on_startup enabled; triggering all scrapers once"
+                )
                 for scraper_name in ScraperRegistry.get_scraper_names():
                     scheduler.run_now(scraper_name)
     except Exception as exc:  # Keep the app booting even if scheduler fails

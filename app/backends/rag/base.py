@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -18,10 +18,18 @@ class RAGResult:
 
     def __post_init__(self):
         """Validate result consistency."""
-        if not self.success and not self.error:
-            raise ValueError("Failed RAG ingestion must include error message")
-        if self.success and self.error:
-            raise ValueError("Successful RAG ingestion must not include error message")
+        if not self.rag_name:
+            raise ValueError("rag_name must be provided and non-empty")
+        if self.success:
+            if not self.document_id:
+                raise ValueError("Successful RAG ingestion must include document_id")
+            if self.error:
+                raise ValueError(
+                    "Successful RAG ingestion must not include error message"
+                )
+        else:
+            if not self.error:
+                raise ValueError("Failed RAG ingestion must include error message")
 
 
 class RAGBackend(ABC):
@@ -31,7 +39,7 @@ class RAGBackend(ABC):
     def ingest_document(
         self,
         markdown_path: Path,
-        metadata: dict,
+        metadata: dict[str, Any],
         collection_id: Optional[str] = None,
     ) -> RAGResult:
         """

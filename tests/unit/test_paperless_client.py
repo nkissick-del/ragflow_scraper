@@ -33,14 +33,16 @@ class TestClientInitialization:
         """Should return False when URL is missing."""
         with patch("app.services.paperless_client.Config") as mock_config:
             mock_config.PAPERLESS_API_URL = None
-            client = PaperlessClient(url=None, token="token")
+            mock_config.PAPERLESS_API_TOKEN = "token"
+            client = PaperlessClient()
             assert client.is_configured is False
 
     def test_is_configured_false_without_token(self):
         """Should return False when token is missing."""
         with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_API_URL = "http://test:8000"
             mock_config.PAPERLESS_API_TOKEN = None
-            client = PaperlessClient(url="http://test:8000", token=None)
+            client = PaperlessClient()
             assert client.is_configured is False
 
 
@@ -109,6 +111,7 @@ class TestGetOrCreateCorrespondent:
     def test_returns_cached_id(self, client):
         """Should return cached ID without API call."""
         client._correspondent_cache = {"AEMO": 42}
+        client._correspondent_cache_populated = True
 
         with patch.object(client.session, "get") as mock_get:
             result = client.get_or_create_correspondent("AEMO")
@@ -224,6 +227,7 @@ class TestGetOrCreateTags:
     def test_returns_cached_ids(self, client):
         """Should return cached IDs without API call."""
         client._tag_cache = {"Report": 10, "Energy": 20}
+        client._tag_cache_populated = True
 
         with patch.object(client.session, "get") as mock_get:
             result = client.get_or_create_tags(["Report", "Energy"])
@@ -277,10 +281,11 @@ class TestPostDocumentWithLookups:
 
         # Mock correspondent lookup
         client._correspondent_cache = {"AEMO": 42}
+        client._correspondent_cache_populated = True
 
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
-        mock_response.text = "task-uuid-123"
+        mock_response.text = "0123456789abcdef0123456789abcdef"
 
         with patch.object(
             client.session, "post", return_value=mock_response
@@ -291,7 +296,7 @@ class TestPostDocumentWithLookups:
                 correspondent="AEMO",
             )
 
-        assert result == "task-uuid-123"
+        assert result == "0123456789abcdef0123456789abcdef"
         # Verify correspondent ID was sent
         call_args = mock_post.call_args
         assert call_args[1]["data"]["correspondent"] == 42
@@ -303,10 +308,11 @@ class TestPostDocumentWithLookups:
 
         # Mock tag lookup
         client._tag_cache = {"Report": 10, "Energy": 20}
+        client._tag_cache_populated = True
 
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
-        mock_response.text = "task-uuid-456"
+        mock_response.text = "0123456789abcdef0123456789abcde2"
 
         with patch.object(
             client.session, "post", return_value=mock_response
@@ -317,7 +323,7 @@ class TestPostDocumentWithLookups:
                 tags=["Report", "Energy"],
             )
 
-        assert result == "task-uuid-456"
+        assert result == "0123456789abcdef0123456789abcde2"
         # Verify tag IDs were sent
         call_args = mock_post.call_args
         assert set(call_args[1]["data"]["tags"]) == {10, 20}
@@ -331,7 +337,7 @@ class TestPostDocumentWithLookups:
 
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
-        mock_response.text = "task-uuid-789"
+        mock_response.text = "0123456789abcdef0123456789abcde3"
 
         with patch.object(
             client.session, "post", return_value=mock_response
@@ -357,7 +363,7 @@ class TestPostDocumentWithLookups:
 
         upload_response = Mock()
         upload_response.raise_for_status = Mock()
-        upload_response.text = "task-uuid-success"
+        upload_response.text = "0123456789abcdef0123456789abcde4"
 
         with patch.object(client.session, "get", return_value=fetch_response):
             with patch.object(
@@ -372,4 +378,4 @@ class TestPostDocumentWithLookups:
                 )
 
         # Upload should still succeed, just without correspondent
-        assert result == "task-uuid-success"
+        assert result == "0123456789abcdef0123456789abcde4"

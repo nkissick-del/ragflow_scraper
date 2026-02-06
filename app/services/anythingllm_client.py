@@ -71,12 +71,21 @@ class AnythingLLMClient:
         self.max_attempts = max(1, max_attempts)
         self.session: Session = requests.Session()
         self.logger = get_logger("anythingllm.client")
+        self._closed = False
+
+    def _ensure_not_closed(self) -> None:
+        """Raise RuntimeError if client is closed."""
+        if self._closed:
+            raise RuntimeError("AnythingLLMClient is closed")
 
     def close(self) -> None:
         """Close the session and release connection pool resources."""
+        if self._closed:
+            return
         if hasattr(self, "session") and self.session:
             self.session.close()
             self.session = None
+        self._closed = True
 
     def __enter__(self) -> "AnythingLLMClient":
         """Enter context manager."""
@@ -100,7 +109,9 @@ class AnythingLLMClient:
 
         Raises:
             requests.RequestException: If request fails after retries
+            RuntimeError: If client is closed
         """
+        self._ensure_not_closed()
         headers = kwargs.pop("headers", {})
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -134,6 +145,7 @@ class AnythingLLMClient:
         Returns:
             True if connection successful, False otherwise
         """
+        self._ensure_not_closed()
         try:
             # Try to list workspaces as a connectivity test
             resp = self._request("GET", "/api/v1/workspaces")
@@ -149,6 +161,7 @@ class AnythingLLMClient:
         Returns:
             List of workspace dictionaries
         """
+        self._ensure_not_closed()
         try:
             resp = self._request("GET", "/api/v1/workspaces")
             if resp.ok:
@@ -183,6 +196,7 @@ class AnythingLLMClient:
         Returns:
             UploadResult with success status and document ID
         """
+        self._ensure_not_closed()
         if not filepath.exists():
             return UploadResult(
                 success=False,
@@ -241,16 +255,24 @@ class AnythingLLMClient:
                             filename=filepath.name,
                             workspace_id=self.workspace_id,
                         )
+                    effective_workspace_id = (
+                        (workspace_ids[0] if workspace_ids else None)
+                        or doc.get("workspace_id")
+                        or doc.get("workspaceId")
+                        or self.workspace_id
+                    )
                     return UploadResult(
                         success=True,
                         document_id=doc.get("id"),
                         filename=filepath.name,
-                        workspace_id=self.workspace_id,
+                        workspace_id=effective_workspace_id,
                     )
 
                 # Fallback to direct fields
                 doc_id = response_data.get("id") or response_data.get("document_id")
-                workspace = response_data.get("workspace_id")
+                workspace = response_data.get("workspace_id") or (
+                    workspace_ids[0] if workspace_ids else self.workspace_id
+                )
                 return UploadResult(
                     success=True,
                     document_id=doc_id,
@@ -258,9 +280,10 @@ class AnythingLLMClient:
                     workspace_id=workspace,
                 )
 
+            sanitized_text = self._sanitize_response_text(resp.text)
             return UploadResult(
                 success=False,
-                error=f"Upload failed: {resp.status_code} - {resp.text}",
+                error=f"Upload failed: {resp.status_code} - {sanitized_text}",
                 filename=filepath.name,
             )
 
@@ -272,6 +295,28 @@ class AnythingLLMClient:
                 error=error_msg,
                 filename=filepath.name,
             )
+
+    def _sanitize_response_text(self, text: str, max_len: int = 500) -> str:
+        """
+        Sanitize and truncate response text for error messages.
+
+        Args:
+            text: Raw response text
+            max_len: Maximum length of returned string
+
+        Returns:
+            Sanitized and potentially truncated text
+        """
+        if not text:
+            return ""
+
+        # Remove control characters and excessive whitespace
+        sanitized = "".join(ch for ch in text if ch.isprintable())
+        sanitized = " ".join(sanitized.split())
+
+        if len(sanitized) > max_len:
+            return sanitized[:max_len] + "..."
+        return sanitized
 
 
 __all__ = [

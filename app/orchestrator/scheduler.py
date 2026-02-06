@@ -153,15 +153,24 @@ class Scheduler:
         log_event(self.logger, "info", "scheduler.run.start", scraper=scraper_name)
 
         try:
+            # Load scraper config to get upload flags
+            config_path = Config.get_scraper_config_path(scraper_name)
+            scraper_config = {}
+            if config_path.exists():
+                with open(config_path) as f:
+                    scraper_config = json.load(f)
+
             # Use Pipeline to handle scraping + upload + parsing
             from app.orchestrator.pipeline import run_pipeline
 
             # Run pipeline (scraper -> paperless -> ragflow)
             result = run_pipeline(
                 scraper_name=scraper_name,
-                upload_to_ragflow=True,  # Default to True from config
-                upload_to_paperless=True,  # Default to True
-                verify_document_timeout=60,  # Standard timeout
+                upload_to_ragflow=scraper_config.get("upload_to_ragflow", True),
+                upload_to_paperless=scraper_config.get("upload_to_paperless", True),
+                verify_document_timeout=scraper_config.get(
+                    "verify_document_timeout", 60
+                ),
             )
 
             log_event(

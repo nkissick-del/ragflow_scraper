@@ -5,7 +5,6 @@ Archiver service for generating clean, archival-quality PDFs from content.
 from __future__ import annotations
 
 import base64
-import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -75,13 +74,15 @@ class Archiver:
             self.logger.debug(
                 f"Connecting to remote Selenium at {Config.SELENIUM_REMOTE_URL}"
             )
-            return webdriver.Remote(
+            self.driver = webdriver.Remote(
                 command_executor=Config.SELENIUM_REMOTE_URL, options=options
             )
         else:
             # Fallback to local (mostly for dev)
             self.logger.debug("Starting local Chrome driver")
-            return webdriver.Chrome(options=options)
+            self.driver = webdriver.Chrome(options=options)
+
+        return self.driver
 
     def generate_pdf(
         self, content_html: str, metadata: DocumentMetadata, output_dir: Path
@@ -98,19 +99,10 @@ class Archiver:
             Path to the generated PDF or None on failure
         """
         driver = None
-        temp_html_path = None
 
         try:
             # Prepare the full HTML document
             full_html = self._synthesize_html(content_html, metadata)
-
-            # Save to temporary file for Selenium to load
-            # We use a temp file because data: URIs can be size-limited
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".html", delete=False, encoding="utf-8"
-            ) as f:
-                f.write(full_html)
-                temp_html_path = Path(f.name)
 
             # Start/Get driver
             driver = self._get_driver()
@@ -147,9 +139,8 @@ class Archiver:
                 raise ValueError("No PDF data received from CDP")
 
             # Decode and save
-            output_filename = (
-                f"{metadata.filename.replace('.md', '').replace('.html', '')}.pdf"
-            )
+            base_name = Path(metadata.filename or "archive").stem
+            output_filename = f"{base_name}.pdf"
             output_path = output_dir / output_filename
 
             with open(output_path, "wb") as f:
@@ -163,13 +154,6 @@ class Archiver:
             return None
 
         finally:
-            # Cleanup temp file
-            if temp_html_path and temp_html_path.exists():
-                try:
-                    temp_html_path.unlink()
-                except Exception:
-                    pass
-
             # Quit driver if we created it (not external)
             if not self._external_driver and driver:
                 try:
@@ -179,34 +163,50 @@ class Archiver:
 
     def _synthesize_html(self, content: str, meta: DocumentMetadata) -> str:
         """Inject content into the Reader View template."""
+        from html import escape as html_escape
+        from datetime import timezone
+
+        # Escape metadata fields
+        title = html_escape(meta.title or "Untitled")
+        org = html_escape(meta.organization or "Unknown")
+        pub_date = html_escape(str(meta.publication_date or "Unknown"))
+        author = html_escape(meta.extra.get("author", "Unknown"))
+
+        # Simple URL validation (prevent javascript: schemes)
+        url = meta.url or "#"
+        if url.lower().startswith("javascript:"):
+            url = "#"
 
         # Format metadata for display
         meta_html = f"""
         <div class="metadata">
-            <div><strong>Source:</strong> <a href="{meta.url}">{meta.organization or "Unknown"}</a></div>
-            <div><strong>Date:</strong> {meta.publication_date or "Unknown"}</div>
-            <div><strong>Author:</strong> {meta.extra.get("author", "Unknown")}</div>
+            <div><strong>Source:</strong> <a href="{url}">{org}</a></div>
+            <div><strong>Date:</strong> {pub_date}</div>
+            <div><strong>Author:</strong> {author}</div>
         </div>
         """
+
+        # For content, we assume it's already sanitized HTML from the scraper.
+        # If we wanted to be extremely safe, we could use bleach.clean(content) here.
 
         return f"""
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="utf-8">
-            <title>{meta.title}</title>
+            <title>{title}</title>
             <style>
                 {self.READER_CSS}
             </style>
         </head>
         <body>
-            <h1>{meta.title}</h1>
+            <h1>{title}</h1>
             {meta_html}
             <div class="content">
                 {content}
             </div>
             <div class="footer">
-                Archived by DeepMind Agent • {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                Archived by DeepMind Agent • {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")} UTC
             </div>
         </body>
         </html>

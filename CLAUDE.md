@@ -66,7 +66,7 @@ Notes:
 3. Metadata merge (smart strategy: context from scraper, content from parser)
 4. Jinja2 canonical filename generation
 5. Archive to Paperless (source of truth for originals)
-6. Verify document (Sonarr-style polling)
+6. Verify document (poll archive API until document is confirmed stored)
 7. RAG ingest Markdown (not PDF)
 8. Delete local files (after verification)
 
@@ -93,7 +93,7 @@ rag = container.rag_backend  # RAGBackend instance
 - Add types where obvious; avoid intrusive annotation rewrites.
 - Prefer existing utilities (logging, retry, metadata prep) over duplicates.
 - Data/State/Logs paths must remain under `/app/data` inside the container.
-- ServiceContainer: use properties (`settings`, `ragflow_client`, `flaresolverr_client`, `parser_backend`, `archive_backend`, `rag_backend`, `state_tracker()`, `scheduler`); legacy getters are removed.
+- ServiceContainer: use properties (`settings`, `ragflow_client`, `flaresolverr_client`, `parser_backend`, `archive_backend`, `rag_backend`, `state_tracker()`, `scheduler`); legacy getters (e.g., `get_parser_backend()`, `get_rag_backend()`, `get_archive_backend()`, `get_scheduler()`) are removed. Replace with property access (e.g., `container.parser_backend`).
 
 ## Testing & Rebuild Rules
 

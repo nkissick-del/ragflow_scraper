@@ -304,3 +304,5 @@ class TestRetryLogic:
 
         assert result is False
         assert mock_session.request.call_count == 3
+        # Should sleep between retries (max_retries - 1 attempts)
+        assert mock_sleep.call_count == client.max_retries - 1

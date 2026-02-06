@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import requests
+import threading
 import time
 import uuid
 
@@ -46,8 +47,10 @@ class PaperlessClient:
         # Caches for name-to-ID lookups (populated on first use)
         self._correspondent_cache: dict[str, int] = {}
         self._correspondent_cache_populated = False
+        self._correspondent_lock = threading.RLock()
         self._tag_cache: dict[str, int] = {}
         self._tag_cache_populated = False
+        self._tag_lock = threading.RLock()
 
     @property
     def is_configured(self) -> bool:
@@ -95,45 +98,54 @@ class PaperlessClient:
         if not self.is_configured or not name:
             return None
 
-        # Check cache first
-        if name in self._correspondent_cache:
-            return self._correspondent_cache[name]
+        with self._correspondent_lock:
+            # Check cache first (locked)
+            if name in self._correspondent_cache:
+                return self._correspondent_cache[name]
 
-        # Populate cache if not yet fetched
-        if not self._correspondent_cache_populated:
+            # Populate cache if not yet fetched
+            if not self._correspondent_cache_populated:
+                try:
+                    fetched = self._fetch_correspondents()
+                    self._correspondent_cache = fetched
+                    self._correspondent_cache_populated = True
+                except Exception as e:
+                    self.logger.error(f"Failed to populate correspondent cache: {e}")
+
+            # Check again after potential fetch
+            if name in self._correspondent_cache:
+                return self._correspondent_cache[name]
+
+            # Create new correspondent
             try:
-                # Only set populated = True if fetch succeeds and returns data
-                # If it's an empty dict from a valid but empty result, we still mark it populated
-                # to avoid infinite loops, but we let exceptions bubble through to block the flag.
-                fetched = self._fetch_correspondents()
-                self._correspondent_cache = fetched
-                self._correspondent_cache_populated = True
+                response = self.session.post(
+                    f"{self.url}/api/correspondents/",
+                    json={"name": name},
+                    timeout=30,
+                )
+                if response.status_code == 409:
+                    self.logger.debug(
+                        f"Correspondent '{name}' already exists (409 Conflict), re-fetching..."
+                    )
+                    # Re-fetch under lock to resolve race
+                    self._correspondent_cache = self._fetch_correspondents()
+                    return self._correspondent_cache.get(name)
+
+                response.raise_for_status()
+                data = response.json()
+                corr_id = data.get("id")
+
+                if corr_id:
+                    self._correspondent_cache[name] = corr_id
+                    self.logger.info(
+                        f"Created correspondent '{name}' with ID {corr_id}"
+                    )
+                    return corr_id
+
             except Exception as e:
-                self.logger.error(f"Failed to populate correspondent cache: {e}")
-                # Leave flag False for retries
+                self.logger.error(f"Failed to create correspondent '{name}': {e}")
 
-        # Check if now in cache
-        if name in self._correspondent_cache:
-            return self._correspondent_cache[name]
-
-        # Create new correspondent
-        try:
-            response = self.session.post(
-                f"{self.url}/api/correspondents/",
-                json={"name": name},
-                timeout=30,
-            )
-            response.raise_for_status()
-            data = response.json()
-            corr_id = data.get("id")
-
-            if corr_id:
-                self._correspondent_cache[name] = corr_id
-                self.logger.info(f"Created correspondent '{name}' with ID {corr_id}")
-                return corr_id
-
-        except Exception as e:
-            self.logger.error(f"Failed to create correspondent '{name}': {e}")
+        return None
 
         return None
 
@@ -307,13 +319,34 @@ class PaperlessClient:
             response.raise_for_status()
 
             # Paperless returns task_id (UUID string).
-            task_id = response.text
-            self.logger.info(f"Upload successful. Task ID: {task_id}")
+            # We sanitize and validate the response text.
+            raw_text = response.text.strip()
 
+            # Handle JSON response if applicable
+            try:
+                if (
+                    response.headers.get("Content-Type") == "application/json"
+                    or raw_text.startswith("{")
+                    or raw_text.startswith("[")
+                ):
+                    data = response.json()
+                    task_id = data if isinstance(data, str) else data.get("task_id")
+                else:
+                    # Strip surrounding quotes if present
+                    task_id = raw_text.strip("'\"")
+            except Exception:
+                task_id = raw_text.strip("'\"")
+
+            # Validate task_id is a proper UUID or UUID-like string
+            if not task_id or not (len(task_id) >= 32):
+                self.logger.error(f"Invalid task_id received from Paperless: {task_id}")
+                return None
+
+            self.logger.info(f"Upload successful. Task ID: {task_id}")
             return task_id
 
         except requests.HTTPError as e:
-            error_text = getattr(e, "response", None) and e.response.text or str(e)
+            error_text = e.response.text if e.response is not None else str(e)
             self.logger.error(f"Paperless upload HTTP error: {error_text}")
             return None
         except Exception as e:

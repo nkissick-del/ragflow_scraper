@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 
+import multiprocessing
 from app.backends.parsers.base import ParserBackend, ParserResult
 from app.scrapers.models import DocumentMetadata
 from app.utils import get_logger
@@ -66,22 +67,49 @@ class DoclingParser(ParserBackend):
             return ParserResult(success=False, error=error_msg, parser_name=self.name)
 
         # Standard imports
-        from concurrent.futures import ProcessPoolExecutor, TimeoutError
+        import multiprocessing
+        from queue import Empty
 
         try:
             self.logger.info(f"Parsing document with Docling: {file_path.name}")
 
-            # Use a ProcessPoolExecutor to enforce a timeout on the potentially hanging convert call
-            with ProcessPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_run_conversion, str(file_path))
-                try:
-                    raw_result = future.result(timeout=300)  # 5 minute timeout
-                except TimeoutError:
-                    error_msg = f"Docling conversion timed out for {file_path.name}"
-                    self.logger.error(error_msg)
-                    return ParserResult(
-                        success=False, error=error_msg, parser_name=self.name
+            # Use an explicit multiprocessing.Process to ensure we can kill it on timeout
+            queue = multiprocessing.Queue()
+            process = multiprocessing.Process(
+                target=_run_conversion_to_queue, args=(str(file_path), queue)
+            )
+
+            process.start()
+
+            try:
+                # Wait for result with timeout (300s = 5m)
+                raw_result = queue.get(timeout=300)
+                process.join(timeout=5)  # Give it a moment to finish gracefully
+            except Empty:
+                error_msg = f"Docling conversion timed out for {file_path.name}"
+                self.logger.error(error_msg)
+
+                if process.is_alive():
+                    self.logger.warning(
+                        f"Terminating hanging Docling process for {file_path.name}"
                     )
+                    process.terminate()
+                    process.join(timeout=5)
+                    if process.is_alive():
+                        self.logger.warning(
+                            f"Killing hanging Docling process for {file_path.name}"
+                        )
+                        process.kill()
+                        process.join()
+
+                return ParserResult(
+                    success=False, error=error_msg, parser_name=self.name
+                )
+            finally:
+                # Cleanup if still alive for any reason
+                if process.is_alive():
+                    process.terminate()
+                    process.join()
 
             if not raw_result or not raw_result.get("success"):
                 error_msg = (
@@ -105,7 +133,12 @@ class DoclingParser(ParserBackend):
 
             # Write Markdown file next to artifact
             markdown_path = file_path.with_suffix(".md")
-            markdown_path.write_text(markdown_content, encoding="utf-8")
+            try:
+                markdown_path.write_text(markdown_content, encoding="utf-8")
+            except (OSError, IOError) as e:
+                self.logger.error(f"Failed to write markdown to {markdown_path}: {e}")
+                # Re-raise to let the outer handler handle the failure
+                raise
 
             # Extract metadata from parsed document
             extracted_metadata = self._extract_metadata(
@@ -163,10 +196,10 @@ class DoclingParser(ParserBackend):
             for line in markdown.split("\n")[:20]:
                 line = line.strip()
                 if line.startswith("# "):
-                    metadata["title"] = line.lstrip("# ").strip()
+                    metadata["title"] = line[len("# ") :].strip()
                     break
                 elif line.startswith("## "):
-                    metadata["title"] = line.lstrip("## ").strip()
+                    metadata["title"] = line[len("## ") :].strip()
                     break
 
         # Add parser info
@@ -174,6 +207,12 @@ class DoclingParser(ParserBackend):
         metadata["page_count"] = page_count
 
         return metadata
+
+
+def _run_conversion_to_queue(file_path: str, queue: multiprocessing.Queue):
+    """Helper function to run Docling conversion and put result in a queue."""
+    result = _run_conversion(file_path)
+    queue.put(result)
 
 
 def _run_conversion(file_path: str) -> dict:

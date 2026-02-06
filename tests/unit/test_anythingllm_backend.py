@@ -240,6 +240,7 @@ class TestPrepareMetadata:
         result = backend._prepare_metadata(metadata)
 
         assert result["file_hash"] == "abc123"
+        assert "hash" not in result
 
     def test_prepare_extra_metadata(self, backend):
         """Should flatten extra metadata with JSON serialization for complex types."""

@@ -38,7 +38,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
         created: Optional[str] = None,
         correspondent: Optional[str] = None,
         tags: Optional[list[str]] = None,
-        metadata: Optional[dict] = None,
+        _metadata: Optional[dict] = None,  # Reserved for future use
     ) -> ArchiveResult:
         """
         Archive document to Paperless-ngx.
@@ -52,7 +52,8 @@ class PaperlessArchiveBackend(ArchiveBackend):
             metadata: Additional metadata (currently unused by Paperless API)
 
         Returns:
-            ArchiveResult with task_id as document_id
+            ArchiveResult with task_id as document_id (Note: document_id is the Paperless task id)
+
         """
         if not self.is_configured():
             error_msg = "Paperless not configured (missing URL or token)"

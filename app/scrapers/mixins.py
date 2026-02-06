@@ -76,10 +76,9 @@ class ExclusionRulesMixin:
     def _should_exclude(self, tags: list[str]) -> bool:
         if not self.excluded_tags:
             return False
-        return any(
-            excluded.lower() in [t.lower() for t in tags]
-            for excluded in self.excluded_tags
-        )
+
+        lower_tags = {t.lower() for t in tags}
+        return any(excluded.lower() in lower_tags for excluded in self.excluded_tags)
 
     def should_exclude_document(self, doc: "DocumentMetadata") -> Optional[str]:
         tags_lower = [t.lower() for t in doc.tags] if doc.tags else []
@@ -131,6 +130,8 @@ class MetadataIOMixin:
             self.logger.info(f"[DRY RUN] Would save: {article.title}")
             return None
 
+        output_dir = ensure_dir(Config.DOWNLOAD_DIR / self.name)
+
         # Determine if we should generate a PDF archive
         # We do this if html_content is provided (Archive Path)
         if html_content:
@@ -141,20 +142,16 @@ class MetadataIOMixin:
                 driver = getattr(self, "driver", None)
                 archiver = Archiver(driver=driver)
 
-                output_dir = ensure_dir(Config.DOWNLOAD_DIR / self.name)
-                pdf_path = archiver.generate_pdf(html_content, article, output_dir)
-
-                if pdf_path:
-                    article.pdf_path = str(pdf_path)
+                temp_pdf_path = archiver.generate_pdf(html_content, article, output_dir)
             except Exception as e:
                 self.logger.error(f"Archiver failed for '{article.title}': {e}")
+                temp_pdf_path = None
                 # Don't fail the whole save, just log error for archive path
 
         temp_md_path = None
         temp_json_path = None
 
         try:
-            output_dir = ensure_dir(Config.DOWNLOAD_DIR / self.name)
             safe_filename = sanitize_filename(article.filename)
 
             # Write to temporary files first (atomic write pattern)
@@ -201,6 +198,8 @@ class MetadataIOMixin:
             article.local_path = str(md_path)
             article.file_size = file_size
             article.hash = file_hash
+            if "temp_pdf_path" in locals() and temp_pdf_path:
+                article.pdf_path = str(temp_pdf_path)
 
             self.logger.info(f"Saved: {md_path.name}")
             return str(md_path)
@@ -220,6 +219,7 @@ class HttpDownloadMixin:
     download_timeout: int = 30
 
     def __init__(self):
+        super().__init__()
         self._errors: List[str] = []
 
     logger: Any = None
@@ -356,6 +356,7 @@ class CloudflareBypassMixin:
 
     def __init__(self) -> None:
         """Initialize instance attributes to prevent cross-instance sharing."""
+        super().__init__()
         self._cloudflare_cookies: Dict[str, str] = {}
 
     if TYPE_CHECKING:  # provide stub for type checker without affecting runtime MRO
@@ -535,13 +536,13 @@ class CloudflareBypassMixin:
             time.sleep(1)
             self.driver.delete_all_cookies()
 
+            from urllib.parse import urlparse
+
+            domain = urlparse(self.base_url).netloc
+            if domain.startswith("www."):
+                domain = domain[4:]
+
             for name, value in self._cloudflare_cookies.items():
-                from urllib.parse import urlparse
-
-                domain = urlparse(self.base_url).netloc
-                if domain.startswith("www."):
-                    domain = domain[4:]
-
                 cookie = {
                     "name": name,
                     "value": value,

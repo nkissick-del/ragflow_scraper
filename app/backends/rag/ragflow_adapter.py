@@ -107,19 +107,14 @@ class RAGFlowBackend(RAGBackend):
             )
 
             if not upload_result or not upload_result[0].success:
-                # Coalesce error message to ensure it's never None
-                error_info = ""
-                if upload_result and upload_result[0]:
-                    res = upload_result[0]
-                    error_info = (
-                        res.error or res.get("error") if hasattr(res, "get") else None
-                    ) or f"Status: {getattr(res, 'status', 'Unknown')}"
-
-                error_msg = (
-                    f"RAGFlow upload failure: {error_info}"
-                    if error_info
-                    else "Unknown RAGFlow upload failure"
+                res = upload_result[0] if upload_result else None
+                error_info = (
+                    getattr(res, "error", None)
+                    or (res.get("error") if isinstance(res, dict) else None)
+                    or f"Status: {getattr(res, 'status', 'Unknown')}"
                 )
+
+                error_msg = f"RAGFlow upload failure: {error_info}"
                 self.logger.error(error_msg)
                 return RAGResult(success=False, error=error_msg, rag_name=self.name)
 

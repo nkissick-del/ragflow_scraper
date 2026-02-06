@@ -1,5 +1,6 @@
 # Environment
 .env
+.env.test
 venv/
 .venv/
 env/
@@ -53,10 +54,10 @@ Thumbs.db
 # Testing
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 
 # Random
 /docs/TODO.md
 docs/TODO.md
-coverage.xml
 docs/plans/websites_to_add.md

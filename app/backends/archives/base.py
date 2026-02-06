@@ -18,6 +18,8 @@ class ArchiveResult:
 
     def __post_init__(self):
         """Validate result consistency."""
+        if not self.archive_name:
+            raise ValueError("archive_name must be provided and non-empty")
         if self.success:
             if not self.document_id:
                 raise ValueError("Successful archive must include document_id")
@@ -40,7 +42,7 @@ class ArchiveBackend(ABC):
         title: str,
         created: Optional[str] = None,
         correspondent: Optional[str] = None,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         metadata: Optional[Mapping[str, Any]] = None,
     ) -> ArchiveResult:
         """

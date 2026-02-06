@@ -7,7 +7,7 @@ import json
 import logging
 from dataclasses import dataclass, field, asdict, fields
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal, get_type_hints, Any, get_origin, get_args, Union
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,9 @@ class DocumentMetadata:
         return metadata
 
     def merge_parser_metadata(
-        self, parser_metadata: dict, strategy: str = "smart"
+        self,
+        parser_metadata: dict,
+        strategy: Literal["smart", "parser_wins", "scraper_wins"] = "smart",
     ) -> DocumentMetadata:
         """
         Merge parser-extracted metadata with scraper context.
@@ -89,15 +91,22 @@ class DocumentMetadata:
                 merged["extra"]["author"] = parser_metadata["author"]
 
             # Scraper wins for context fields (URL, date, org) - already in merged
-            # Add other parser fields to extra
+            # Add other parser fields to extra, but protect top-level page_count
             for key in ["page_count", "parsed_by", "creation_date"]:
                 if key in parser_metadata:
-                    merged["extra"][key] = parser_metadata[key]
+                    if key == "page_count":
+                        merged["page_count"] = parser_metadata["page_count"]
+                    else:
+                        merged["extra"][key] = parser_metadata[key]
 
         elif strategy == "parser_wins":
             # Parser overwrites all matching fields with type validation
             for key, value in parser_metadata.items():
                 if value is None:
+                    continue
+
+                if key == "extra" and isinstance(value, dict):
+                    merged["extra"].update(value)
                     continue
 
                 if key in merged:
@@ -108,15 +117,18 @@ class DocumentMetadata:
                         if isinstance(value, current_type):
                             merged[key] = value
                         else:
-                            # Attempt safe coercion for known numeric fields
-                            if key in INT_FIELDS and isinstance(
+                            # Attempt safe coercion
+                            if current_type is int and isinstance(
                                 value, (str, float, int)
                             ):
                                 try:
-                                    merged[key] = int(value)
+                                    merged[key] = int(float(value))
                                     continue
                                 except (ValueError, TypeError):
                                     pass
+                            elif current_type is str:
+                                merged[key] = str(value)
+                                continue
 
                             logger.warning(
                                 f"Type mismatch for field '{key}': expected {current_type}, "
@@ -124,17 +136,63 @@ class DocumentMetadata:
                             )
                             merged["extra"][key] = value
                     else:
-                        # Field is None, check DocumentMetadata types for safety if possible
-                        # For simplicity, if it's in standard fields, we accept it if it's a known field
-                        merged[key] = value
+                        # Field is None, check DocumentMetadata types for safety
+                        type_hints = get_type_hints(DocumentMetadata)
+                        expected_type = type_hints.get(key)
+
+                        # Handle Optional[T] / Union[T, None]
+                        origin = get_origin(expected_type)
+                        if origin is Union:
+                            args = get_args(expected_type)
+                            # Extract the non-None type
+                            expected_type = next(
+                                (a for a in args if a is not type(None)), Any
+                            )
+
+                        if expected_type and expected_type is not Any:
+                            if isinstance(value, expected_type):
+                                merged[key] = value
+                            else:
+                                # Safe coercion attempt
+                                if expected_type is int and isinstance(
+                                    value, (str, float)
+                                ):
+                                    try:
+                                        merged[key] = int(float(value))
+                                        continue
+                                    except (ValueError, TypeError):
+                                        logger.warning(
+                                            f"Coercion failed for {key}: {value}. Moving to extra."
+                                        )
+                                elif expected_type is str:
+                                    merged[key] = str(value)
+                                    continue
+                                else:
+                                    logger.warning(
+                                        f"Type mismatch for {key}: expected {expected_type}. Moving to extra."
+                                    )
+                                merged["extra"][key] = value
+                        else:
+                            merged[key] = value
                 else:
                     # Add to extra if not a standard field
-                    merged["extra"][key] = value
+                    if "parser_extra" not in merged["extra"] and not isinstance(
+                        value, dict
+                    ):
+                        merged["extra"][key] = value
+                    elif isinstance(value, dict):
+                        merged["extra"].update(value)
+                    else:
+                        merged["extra"][f"parser_{key}"] = value
 
         elif strategy == "scraper_wins":
             # Only add new fields from parser, don't overwrite existing
             for key, value in parser_metadata.items():
                 if value is None:
+                    continue
+
+                if key == "extra" and isinstance(value, dict):
+                    merged["extra"].update(value)
                     continue
 
                 # Treat any standard field as a top-level field
@@ -145,6 +203,8 @@ class DocumentMetadata:
                     # Truly unknown keys go to extra
                     if key not in merged["extra"]:
                         merged["extra"][key] = value
+                    else:
+                        merged["extra"][f"parser_{key}"] = value
 
         else:
             raise MetadataMergeError(
