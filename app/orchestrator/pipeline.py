@@ -373,11 +373,21 @@ class Pipeline:
 
             # Step 5: Verify document (Sonarr-style)
             if archive_result.document_id is None:
-                self.logger.warning(
-                    f"Archive result has no document_id (archive_result={archive_result}), "
-                    "skipping verification"
+                # Anomalous backend state: success=True but no document_id
+                error_msg = (
+                    f"Archive backend returned success but no document_id "
+                    f"(archive_result={archive_result}). This indicates an anomalous backend state."
                 )
+                self.logger.error(error_msg)
                 result["verified"] = False
+                # Ensure result has an error field to track this anomaly
+                if "error" not in result:
+                    result["error"] = error_msg
+                elif result["error"] is None:
+                    result["error"] = error_msg
+                else:
+                    # Append to existing error
+                    result["error"] = f"{result['error']}; {error_msg}"
             else:
                 self.logger.info("Verifying document in archive...")
                 verified = archive.verify_document(
