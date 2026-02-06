@@ -190,6 +190,27 @@ class TestFetchTags:
 
         assert result == {"Report": 10, "Energy": 20}
 
+    def test_fetch_tags_with_pagination(self, client):
+        """Should handle multiple pages of tags."""
+        page1 = Mock()
+        page1.raise_for_status = Mock()
+        page1.json.return_value = {
+            "results": [{"id": 10, "name": "Report"}],
+            "next": "http://localhost:8000/api/tags/?page=2",
+        }
+
+        page2 = Mock()
+        page2.raise_for_status = Mock()
+        page2.json.return_value = {
+            "results": [{"id": 20, "name": "Energy"}],
+            "next": None,
+        }
+
+        with patch.object(client.session, "get", side_effect=[page1, page2]):
+            result = client._fetch_tags()
+
+        assert result == {"Report": 10, "Energy": 20}
+
     def test_fetch_tags_not_configured(self):
         """Should return empty dict when not configured."""
         client = PaperlessClient(url=None, token=None)

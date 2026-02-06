@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 import requests
 import time
@@ -45,7 +45,9 @@ class PaperlessClient:
 
         # Caches for name-to-ID lookups (populated on first use)
         self._correspondent_cache: dict[str, int] = {}
+        self._correspondent_cache_populated = False
         self._tag_cache: dict[str, int] = {}
+        self._tag_cache_populated = False
 
     @property
     def is_configured(self) -> bool:
@@ -101,9 +103,10 @@ class PaperlessClient:
         if name in self._correspondent_cache:
             return self._correspondent_cache[name]
 
-        # Populate cache if empty
-        if not self._correspondent_cache:
+        # Populate cache if not yet fetched
+        if not self._correspondent_cache_populated:
             self._correspondent_cache = self._fetch_correspondents()
+            self._correspondent_cache_populated = True
 
         # Check if now in cache
         if name in self._correspondent_cache:
@@ -175,9 +178,10 @@ class PaperlessClient:
         if not self.is_configured or not names:
             return []
 
-        # Populate cache if empty
-        if not self._tag_cache:
+        # Populate cache if not yet fetched
+        if not self._tag_cache_populated:
             self._tag_cache = self._fetch_tags()
+            self._tag_cache_populated = True
 
         result_ids: list[int] = []
 
@@ -217,7 +221,7 @@ class PaperlessClient:
         title: str,
         created: Optional[datetime] = None,
         correspondent: Optional[Union[str, int]] = None,
-        tags: Optional[list[str]] = None,
+        tags: Optional[List[Union[str, int]]] = None,
     ) -> Optional[str]:
         """
         Upload a document to Paperless.

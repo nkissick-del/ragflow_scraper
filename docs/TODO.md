@@ -117,7 +117,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
   - ✅ Document upload (successful with doc ID)
   - ✅ Metadata verification (working)
   - ✅ Workspace assignment (working)
-  - See [walkthrough](file:///Users/nathankissick/.gemini/antigravity/brain/ca76dfe9-5ce0-4f09-a2f6-8db2f54a5b5a/walkthrough.md) for details
+  - See walkthrough documentation for details
 
 **Files:**
 - ✅ `app/services/anythingllm_client.py` (NEW - 281 lines)
@@ -163,9 +163,9 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 
 ---
 
-### Phase 4.3: Jinja2 Filename Templating [Code] 🟡 HIGH
+### Phase 4.3: Jinja2 Filename Templating [Code] 🔴 BLOCKER
 
-**Priority:** HIGH - Improves file organization and consistency
+**Priority:** 🔴 BLOCKER - Improves file organization and consistency
 
 **Tasks:**
 - [ ] Verify `jinja2` in requirements.txt (already in constraints.txt)
@@ -273,7 +273,7 @@ Status: Awaiting live services; keep after refactors unless blocking release.
 **Critical Path:**
 1. ✅ AnythingLLM implementation (8-12h) - **COMPLETE** (2026-02-05)
 2. ✅ Paperless metadata (4-6h) - **COMPLETE** (2026-02-06)
-3. 🟡 Jinja2 templating (3-4h) - BLOCKER
+3. 🔴 Jinja2 templating (3-4h) - BLOCKER
 4. 🟡 Testing (8-12h) - HIGH
 5. 🟡 Production validation (6-8h) - HIGH
 
