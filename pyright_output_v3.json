@@ -1,0 +1,157 @@
+{
+    "version": "1.1.408",
+    "time": "1770369255531",
+    "generalDiagnostics": [
+        {
+            "file": "/app/app/backends/archives/paperless_adapter.py",
+            "severity": "error",
+            "message": "Argument of type \"list[str] | None\" cannot be assigned to parameter \"tags\" of type \"list[str | int] | None\" in function \"post_document\"\n  Type \"list[str] | None\" is not assignable to type \"list[str | int] | None\"\n    Type \"list[str]\" is not assignable to type \"list[str | int] | None\"\n      \"list[str]\" is not assignable to \"list[str | int]\"\n        Type parameter \"_T@list\" is invariant, but \"str\" is not the same as \"str | int\"\n        Consider switching from \"list\" to \"Sequence\" which is covariant\n      \"list[str]\" is not assignable to \"None\"",
+            "range": {
+                "start": {
+                    "line": 84,
+                    "character": 17
+                },
+                "end": {
+                    "line": 84,
+                    "character": 21
+                }
+            },
+            "rule": "reportArgumentType"
+        },
+        {
+            "file": "/app/app/backends/parsers/docling_parser.py",
+            "severity": "error",
+            "message": "Import \"docling\" could not be resolved",
+            "range": {
+                "start": {
+                    "line": 30,
+                    "character": 19
+                },
+                "end": {
+                    "line": 30,
+                    "character": 26
+                }
+            },
+            "rule": "reportMissingImports"
+        },
+        {
+            "file": "/app/app/backends/parsers/docling_parser.py",
+            "severity": "error",
+            "message": "Import \"docling.document_converter\" could not be resolved",
+            "range": {
+                "start": {
+                    "line": 183,
+                    "character": 13
+                },
+                "end": {
+                    "line": 183,
+                    "character": 39
+                }
+            },
+            "rule": "reportMissingImports"
+        },
+        {
+            "file": "/app/app/backends/rag/ragflow_adapter.py",
+            "severity": "error",
+            "message": "Argument missing for parameter \"docs\"",
+            "range": {
+                "start": {
+                    "line": 103,
+                    "character": 28
+                },
+                "end": {
+                    "line": 106,
+                    "character": 13
+                }
+            },
+            "rule": "reportCallIssue"
+        },
+        {
+            "file": "/app/app/backends/rag/ragflow_adapter.py",
+            "severity": "error",
+            "message": "No parameter named \"files_with_metadata\"",
+            "range": {
+                "start": {
+                    "line": 105,
+                    "character": 16
+                },
+                "end": {
+                    "line": 105,
+                    "character": 35
+                }
+            },
+            "rule": "reportCallIssue"
+        },
+        {
+            "file": "/app/app/orchestrator/pipeline.py",
+            "severity": "error",
+            "message": "Argument of type \"str | Unknown | None\" cannot be assigned to parameter \"document_id\" of type \"str\" in function \"verify_document\"\n  Type \"str | Unknown | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+            "range": {
+                "start": {
+                    "line": 364,
+                    "character": 20
+                },
+                "end": {
+                    "line": 364,
+                    "character": 46
+                }
+            },
+            "rule": "reportArgumentType"
+        },
+        {
+            "file": "/app/app/services/paperless_client.py",
+            "severity": "error",
+            "message": "Argument of type \"int\" cannot be assigned to parameter \"value\" of type \"str\" in function \"__setitem__\"\n  \"int\" is not assignable to \"str\"",
+            "range": {
+                "start": {
+                    "line": 263,
+                    "character": 16
+                },
+                "end": {
+                    "line": 263,
+                    "character": 37
+                }
+            },
+            "rule": "reportArgumentType"
+        },
+        {
+            "file": "/app/app/services/paperless_client.py",
+            "severity": "error",
+            "message": "Argument of type \"int\" cannot be assigned to parameter \"value\" of type \"str\" in function \"__setitem__\"\n  \"int\" is not assignable to \"str\"",
+            "range": {
+                "start": {
+                    "line": 265,
+                    "character": 16
+                },
+                "end": {
+                    "line": 265,
+                    "character": 37
+                }
+            },
+            "rule": "reportArgumentType"
+        },
+        {
+            "file": "/app/app/services/paperless_client.py",
+            "severity": "error",
+            "message": "Argument of type \"int\" cannot be assigned to parameter \"value\" of type \"str\" in function \"__setitem__\"\n  \"int\" is not assignable to \"str\"",
+            "range": {
+                "start": {
+                    "line": 270,
+                    "character": 20
+                },
+                "end": {
+                    "line": 270,
+                    "character": 41
+                }
+            },
+            "rule": "reportArgumentType"
+        }
+    ],
+    "summary": {
+        "filesAnalyzed": 62,
+        "errorCount": 9,
+        "warningCount": 0,
+        "informationCount": 0,
+        "timeInSec": 8.347
+    }
+}

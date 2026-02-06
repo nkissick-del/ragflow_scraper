@@ -318,7 +318,7 @@ class Pipeline:
 
             result["parsed"] = True
             self.logger.info(
-                f"Parse successful: {parse_result.markdown_path.name} "
+                f"Parse successful: {parse_result.markdown_path.name if parse_result.markdown_path else 'Unknown'} "
                 f"({parse_result.parser_name})"
             )
 
@@ -366,7 +366,7 @@ class Pipeline:
                 )
                 result["verified"] = verified
 
-                if verified:
+                if verified and archive_result.document_id:
                     self.logger.info(f"Document verified: {archive_result.document_id}")
                 else:
                     self.logger.warning(
@@ -374,7 +374,7 @@ class Pipeline:
                     )
 
             # Step 6: Ingest to RAG (if enabled)
-            if self.upload_to_ragflow and self.dataset_id:
+            if self.upload_to_ragflow and self.dataset_id and parse_result.markdown_path:
                 self.logger.info(f"Ingesting to RAG: {parse_result.markdown_path.name}")
                 rag = self.container.rag_backend
 

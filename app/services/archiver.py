@@ -13,6 +13,7 @@ from typing import Optional
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.chromium.webdriver import ChromiumDriver
 
 from app.config import Config
 from app.utils import get_logger
@@ -140,7 +141,13 @@ class Archiver:
             # Execute CDP command
             # selenium-webdriver doesn't have a direct 'print_to_pdf' method in all versions,
             # but usually can be accessed via `execute_cdp_cmd`
-            result = driver.execute_cdp_cmd("Page.printToPDF", print_options)
+            if isinstance(driver, ChromiumDriver):
+                result = driver.execute_cdp_cmd("Page.printToPDF", print_options)
+            elif hasattr(driver, "execute_cdp_cmd"):
+                # Fallback for RemoteWebDriver which might support it if connected to Chrome
+                result = driver.execute_cdp_cmd("Page.printToPDF", print_options)  # type: ignore
+            else:
+                raise ValueError("Driver does not support CDP commands (execute_cdp_cmd)")
 
             pdf_base64 = result.get("data")
             if not pdf_base64:

@@ -76,7 +76,8 @@ class AnythingLLMClient:
         """Close the session and release connection pool resources."""
         if hasattr(self, "session") and self.session:
             self.session.close()
-            self.session = None
+            # We don't set to None because the type is Session, not Optional[Session].
+            # This allows reusing the client object or just keeping it in a closed state.
 
     def __enter__(self) -> "AnythingLLMClient":
         """Enter context manager."""
