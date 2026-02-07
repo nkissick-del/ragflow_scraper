@@ -55,8 +55,8 @@
 
         <!-- RAGFlow Settings (collapsible) -->
         <details class="ragflow-settings-section">
-            <summary class="ragflow-settings-toggle">
-                <span class="toggle-icon">▶</span> RAGFlow Settings
+            <summary class="ragflow-settings-toggle" aria-label="RAGFlow Settings for {{ scraper.name }}">
+                <span class="toggle-icon" aria-hidden="true">▶</span> RAGFlow Settings
                 <span id="ragflow-status-{{ scraper.name }}" class="setting-status"></span>
             </summary>
             <div class="ragflow-settings-content">
@@ -239,6 +239,7 @@
                         hx-disabled-elt="this"
                         hx-indicator="#preview-btn-{{ scraper.name }}"
                         hx-timeout="300000"
+                        aria-label="Preview {{ scraper.name }} scraper"
                         {% if scraper.status == 'running' %}disabled{% endif %}>
                     <span class="btn-text">Preview (Dry Run)</span>
                     <span class="btn-loader"><span class="loading-spinner"></span></span>
@@ -248,6 +249,7 @@
                         hx-post="{{ url_for('scrapers.cancel_scraper', name=scraper.name) }}"
                         hx-target="#scraper-{{ scraper.name }} .status-badge"
                         hx-swap="outerHTML"
+                        aria-label="Cancel {{ scraper.name }} scraper"
                         {% if scraper.status == 'cancelling' %}disabled{% endif %}>
                     {% if scraper.status == 'cancelling' %}Cancelling...{% else %}Cancel{% endif %}
                 </button>
@@ -258,7 +260,8 @@
                         hx-target="#scraper-{{ scraper.name }}"
                         hx-swap="outerHTML"
                         hx-disabled-elt="this"
-                        hx-indicator="#run-btn-{{ scraper.name }}">
+                        hx-indicator="#run-btn-{{ scraper.name }}"
+                        aria-label="Run {{ scraper.name }} scraper">
                     <span class="btn-text">Run Scraper</span>
                     <span class="btn-loader"><span class="loading-spinner"></span></span>
                 </button>
