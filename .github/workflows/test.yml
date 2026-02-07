@@ -31,6 +31,9 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run unit tests
+        env:
+          FLASK_ENV: testing
+          BASIC_AUTH_ENABLED: "false"
         run: pytest tests/unit/ -m "not slow" -v --cov=app --cov-report=xml
 
       - name: Upload coverage
