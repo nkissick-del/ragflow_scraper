@@ -21,6 +21,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
         """
         self.client = client or PaperlessClient()
         self.logger = get_logger("backends.archive.paperless")
+        self._pending_metadata: dict[str, dict] = {}  # task_id -> metadata
 
     @property
     def name(self) -> str:
@@ -49,7 +50,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
             created: ISO format date string
             correspondent: Source organization
             tags: List of tags
-            metadata: Additional metadata (currently unused by Paperless API)
+            metadata: Additional metadata (applied as custom fields after verification)
 
         Returns:
             ArchiveResult with task_id as document_id (Note: document_id is the Paperless task id)
@@ -91,6 +92,15 @@ class PaperlessArchiveBackend(ArchiveBackend):
             self.logger.error(error_msg)
             return ArchiveResult(success=False, error=error_msg, archive_name=self.name)
 
+        # Store metadata keyed by task_id for custom fields (applied after verification).
+        # Evict oldest entry if at capacity to prevent unbounded growth.
+        if metadata:
+            _MAX_PENDING = 100
+            if len(self._pending_metadata) >= _MAX_PENDING:
+                oldest_key = next(iter(self._pending_metadata))
+                self._pending_metadata.pop(oldest_key, None)
+            self._pending_metadata[task_id] = metadata
+
         self.logger.info(f"Document archived to Paperless: task_id={task_id}")
         return ArchiveResult(
             success=True,
@@ -117,4 +127,15 @@ class PaperlessArchiveBackend(ArchiveBackend):
         verified_id = self.client.verify_document_exists(
             task_id=document_id, timeout=timeout, poll_interval=2
         )
+
+        # Retrieve and always clean up pending metadata for this task
+        pending = self._pending_metadata.pop(document_id, None)
+
+        if verified_id is not None and pending:
+            # Apply custom fields (non-fatal)
+            try:
+                self.client.set_custom_fields(int(verified_id), pending)
+            except Exception as e:
+                self.logger.warning(f"Failed to set custom fields: {e}")
+
         return verified_id is not None

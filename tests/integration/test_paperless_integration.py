@@ -439,14 +439,17 @@ class TestPaperlessVerification:
     def test_verify_document_success(self, paperless_backend):
         """Should successfully verify document exists."""
         task_id = "00000000-0000-0000-0000-000000000001"
-        # Mock task status endpoint (SUCCESS)
+        # Mock task list endpoint (the real endpoint — /api/tasks/{id}/ does not exist)
         responses.add(
             responses.GET,
-            f"http://localhost:8000/api/tasks/{task_id}/",
-            json={
-                "status": "SUCCESS",
-                "related_document": 456,
-            },
+            "http://localhost:8000/api/tasks/",
+            json=[
+                {
+                    "task_id": task_id,
+                    "status": "SUCCESS",
+                    "related_document": 456,
+                },
+            ],
             status=200,
         )
 
@@ -463,13 +466,16 @@ class TestPaperlessVerification:
     def test_verify_document_timeout(self, paperless_backend):
         """Should timeout when document not verified."""
         task_id = "00000000-0000-0000-0000-000000000002"
-        # Mock task status endpoint (PENDING forever)
+        # Mock task list endpoint (PENDING forever)
         responses.add(
             responses.GET,
-            f"http://localhost:8000/api/tasks/{task_id}/",
-            json={
-                "status": "PENDING",
-            },
+            "http://localhost:8000/api/tasks/",
+            json=[
+                {
+                    "task_id": task_id,
+                    "status": "PENDING",
+                },
+            ],
             status=200,
         )
 
@@ -488,14 +494,17 @@ class TestPaperlessVerification:
     def test_verify_document_failure(self, paperless_backend):
         """Should handle task failure."""
         task_id = "00000000-0000-0000-0000-000000000003"
-        # Mock task status endpoint (FAILURE)
+        # Mock task list endpoint (FAILURE)
         responses.add(
             responses.GET,
-            f"http://localhost:8000/api/tasks/{task_id}/",
-            json={
-                "status": "FAILURE",
-                "result": "Processing failed",
-            },
+            "http://localhost:8000/api/tasks/",
+            json=[
+                {
+                    "task_id": task_id,
+                    "status": "FAILURE",
+                    "result": "Processing failed",
+                },
+            ],
             status=200,
         )
 
@@ -669,3 +678,291 @@ class TestPaperlessErrorHandling:
         verified = backend.verify_document("00000000-0000-0000-0000-000000000001")
 
         assert verified is False
+
+
+class TestPaperlessCustomFields:
+    """Test custom field management."""
+
+    @responses.activate
+    def test_cache_population_and_hit(self, paperless_client):
+        """Should populate cache on first call and hit cache on second."""
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/custom_fields/",
+            json={
+                "results": [
+                    {"id": 1, "name": "Original URL"},
+                    {"id": 2, "name": "Scraped Date"},
+                ],
+                "next": None,
+            },
+            status=200,
+        )
+
+        # First call populates cache
+        result1 = paperless_client.get_or_create_custom_field("Original URL", "url")
+        assert result1 == 1
+
+        # Second call should hit cache (no additional GET)
+        result2 = paperless_client.get_or_create_custom_field("Original URL", "url")
+        assert result2 == 1
+
+        # Only one GET request should have been made
+        get_calls = [
+            c for c in responses.calls
+            if c.request.method == "GET" and "custom_fields" in c.request.url
+        ]
+        assert len(get_calls) == 1
+
+    @responses.activate
+    def test_auto_creation_of_missing_field(self, paperless_client):
+        """Should create custom field if it doesn't exist."""
+        # Empty cache fetch
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/custom_fields/",
+            json={"results": [], "next": None},
+            status=200,
+        )
+
+        # Creation response
+        responses.add(
+            responses.POST,
+            "http://localhost:8000/api/custom_fields/",
+            json={"id": 10, "name": "Page Count", "data_type": "integer"},
+            status=201,
+        )
+
+        result = paperless_client.get_or_create_custom_field("Page Count", "integer")
+        assert result == 10
+
+        # Verify POST was made with correct payload
+        post_calls = [
+            c for c in responses.calls if c.request.method == "POST"
+        ]
+        assert len(post_calls) == 1
+        import json
+        body = json.loads(post_calls[0].request.body)
+        assert body["name"] == "Page Count"
+        assert body["data_type"] == "integer"
+
+    @responses.activate
+    def test_patch_document_with_custom_fields(self, paperless_client):
+        """Should PATCH document with resolved field IDs."""
+        # Pre-populate cache
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/custom_fields/",
+            json={
+                "results": [
+                    {"id": 1, "name": "Original URL"},
+                    {"id": 2, "name": "Page Count"},
+                ],
+                "next": None,
+            },
+            status=200,
+        )
+
+        # Mock PATCH
+        responses.add(
+            responses.PATCH,
+            "http://localhost:8000/api/documents/456/",
+            json={"id": 456},
+            status=200,
+        )
+
+        metadata = {"url": "https://example.com/doc.pdf", "page_count": 10}
+        result = paperless_client.set_custom_fields(456, metadata)
+        assert result is True
+
+        # Verify PATCH was called
+        patch_calls = [
+            c for c in responses.calls if c.request.method == "PATCH"
+        ]
+        assert len(patch_calls) == 1
+        import json
+        body = json.loads(patch_calls[0].request.body)
+        fields = body["custom_fields"]
+        assert len(fields) == 2
+        field_map = {f["field"]: f["value"] for f in fields}
+        assert field_map[1] == "https://example.com/doc.pdf"
+        assert field_map[2] == 10
+
+    @responses.activate
+    def test_full_flow_archive_verify_custom_fields(
+        self, paperless_backend, test_pdf
+    ):
+        """Should apply custom fields after archive + verify flow."""
+        task_id = "00000000-0000-0000-0000-000000000020"
+
+        # Mock upload
+        responses.add(
+            responses.POST,
+            "http://localhost:8000/api/documents/post_document/",
+            json={"task_id": task_id},
+            status=200,
+        )
+
+        # Mock task status (SUCCESS with document ID)
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/tasks/",
+            json=[
+                {
+                    "task_id": task_id,
+                    "status": "SUCCESS",
+                    "related_document": 789,
+                },
+            ],
+            status=200,
+        )
+
+        # Mock custom fields fetch
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/custom_fields/",
+            json={
+                "results": [
+                    {"id": 1, "name": "Original URL"},
+                    {"id": 2, "name": "Page Count"},
+                ],
+                "next": None,
+            },
+            status=200,
+        )
+
+        # Mock PATCH for custom fields
+        responses.add(
+            responses.PATCH,
+            "http://localhost:8000/api/documents/789/",
+            json={"id": 789},
+            status=200,
+        )
+
+        metadata = {"url": "https://example.com/doc.pdf", "page_count": 5}
+
+        # Step 1: archive
+        result = paperless_backend.archive_document(
+            file_path=test_pdf,
+            title="Full Flow Doc",
+            metadata=metadata,
+        )
+        assert result.success is True
+        assert result.document_id == task_id
+
+        # Step 2: verify (should also apply custom fields)
+        verified = paperless_backend.verify_document(document_id=task_id, timeout=5)
+        assert verified is True
+
+        # Verify PATCH was called for custom fields
+        patch_calls = [
+            c for c in responses.calls if c.request.method == "PATCH"
+        ]
+        assert len(patch_calls) == 1
+        assert "789" in patch_calls[0].request.url
+
+    @responses.activate
+    def test_custom_field_failure_nonfatal(self, paperless_backend, test_pdf):
+        """Custom field failure should not prevent verify from returning True."""
+        task_id = "00000000-0000-0000-0000-000000000021"
+
+        # Mock upload
+        responses.add(
+            responses.POST,
+            "http://localhost:8000/api/documents/post_document/",
+            json={"task_id": task_id},
+            status=200,
+        )
+
+        # Mock task status (SUCCESS)
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/tasks/",
+            json=[
+                {
+                    "task_id": task_id,
+                    "status": "SUCCESS",
+                    "related_document": 790,
+                },
+            ],
+            status=200,
+        )
+
+        # Mock custom fields fetch
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/custom_fields/",
+            json={
+                "results": [{"id": 1, "name": "Original URL"}],
+                "next": None,
+            },
+            status=200,
+        )
+
+        # Mock PATCH failure
+        responses.add(
+            responses.PATCH,
+            "http://localhost:8000/api/documents/790/",
+            json={"error": "Internal Server Error"},
+            status=500,
+        )
+
+        metadata = {"url": "https://example.com/doc.pdf"}
+
+        # Archive
+        result = paperless_backend.archive_document(
+            file_path=test_pdf,
+            title="Non-fatal Test",
+            metadata=metadata,
+        )
+        assert result.success is True
+
+        # Verify should still return True despite PATCH failure
+        verified = paperless_backend.verify_document(document_id=task_id, timeout=5)
+        assert verified is True
+
+    @responses.activate
+    def test_verify_without_metadata_skips_custom_fields(
+        self, paperless_backend, test_pdf
+    ):
+        """Should skip custom fields when no metadata was stored."""
+        task_id = "00000000-0000-0000-0000-000000000022"
+
+        # Mock upload
+        responses.add(
+            responses.POST,
+            "http://localhost:8000/api/documents/post_document/",
+            json={"task_id": task_id},
+            status=200,
+        )
+
+        # Mock task status (SUCCESS)
+        responses.add(
+            responses.GET,
+            "http://localhost:8000/api/tasks/",
+            json=[
+                {
+                    "task_id": task_id,
+                    "status": "SUCCESS",
+                    "related_document": 791,
+                },
+            ],
+            status=200,
+        )
+
+        # Archive without metadata
+        result = paperless_backend.archive_document(
+            file_path=test_pdf,
+            title="No Metadata Doc",
+        )
+        assert result.success is True
+
+        # Verify should work without any PATCH
+        verified = paperless_backend.verify_document(document_id=task_id, timeout=5)
+        assert verified is True
+
+        # No PATCH should have been made
+        patch_calls = [
+            c for c in responses.calls if c.request.method == "PATCH"
+        ]
+        assert len(patch_calls) == 0

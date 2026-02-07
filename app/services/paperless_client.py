@@ -16,6 +16,15 @@ import uuid
 from app.config import Config
 from app.utils import get_logger
 
+# Maps metadata dict keys to (Paperless custom field name, Paperless data type)
+CUSTOM_FIELD_MAPPING: dict[str, tuple[str, str]] = {
+    "url": ("Original URL", "url"),
+    "scraped_at": ("Scraped Date", "string"),
+    "page_count": ("Page Count", "integer"),
+    "file_size": ("File Size", "integer"),
+    "source_page": ("Source Page", "url"),
+}
+
 
 class PaperlessClient:
     """
@@ -51,6 +60,9 @@ class PaperlessClient:
         self._tag_cache: dict[str, int] = {}
         self._tag_cache_populated = False
         self._tag_lock = threading.RLock()
+        self._custom_field_cache: dict[str, int] = {}
+        self._custom_field_cache_populated = False
+        self._custom_field_lock = threading.RLock()
 
     @property
     def is_configured(self) -> bool:
@@ -229,6 +241,160 @@ class PaperlessClient:
                 self.logger.warning(f"Failed to create tag '{name}': {e}")
 
         return result_ids
+
+    def _fetch_custom_fields(self) -> dict[str, int]:
+        """
+        Fetch all custom fields from Paperless API with pagination.
+
+        Returns:
+            Dict mapping custom field names to IDs
+        """
+        if not self.is_configured:
+            return {}
+
+        fields: dict[str, int] = {}
+        next_url: Optional[str] = f"{self.url}/api/custom_fields/"
+
+        while next_url:
+            response = self.session.get(next_url, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            for item in data.get("results", []):
+                name = item.get("name")
+                field_id = item.get("id")
+                if name and field_id:
+                    fields[name] = field_id
+
+            next_url = data.get("next")
+
+        return fields
+
+    def get_or_create_custom_field(self, name: str, data_type: str) -> Optional[int]:
+        """
+        Get custom field ID by name, creating if not exists.
+
+        Args:
+            name: Custom field name
+            data_type: Paperless custom field data type (e.g. "url", "string", "integer")
+
+        Returns:
+            Custom field ID, or None if lookup/creation failed
+        """
+        if not self.is_configured or not name:
+            return None
+
+        with self._custom_field_lock:
+            # Check cache first
+            if name in self._custom_field_cache:
+                return self._custom_field_cache[name]
+
+            # Populate cache if not yet fetched
+            if not self._custom_field_cache_populated:
+                try:
+                    fetched = self._fetch_custom_fields()
+                    self._custom_field_cache = fetched
+                    self._custom_field_cache_populated = True
+                except Exception as e:
+                    self.logger.error(f"Failed to populate custom field cache: {e}")
+
+            # Check again after potential fetch
+            if name in self._custom_field_cache:
+                return self._custom_field_cache[name]
+
+            # Create new custom field
+            try:
+                response = self.session.post(
+                    f"{self.url}/api/custom_fields/",
+                    json={"name": name, "data_type": data_type},
+                    timeout=30,
+                )
+                if response.status_code == 409:
+                    self.logger.debug(
+                        f"Custom field '{name}' already exists (409 Conflict), re-fetching..."
+                    )
+                    self._custom_field_cache = self._fetch_custom_fields()
+                    return self._custom_field_cache.get(name)
+
+                response.raise_for_status()
+                data = response.json()
+                field_id = data.get("id")
+
+                if field_id:
+                    self._custom_field_cache[name] = field_id
+                    self.logger.info(
+                        f"Created custom field '{name}' (type={data_type}) with ID {field_id}"
+                    )
+                    return field_id
+
+            except Exception as e:
+                self.logger.error(f"Failed to create custom field '{name}': {e}")
+
+        return None
+
+    def set_custom_fields(self, document_id: int, metadata: dict) -> bool:
+        """
+        Set custom field values on a Paperless document.
+
+        Maps metadata keys via CUSTOM_FIELD_MAPPING to Paperless custom field IDs,
+        then PATCHes the document.
+
+        Args:
+            document_id: Real Paperless document ID (integer)
+            metadata: Metadata dict with keys matching CUSTOM_FIELD_MAPPING
+
+        Returns:
+            True if successful, False on failure (non-fatal)
+        """
+        if not self.is_configured or not metadata:
+            return not metadata  # True if empty/None, False if has data but not configured
+
+        custom_fields_payload: list[dict] = []
+
+        for meta_key, (field_name, data_type) in CUSTOM_FIELD_MAPPING.items():
+            value = metadata.get(meta_key)
+            if value is None or value == "":
+                continue
+
+            field_id = self.get_or_create_custom_field(field_name, data_type)
+            if field_id is None:
+                self.logger.warning(
+                    f"Could not resolve custom field '{field_name}', skipping"
+                )
+                continue
+
+            # Coerce integer types
+            if data_type == "integer":
+                try:
+                    value = int(value)
+                except (ValueError, TypeError):
+                    self.logger.warning(
+                        f"Cannot convert '{value}' to integer for field '{field_name}', skipping"
+                    )
+                    continue
+
+            custom_fields_payload.append({"field": field_id, "value": value})
+
+        if not custom_fields_payload:
+            self.logger.debug("No custom fields to set")
+            return True
+
+        try:
+            response = self.session.patch(
+                f"{self.url}/api/documents/{document_id}/",
+                json={"custom_fields": custom_fields_payload},
+                timeout=30,
+            )
+            response.raise_for_status()
+            self.logger.info(
+                f"Set {len(custom_fields_payload)} custom fields on document {document_id}"
+            )
+            return True
+        except Exception as e:
+            self.logger.error(
+                f"Failed to set custom fields on document {document_id}: {e}"
+            )
+            return False
 
     def post_document(
         self,
