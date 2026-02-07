@@ -286,6 +286,7 @@ class TestPostDocumentWithLookups:
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
         mock_response.text = "0123456789abcdef0123456789abcdef"
+        mock_response.headers = {}  # Ensure headers.get returns None/default, not a Mock
 
         with patch.object(
             client.session, "post", return_value=mock_response
@@ -313,6 +314,7 @@ class TestPostDocumentWithLookups:
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
         mock_response.text = "0123456789abcdef0123456789abcde2"
+        mock_response.headers = {}
 
         with patch.object(
             client.session, "post", return_value=mock_response
@@ -338,6 +340,7 @@ class TestPostDocumentWithLookups:
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
         mock_response.text = "0123456789abcdef0123456789abcde3"
+        mock_response.headers = {}
 
         with patch.object(
             client.session, "post", return_value=mock_response
@@ -364,6 +367,7 @@ class TestPostDocumentWithLookups:
         upload_response = Mock()
         upload_response.raise_for_status = Mock()
         upload_response.text = "0123456789abcdef0123456789abcde4"
+        upload_response.headers = {}
 
         with patch.object(client.session, "get", return_value=fetch_response):
             with patch.object(
