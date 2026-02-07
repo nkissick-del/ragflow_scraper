@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 from app.orchestrator.pipeline import Pipeline, PipelineResult
 from app.scrapers import ScraperRegistry
 from app.backends.parsers.base import ParserResult
-from app.services.archiver import ArchiveResult
+from app.backends.archives.base import ArchiveResult
 
 
 class DummyScraperResult:
@@ -33,6 +33,7 @@ class DummyScraperResult:
                     "url": f"http://example.com/doc{i + 1}",
                     "organization": "TestOrg",
                     "publication_date": "2024-01-15",
+                    "filename": f"test_doc_{i + 1}.pdf",
                     "pdf_path": pdf_path,
                     "hash": f"hash{i + 1}",
                 }
@@ -187,6 +188,7 @@ class TestE2EPipelineHappyPath:
         with patch.object(ScraperRegistry, "get_scraper", return_value=scraper):
             pipeline = Pipeline(
                 scraper_name="test_scraper",
+                dataset_id="test-dataset",
                 upload_to_ragflow=True,
                 upload_to_paperless=True,
                 container=mock_container,
@@ -247,20 +249,21 @@ class TestE2EPipelineErrorHandling:
         with patch.object(ScraperRegistry, "get_scraper", return_value=scraper):
             pipeline = Pipeline(
                 scraper_name="test_scraper",
+                dataset_id="test-dataset",
                 upload_to_ragflow=True,
                 upload_to_paperless=True,
                 container=mock_container,
             )
             result = pipeline.run()
 
-        # Verify: one failed, one succeeded
-        assert result.status == "completed"
+        # Verify: one failed (parser error → FAIL FAST), one succeeded
+        assert result.status == "partial"
         assert result.parsed_count == 1
         assert result.failed_count == 1
         assert len(result.errors) == 1
 
-    def test_archive_failure_continues_pipeline(self, mock_container, tmp_path):
-        """Should continue when archive fails but RAG succeeds."""
+    def test_archive_failure_fails_document(self, mock_container, tmp_path):
+        """Archive failure should FAIL FAST for the document (ArchiveError)."""
         # Setup
         pdf_file = tmp_path / "test_doc_1.pdf"
         pdf_file.write_bytes(b"%PDF-1.4\nTest")
@@ -284,7 +287,7 @@ class TestE2EPipelineErrorHandling:
             archive_name="paperless",
         )
 
-        # RAG succeeds
+        # RAG succeeds (but won't be reached due to archive FAIL FAST)
         rag_result = Mock()
         rag_result.success = True
         mock_container.rag_backend.ingest_document.return_value = rag_result
@@ -293,17 +296,20 @@ class TestE2EPipelineErrorHandling:
         with patch.object(ScraperRegistry, "get_scraper", return_value=scraper):
             pipeline = Pipeline(
                 scraper_name="test_scraper",
+                dataset_id="test-dataset",
                 upload_to_ragflow=True,
                 upload_to_paperless=True,
                 container=mock_container,
             )
             result = pipeline.run()
 
-        # Verify
-        assert result.parsed_count == 1
+        # Verify: Archive FAIL FAST means document counted as failed
+        assert result.parsed_count == 0  # Caught by outer handler before counter
         assert result.archived_count == 0  # Archive failed
-        assert result.rag_indexed_count == 1  # But RAG succeeded
-        assert result.failed_count == 0  # Not counted as failed if RAG works
+        assert result.rag_indexed_count == 0  # Not reached
+        assert result.failed_count == 1  # Document failed
+        assert len(result.errors) == 1
+        assert "Archive service unavailable" in result.errors[0]
 
     def test_scraper_failure_stops_pipeline(self, mock_container):
         """Should stop pipeline when scraper fails."""
@@ -391,6 +397,7 @@ class TestE2EPipelineMetadata:
         with patch.object(ScraperRegistry, "get_scraper", return_value=scraper):
             pipeline = Pipeline(
                 scraper_name="test_scraper",
+                dataset_id="test-dataset",
                 upload_to_ragflow=True,
                 upload_to_paperless=True,
                 container=mock_container,
@@ -414,11 +421,180 @@ class TestE2EPipelineMetadata:
         assert merged_metadata.get("publication_date") == "2024-01-15"
 
         # Verify merged metadata contains expected parser fields
-        assert merged_metadata.get("author") == "Extracted Author"
+        # 'author' is not a standard DocumentMetadata field, so it goes to extra
+        extra = merged_metadata.get("extra", {})
+        assert extra.get("author") == "Extracted Author"
         assert merged_metadata.get("page_count") == 10
 
         # Verify the title (could be from scraper or parser depending on merge strategy)
         assert "title" in merged_metadata
+
+        assert result.parsed_count == 1
+        assert result.archived_count == 1
+
+
+class TestE2EPipelineFormatRouting:
+    """Test format-aware document routing."""
+
+    def test_markdown_skips_parsing(self, mock_container, tmp_path):
+        """Markdown files should skip the parser backend entirely."""
+        # Create a markdown file (not a PDF)
+        md_file = tmp_path / "test_doc_1.md"
+        md_file.write_text("# Test Article\n\nSome content here.\n")
+
+        # Scraper result with local_path pointing to .md
+        scraper_result = DummyScraperResult(doc_count=1, tmp_path=tmp_path)
+        scraper_result.documents[0]["pdf_path"] = None
+        scraper_result.documents[0]["local_path"] = str(md_file)
+        scraper = Mock()
+        scraper.run.return_value = scraper_result
+
+        # Mock archive backend
+        mock_container.archive_backend.archive_document.return_value = ArchiveResult(
+            success=True, document_id="123", archive_name="paperless"
+        )
+
+        # Mock RAG backend
+        rag_result = Mock()
+        rag_result.success = True
+        mock_container.rag_backend.ingest_document.return_value = rag_result
+
+        # Execute
+        with (
+            patch.object(ScraperRegistry, "get_scraper", return_value=scraper),
+            patch("app.orchestrator.pipeline.Config") as mock_config,
+        ):
+            mock_config.METADATA_MERGE_STRATEGY = "smart"
+            mock_config.RAGFLOW_DATASET_ID = "test-dataset"
+            mock_config.GOTENBERG_URL = ""
+            mock_config.TIKA_ENRICHMENT_ENABLED = False
+            mock_config.TIKA_SERVER_URL = ""
+
+            pipeline = Pipeline(
+                scraper_name="test_scraper",
+                upload_to_ragflow=True,
+                upload_to_paperless=True,
+                container=mock_container,
+            )
+            result = pipeline.run()
+
+        # Parser backend should NOT have been called
+        mock_container.parser_backend.parse_document.assert_not_called()
+
+        assert result.parsed_count == 1
+        assert result.archived_count == 1
+
+    def test_markdown_with_gotenberg_conversion(self, mock_container, tmp_path):
+        """Markdown files should use Gotenberg to create archive PDF."""
+        md_file = tmp_path / "test_doc_1.md"
+        md_file.write_text("# Test\n\nContent.")
+
+        scraper_result = DummyScraperResult(doc_count=1, tmp_path=tmp_path)
+        scraper_result.documents[0]["pdf_path"] = None
+        scraper_result.documents[0]["local_path"] = str(md_file)
+        scraper = Mock()
+        scraper.run.return_value = scraper_result
+
+        # Mock Gotenberg client
+        mock_gotenberg = Mock()
+        mock_gotenberg.convert_markdown_to_pdf.return_value = b"%PDF-1.4 gotenberg"
+        mock_container.gotenberg_client = mock_gotenberg
+
+        # Mock archive backend
+        mock_container.archive_backend.archive_document.return_value = ArchiveResult(
+            success=True, document_id="456", archive_name="paperless"
+        )
+
+        # Mock RAG
+        rag_result = Mock()
+        rag_result.success = True
+        mock_container.rag_backend.ingest_document.return_value = rag_result
+
+        with (
+            patch.object(ScraperRegistry, "get_scraper", return_value=scraper),
+            patch("app.orchestrator.pipeline.Config") as mock_config,
+        ):
+            mock_config.METADATA_MERGE_STRATEGY = "smart"
+            mock_config.RAGFLOW_DATASET_ID = "test-dataset"
+            mock_config.GOTENBERG_URL = "http://gotenberg:3156"
+            mock_config.TIKA_ENRICHMENT_ENABLED = False
+            mock_config.TIKA_SERVER_URL = ""
+
+            pipeline = Pipeline(
+                scraper_name="test_scraper",
+                upload_to_ragflow=True,
+                upload_to_paperless=True,
+                container=mock_container,
+            )
+            result = pipeline.run()
+
+        # Gotenberg should have been called for MD→PDF
+        mock_gotenberg.convert_markdown_to_pdf.assert_called_once()
+
+        # Archive should receive the .archive.pdf path
+        archive_call = mock_container.archive_backend.archive_document.call_args
+        archive_path = archive_call[1]["file_path"]
+        assert str(archive_path).endswith(".archive.pdf")
+
+        assert result.parsed_count == 1
+        assert result.archived_count == 1
+
+    def test_office_format_uses_tika(self, mock_container, tmp_path):
+        """Office formats should use Tika for text extraction."""
+        docx_file = tmp_path / "test_doc_1.docx"
+        docx_file.write_bytes(b"fake docx content")
+
+        scraper_result = DummyScraperResult(doc_count=1, tmp_path=tmp_path)
+        scraper_result.documents[0]["pdf_path"] = None
+        scraper_result.documents[0]["local_path"] = str(docx_file)
+        scraper = Mock()
+        scraper.run.return_value = scraper_result
+
+        # Mock Tika client
+        mock_tika = Mock()
+        mock_tika.extract_text.return_value = "Extracted office text."
+        mock_tika.extract_metadata.return_value = {"title": "Office Doc"}
+        mock_container.tika_client = mock_tika
+
+        # Mock Gotenberg
+        mock_gotenberg = Mock()
+        mock_gotenberg.convert_to_pdf.return_value = b"%PDF-1.4 office"
+        mock_container.gotenberg_client = mock_gotenberg
+
+        # Mock archive
+        mock_container.archive_backend.archive_document.return_value = ArchiveResult(
+            success=True, document_id="789", archive_name="paperless"
+        )
+
+        # Mock RAG
+        rag_result = Mock()
+        rag_result.success = True
+        mock_container.rag_backend.ingest_document.return_value = rag_result
+
+        with (
+            patch.object(ScraperRegistry, "get_scraper", return_value=scraper),
+            patch("app.orchestrator.pipeline.Config") as mock_config,
+        ):
+            mock_config.METADATA_MERGE_STRATEGY = "smart"
+            mock_config.RAGFLOW_DATASET_ID = "test-dataset"
+            mock_config.GOTENBERG_URL = "http://gotenberg:3156"
+            mock_config.TIKA_ENRICHMENT_ENABLED = False
+            mock_config.TIKA_SERVER_URL = "http://tika:9998"
+
+            pipeline = Pipeline(
+                scraper_name="test_scraper",
+                upload_to_ragflow=True,
+                upload_to_paperless=True,
+                container=mock_container,
+            )
+            result = pipeline.run()
+
+        # Tika should have been used for extraction
+        mock_tika.extract_text.assert_called_once()
+        mock_tika.extract_metadata.assert_called_once()
+
+        # Parser backend should NOT have been called
+        mock_container.parser_backend.parse_document.assert_not_called()
 
         assert result.parsed_count == 1
         assert result.archived_count == 1

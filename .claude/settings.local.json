@@ -12,7 +12,17 @@
       "Bash(docker compose:*)",
       "Bash(ls:*)",
       "Bash(docker ps:*)",
-      "Bash(docker cp:*)"
+      "Bash(docker cp:*)",
+      "Skill(coderabbit:review)",
+      "Bash(wc:*)",
+      "WebSearch",
+      "Bash(NODE_ENV=test python -m pytest:*)",
+      "Bash(NODE_ENV=test .venv/bin/python -m pytest:*)",
+      "Bash(DOTENV_PATH=.env.stack NODE_ENV=test .venv/bin/python -m pytest:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(NODE_ENV=test .venv/bin/python:*)"
     ]
   }
 }

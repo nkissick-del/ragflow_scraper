@@ -93,6 +93,10 @@ class Archiver:
         """
         Generate a PDF from the provided HTML content.
 
+        .. deprecated::
+            Use GotenbergClient for PDF generation instead. This method
+            relies on Selenium which is heavy and brittle for archival.
+
         Args:
             content_html: The clean HTML content (article body)
             metadata: Document metadata for the header

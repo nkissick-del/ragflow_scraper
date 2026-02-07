@@ -155,6 +155,52 @@ class TestServiceContainer:
         assert "aemo" in container._state_trackers
         assert "aer" in container._state_trackers
 
+    def test_gotenberg_client_lazy_loaded(self):
+        """Gotenberg client should be lazy-loaded on first access."""
+        reset_container()
+        container = get_container()
+        assert container._gotenberg_client is None
+
+        with patch("app.services.gotenberg_client.GotenbergClient.__init__", return_value=None):
+            client = container.gotenberg_client
+            assert container._gotenberg_client is not None
+
+            # Second access should return cached instance
+            client2 = container.gotenberg_client
+            assert client is client2
+
+    def test_tika_client_lazy_loaded(self):
+        """Tika client should be lazy-loaded on first access."""
+        reset_container()
+        container = get_container()
+        assert container._tika_client is None
+
+        with patch("app.services.tika_client.TikaClient.__init__", return_value=None):
+            client = container.tika_client
+            assert container._tika_client is not None
+
+            # Second access should return cached instance
+            client2 = container.tika_client
+            assert client is client2
+
+    def test_parser_backend_tika(self):
+        """Container should create TikaParser when PARSER_BACKEND=tika."""
+        reset_container()
+        container = get_container()
+
+        with patch("app.services.container.Config") as mock_config:
+            mock_config.PARSER_BACKEND = "tika"
+
+            with patch(
+                "app.backends.parsers.tika_parser.TikaParser"
+            ) as mock_parser_cls:
+                mock_instance = MagicMock()
+                mock_parser_cls.return_value = mock_instance
+                mock_instance.is_available.return_value = True
+
+                backend = container.parser_backend
+                assert backend is mock_instance
+
     def test_reset_clears_all_services(self):
         """Reset should clear all cached services."""
         reset_container()
@@ -176,6 +222,8 @@ class TestServiceContainer:
         assert container._settings is None
         assert container._ragflow_client is None
         assert container._flaresolverr_client is None
+        assert container._gotenberg_client is None
+        assert container._tika_client is None
         assert len(container._state_trackers) == 0
 
     def test_reset_container_global_function(self):

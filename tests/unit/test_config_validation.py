@@ -104,6 +104,20 @@ class TestConfigValidation:
                 # Should not raise
                 Config.validate()
 
+    def test_tika_validation(self):
+        """Test that PARSER_BACKEND=tika requires TIKA_SERVER_URL."""
+        with patch.object(Config, "PARSER_BACKEND", "tika"):
+            with patch.object(Config, "TIKA_SERVER_URL", ""):
+                with pytest.raises(
+                    ValueError,
+                    match="PARSER_BACKEND='tika' requires TIKA_SERVER_URL",
+                ):
+                    Config.validate()
+
+            with patch.object(Config, "TIKA_SERVER_URL", "http://localhost:9998"):
+                # Should not raise
+                Config.validate()
+
     def test_backend_constants_extraction(self):
         """Test that backend lists are extracted into constants."""
         assert hasattr(Config, "VALID_PARSER_BACKENDS")

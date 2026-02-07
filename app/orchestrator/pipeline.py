@@ -183,25 +183,27 @@ class Pipeline:
                         result.failed_count += 1
                         continue
 
-                    # Get PDF path
-                    pdf_path = doc_dict.get("pdf_path") or doc_dict.get("local_path")
-                    if not pdf_path:
+                    # Get file path (may be PDF, markdown, or other format)
+                    file_path_str = doc_dict.get("pdf_path") or doc_dict.get("local_path")
+                    if not file_path_str:
                         self.logger.warning(
-                            f"Skipping document (no PDF path): {doc_dict.get('title')}"
+                            f"Skipping document (no file path): {doc_dict.get('title')}"
                         )
                         result.failed_count += 1
                         continue
 
-                    pdf_path = Path(pdf_path)
-                    if not pdf_path.exists():
+                    file_path = Path(file_path_str)
+                    if not file_path.exists():
                         self.logger.warning(
-                            f"Skipping document (PDF not found): {pdf_path}"
+                            f"Skipping document (file not found): {file_path}"
                         )
                         result.failed_count += 1
                         continue
 
                     # Process document through modular pipeline
-                    process_result = self._process_document(doc_metadata, pdf_path)
+                    process_result = self._process_document(
+                        doc_metadata, file_path, doc_dict
+                    )
 
                     # Update counters
                     if process_result["parsed"]:
@@ -272,24 +274,45 @@ class Pipeline:
 
         return scraper.run()
 
+    # Format classification constants
+    _MARKDOWN_FORMATS = {".md", ".markdown"}
+    _OFFICE_FORMATS = {
+        ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
+        ".odt", ".ods", ".odp", ".rtf", ".csv",
+    }
+
+    def _detect_document_type(self, file_path: Path) -> str:
+        """
+        Detect document type for routing.
+
+        Returns:
+            'markdown', 'pdf', or 'office'
+        """
+        suffix = file_path.suffix.lower()
+        if suffix in self._MARKDOWN_FORMATS:
+            return "markdown"
+        if suffix == ".pdf":
+            return "pdf"
+        return "office"
+
     def _process_document(
-        self, doc_metadata: DocumentMetadata, file_path: Path
+        self,
+        doc_metadata: DocumentMetadata,
+        file_path: Path,
+        doc_dict: dict | None = None,
     ) -> dict:
         """
         Process a single document through the modular pipeline.
 
-        Flow:
-        1. Parse PDF → Markdown (using parser backend)
-        2. Merge metadata (smart strategy)
-        3. Generate canonical filename
-        4. Archive to Paperless (using archive backend)
-        5. Verify document archived (Sonarr-style)
-        6. Ingest Markdown to RAG (using RAG backend)
-        7. Delete local files (if verified)
+        Supports three document flows:
+        - 'pdf': Parse with configured parser backend → archive original PDF
+        - 'markdown': Skip parsing (already markdown) → Gotenberg MD→PDF for archive
+        - 'office': Parse with Tika → Gotenberg for PDF archive
 
         Args:
             doc_metadata: Document metadata from scraper
-            file_path: Path to PDF file
+            file_path: Path to document file (PDF, markdown, or office)
+            doc_dict: Original document dict (for extra paths like html_path)
 
         Returns:
             Dict with keys: parsed, archived, verified, rag_indexed, error
@@ -298,6 +321,7 @@ class Pipeline:
             ParserBackendError: If parsing fails (FAIL FAST)
             ArchiveError: If archiving fails (FAIL FAST)
         """
+        doc_dict = doc_dict or {}
         result = {
             "parsed": False,
             "archived": False,
@@ -306,54 +330,152 @@ class Pipeline:
             "error": None,
         }
 
-        # Step 1: Parse PDF → Markdown
         if not file_path.exists():
-            raise ParserBackendError(f"PDF file not found: {file_path}")
+            raise ParserBackendError(f"File not found: {file_path}")
 
-        self.logger.info(f"Parsing document: {file_path.name}")
-        parser = self.container.parser_backend
-        parse_result = parser.parse_document(file_path, doc_metadata)
-
-        if not parse_result.success:
-            raise ParserBackendError(
-                parse_result.error or "Parser failed without error message"
-            )
-
-        # Validate markdown_path exists before using it
-        if not parse_result.markdown_path:
-            error_msg = f"Parser '{parse_result.parser_name}' succeeded but returned no markdown_path"
-            if parse_result.error:
-                error_msg += f": {parse_result.error}"
-            raise ParserBackendError(error_msg)
-
-        # Use local variable for validated path
-        md_path = parse_result.markdown_path
-
-        result["parsed"] = True
+        doc_type = self._detect_document_type(file_path)
         self.logger.info(
-            f"Parse successful: {md_path.name} ({parse_result.parser_name})"
+            f"Processing document ({doc_type}): {file_path.name}"
         )
 
-        # Step 2: Merge metadata
+        # -- Step 1: Parse → Markdown (depends on document type) --
+        md_path: Path
+        parse_metadata: dict = {}
+        archive_pdf_path: Path | None = None  # track generated PDF for cleanup
+
+        if doc_type == "markdown":
+            # Markdown already exists — skip parsing
+            md_path = file_path
+            result["parsed"] = True
+            self.logger.info(
+                f"Markdown file detected, skipping parse: {file_path.name}"
+            )
+
+        elif doc_type == "office":
+            # Use Tika for office formats (regardless of PARSER_BACKEND setting)
+            self.logger.info(
+                f"Office file detected, parsing with Tika: {file_path.name}"
+            )
+            if not Config.TIKA_SERVER_URL:
+                raise ParserBackendError(
+                    f"Tika not configured (TIKA_SERVER_URL required) "
+                    f"for office format: {file_path.name}"
+                )
+            tika = self.container.tika_client
+            text = tika.extract_text(file_path)
+
+            if not text or not text.strip():
+                raise ParserBackendError(
+                    f"Tika returned empty text for {file_path.name}"
+                )
+
+            tika_meta = tika.extract_metadata(file_path)
+            parse_metadata = tika_meta
+
+            # Convert to markdown
+            title = (
+                tika_meta.get("title")
+                or doc_metadata.title
+                or file_path.stem
+            )
+            md_content = self._text_to_markdown(text, title=title)
+            md_path = file_path.with_suffix(".md")
+            md_path.write_text(md_content, encoding="utf-8")
+
+            result["parsed"] = True
+            self.logger.info(f"Tika parse successful: {md_path.name}")
+
+        else:
+            # PDF path — use configured parser backend
+            self.logger.info(f"Parsing document: {file_path.name}")
+            parser = self.container.parser_backend
+            parse_result = parser.parse_document(file_path, doc_metadata)
+
+            if not parse_result.success:
+                raise ParserBackendError(
+                    parse_result.error or "Parser failed without error message"
+                )
+
+            if not parse_result.markdown_path:
+                error_msg = (
+                    f"Parser '{parse_result.parser_name}' succeeded "
+                    f"but returned no markdown_path"
+                )
+                if parse_result.error:
+                    error_msg += f": {parse_result.error}"
+                raise ParserBackendError(error_msg)
+
+            md_path = parse_result.markdown_path
+            parse_metadata = parse_result.metadata or {}
+            result["parsed"] = True
+            self.logger.info(
+                f"Parse successful: {md_path.name} ({parse_result.parser_name})"
+            )
+
+        # -- Step 1b: Tika enrichment (optional, after parse, before archive) --
+        if Config.TIKA_ENRICHMENT_ENABLED and Config.TIKA_SERVER_URL:
+            # Only enrich if we haven't already extracted metadata with Tika
+            if doc_type != "office":
+                try:
+                    tika_meta = self.container.tika_client.extract_metadata(
+                        file_path
+                    )
+                    # Fill gaps only — don't overwrite existing parse metadata
+                    for key, value in tika_meta.items():
+                        if key not in parse_metadata:
+                            parse_metadata[key] = value
+                    self.logger.debug("Tika enrichment applied")
+                except Exception as e:
+                    self.logger.warning(
+                        f"Tika enrichment failed (non-fatal): {e}"
+                    )
+
+        # -- Step 2: Merge metadata --
         merged_metadata = doc_metadata.merge_parser_metadata(
-            parse_result.metadata or {},
+            parse_metadata,
             strategy=Config.METADATA_MERGE_STRATEGY,
         )
         self.logger.debug(
             f"Metadata merged using '{Config.METADATA_MERGE_STRATEGY}' strategy"
         )
 
-        # Step 3: Generate canonical filename (for archive title)
+        # -- Step 3: Generate canonical filename --
         canonical_name = generate_filename_from_template(merged_metadata)
         self.logger.debug(f"Canonical filename: {canonical_name}")
 
-        # Step 4: Archive to Paperless (if enabled)
+        # -- Step 3b: Prepare archive PDF (Gotenberg conversion for non-PDF) --
+        if doc_type == "pdf":
+            archive_file_path = file_path
+        elif self.upload_to_paperless and Config.GOTENBERG_URL:
+            try:
+                gotenberg = self.container.gotenberg_client
+                if doc_type == "markdown":
+                    pdf_bytes = gotenberg.convert_markdown_to_pdf(
+                        md_path.read_text(encoding="utf-8"),
+                        title=merged_metadata.title or "",
+                    )
+                else:  # office
+                    pdf_bytes = gotenberg.convert_to_pdf(file_path)
+
+                archive_pdf_path = file_path.with_suffix(".archive.pdf")
+                archive_pdf_path.write_bytes(pdf_bytes)
+                archive_file_path = archive_pdf_path
+                self.logger.info(
+                    f"Gotenberg PDF generated: {archive_pdf_path.name}"
+                )
+            except Exception as e:
+                self.logger.error(f"Gotenberg PDF conversion failed: {e}")
+                archive_file_path = file_path  # Fall back to original
+        else:
+            archive_file_path = file_path
+
+        # -- Step 4: Archive to Paperless (if enabled) --
         if self.upload_to_paperless:
             self.logger.info(f"Archiving to Paperless: {canonical_name}")
             archive = self.container.archive_backend
 
             archive_result = archive.archive_document(
-                file_path=file_path,
+                file_path=archive_file_path,
                 title=merged_metadata.title,
                 created=merged_metadata.publication_date,
                 correspondent=merged_metadata.organization,
@@ -371,16 +493,15 @@ class Pipeline:
                 f"Archive successful: document_id={archive_result.document_id}"
             )
 
-            # Step 5: Verify document (Sonarr-style)
+            # -- Step 5: Verify document (Sonarr-style) --
             if archive_result.document_id is None:
-                # Anomalous backend state: success=True but no document_id
                 error_msg = (
                     f"Archive backend returned success but no document_id "
-                    f"(archive_result={archive_result}). This indicates an anomalous backend state."
+                    f"(archive_result={archive_result}). "
+                    f"This indicates an anomalous backend state."
                 )
                 self.logger.error(error_msg)
                 result["verified"] = False
-                # Track this anomaly in the error field
                 if result["error"] is None:
                     result["error"] = error_msg
                 else:
@@ -388,18 +509,22 @@ class Pipeline:
             else:
                 self.logger.info("Verifying document in archive...")
                 verified = archive.verify_document(
-                    archive_result.document_id, timeout=self.verify_document_timeout
+                    archive_result.document_id,
+                    timeout=self.verify_document_timeout,
                 )
                 result["verified"] = verified
 
                 if verified:
-                    self.logger.info(f"Document verified: {archive_result.document_id}")
+                    self.logger.info(
+                        f"Document verified: {archive_result.document_id}"
+                    )
                 else:
                     self.logger.warning(
-                        f"Document verification timed out: {archive_result.document_id}"
+                        f"Document verification timed out: "
+                        f"{archive_result.document_id}"
                     )
 
-        # Step 6: Ingest to RAG (if enabled)
+        # -- Step 6: Ingest to RAG (if enabled) --
         if self.upload_to_ragflow and self.dataset_id:
             self.logger.info(f"Ingesting to RAG: {md_path.name}")
             rag = self.container.rag_backend
@@ -410,15 +535,15 @@ class Pipeline:
                 collection_id=self.dataset_id,
             )
 
-            # RAG failure is non-fatal (log and continue)
             if rag_result.success:
                 result["rag_indexed"] = True
-                self.logger.info(f"RAG ingestion successful: {rag_result.document_id}")
+                self.logger.info(
+                    f"RAG ingestion successful: {rag_result.document_id}"
+                )
             else:
                 self.logger.error(f"RAG ingestion failed: {rag_result.error}")
-                # Don't raise - RAG failure is non-fatal
 
-        # Step 7: Delete local files (if verified or RAG-only mode)
+        # -- Step 7: Delete local files (if verified or RAG-only mode) --
         should_delete = False
         if self.upload_to_paperless and result["verified"]:
             should_delete = True
@@ -428,18 +553,44 @@ class Pipeline:
         if should_delete:
             self.logger.info("Deleting local files (archived/verified)")
             try:
-                file_path.unlink()
-                if md_path and md_path.exists():
+                if file_path.exists():
+                    file_path.unlink()
+                if md_path and md_path.exists() and md_path != file_path:
                     md_path.unlink()
                 # Delete metadata JSON if exists
                 metadata_path = file_path.with_suffix(".json")
                 if metadata_path.exists():
                     metadata_path.unlink()
+                # Clean up Gotenberg-generated archive PDF
+                if archive_pdf_path and archive_pdf_path.exists():
+                    archive_pdf_path.unlink()
+                # Clean up HTML file saved by scraper
+                extra = doc_dict.get("extra", {}) or {}
+                html_path_str = extra.get("html_path")
+                if html_path_str:
+                    html_path = Path(html_path_str)
+                    if html_path.exists():
+                        html_path.unlink()
                 self.logger.debug("Local files deleted")
             except Exception as e:
                 self.logger.warning(f"Failed to delete local files: {e}")
 
         return result
+
+    @staticmethod
+    def _text_to_markdown(text: str, title: str | None = None) -> str:
+        """Convert plain text to minimal markdown with title heading."""
+        lines: list[str] = []
+        if title:
+            lines.append(f"# {title}")
+            lines.append("")
+        paragraphs = text.split("\n\n")
+        for para in paragraphs:
+            cleaned = para.strip()
+            if cleaned:
+                lines.append(cleaned)
+                lines.append("")
+        return "\n".join(lines)
 
     def _finalize_result(
         self,

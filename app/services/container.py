@@ -19,6 +19,8 @@ from app.utils import get_logger
 
 if TYPE_CHECKING:
     from app.backends import ParserBackend, ArchiveBackend, RAGBackend
+    from app.services.gotenberg_client import GotenbergClient
+    from app.services.tika_client import TikaClient
 
 
 class ServiceContainer:
@@ -54,6 +56,10 @@ class ServiceContainer:
         self._parser_backend: Optional[ParserBackend] = None
         self._archive_backend: Optional[ArchiveBackend] = None
         self._rag_backend: Optional[RAGBackend] = None
+
+        # Service client instances (lazy-loaded)
+        self._gotenberg_client: Optional[GotenbergClient] = None
+        self._tika_client: Optional[TikaClient] = None
 
         # State trackers (cached by scraper name)
         self._state_trackers: dict[str, StateTracker] = {}
@@ -174,7 +180,9 @@ class ServiceContainer:
             elif backend_name == "mineru":
                 raise ValueError(f"Parser backend '{backend_name}' not yet implemented")
             elif backend_name == "tika":
-                raise ValueError(f"Parser backend '{backend_name}' not yet implemented")
+                from app.backends.parsers.tika_parser import TikaParser
+
+                candidate = TikaParser()
             else:
                 raise ValueError(f"Unknown parser backend: {backend_name}")
 
@@ -280,6 +288,36 @@ class ServiceContainer:
             self.logger.info(f"Initialized RAG backend: {backend_name}")
         return self._rag_backend
 
+    @property
+    def gotenberg_client(self) -> "GotenbergClient":
+        """
+        Get Gotenberg client (lazy-loaded singleton).
+
+        Returns:
+            GotenbergClient instance
+        """
+        if self._gotenberg_client is None:
+            from app.services.gotenberg_client import GotenbergClient
+
+            self._gotenberg_client = GotenbergClient()
+            self.logger.debug("Initialized GotenbergClient")
+        return self._gotenberg_client
+
+    @property
+    def tika_client(self) -> "TikaClient":
+        """
+        Get Tika client (lazy-loaded singleton).
+
+        Returns:
+            TikaClient instance
+        """
+        if self._tika_client is None:
+            from app.services.tika_client import TikaClient
+
+            self._tika_client = TikaClient()
+            self.logger.debug("Initialized TikaClient")
+        return self._tika_client
+
     def reset(self):
         """
         Reset all cached service instances.
@@ -294,6 +332,8 @@ class ServiceContainer:
         self._parser_backend = None
         self._archive_backend = None
         self._rag_backend = None
+        self._gotenberg_client = None
+        self._tika_client = None
         self.logger.debug("Service container reset")
 
 

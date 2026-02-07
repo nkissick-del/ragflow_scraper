@@ -12,7 +12,7 @@ class TestScraperFixes:
     """Verification for specific fixes in mixins and models."""
 
     def test_pdf_path_assignment_post_success(self, tmp_path):
-        """Verify pdf_path is only assigned after successful file operations."""
+        """Verify extra.html_path is only assigned after successful file operations."""
 
         class TestScraper(MetadataIOMixin):
             name = "test"
@@ -22,20 +22,15 @@ class TestScraperFixes:
         scraper = TestScraper()
         article = DocumentMetadata(url="u", title="t", filename="f.md")
 
-        # Mock archiver to return a path
-        with patch("app.services.archiver.Archiver") as mock_archiver_cls:
-            mock_archiver = mock_archiver_cls.return_value
-            mock_archiver.generate_pdf.return_value = Path("test.pdf")
+        # Mock file writing to fail (write_bytes for the markdown temp file)
+        with patch(
+            "pathlib.Path.write_bytes", side_effect=Exception("Write failed")
+        ):
+            with patch("app.scrapers.mixins.ensure_dir", return_value=tmp_path):
+                scraper._save_article(article, "content", html_content="<html>")
 
-            # Mock file writing to fail
-            with patch(
-                "pathlib.Path.write_bytes", side_effect=Exception("Write failed")
-            ):
-                with patch("app.scrapers.mixins.ensure_dir", return_value=tmp_path):
-                    scraper._save_article(article, "content", html_content="<html>")
-
-                # article.pdf_path should NOT be set because we failed before the mutation block
-                assert article.pdf_path is None
+            # extra.html_path should NOT be set because we failed before the mutation block
+            assert article.extra.get("html_path") is None
 
     def test_mixin_super_init_calls(self):
         """Verify mixins call super().__init__()."""

@@ -100,6 +100,40 @@ def docling_serve_alive(docling_serve_url):
     pytest.skip("docling-serve not reachable")
 
 
+@pytest.fixture(scope="session")
+def gotenberg_url():
+    return os.environ.get("GOTENBERG_URL", "http://192.168.1.101:3156")
+
+
+@pytest.fixture(scope="session")
+def gotenberg_alive(gotenberg_url):
+    """Skip if Gotenberg is not reachable."""
+    try:
+        resp = requests.get(f"{gotenberg_url}/health", timeout=10)
+        if resp.ok:
+            return True
+    except Exception:
+        pass
+    pytest.skip("Gotenberg not reachable")
+
+
+@pytest.fixture(scope="session")
+def tika_url():
+    return os.environ.get("TIKA_SERVER_URL", "http://192.168.1.101:9998")
+
+
+@pytest.fixture(scope="session")
+def tika_alive(tika_url):
+    """Skip if Apache Tika is not reachable."""
+    try:
+        resp = requests.get(f"{tika_url}/tika", timeout=10)
+        if resp.ok:
+            return True
+    except Exception:
+        pass
+    pytest.skip("Apache Tika not reachable")
+
+
 # ---------------------------------------------------------------------------
 # Test data fixtures
 # ---------------------------------------------------------------------------
@@ -163,3 +197,15 @@ def test_markdown(tmp_path):
         encoding="utf-8",
     )
     return md_path
+
+
+@pytest.fixture
+def test_html(tmp_path):
+    """Create a test HTML file."""
+    html_path = tmp_path / "test_document.html"
+    html_path.write_text(
+        "<!DOCTYPE html>\n<html>\n<head><title>Test</title></head>\n"
+        "<body><h1>Test Document</h1><p>Stack test content.</p></body>\n</html>",
+        encoding="utf-8",
+    )
+    return html_path

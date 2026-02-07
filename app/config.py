@@ -162,6 +162,25 @@ class Config:
         max_val=600,
     )
 
+    # Gotenberg (document → PDF conversion)
+    GOTENBERG_URL = os.getenv("GOTENBERG_URL", "")
+    GOTENBERG_TIMEOUT = _parse_timeout(
+        os.getenv("GOTENBERG_TIMEOUT", "60"),
+        "GOTENBERG_TIMEOUT",
+        min_val=1,
+        max_val=600,
+    )
+
+    # Apache Tika (text + metadata extraction)
+    TIKA_SERVER_URL = os.getenv("TIKA_SERVER_URL", "")
+    TIKA_TIMEOUT = _parse_timeout(
+        os.getenv("TIKA_TIMEOUT", "120"),
+        "TIKA_TIMEOUT",
+        min_val=1,
+        max_val=600,
+    )
+    TIKA_ENRICHMENT_ENABLED = os.getenv("TIKA_ENRICHMENT_ENABLED", "false").lower() == "true"
+
     # Valid values for backends and strategies
     VALID_PARSER_BACKENDS = ("docling", "docling_serve", "mineru", "tika")
     VALID_ARCHIVE_BACKENDS = ("paperless", "s3", "local")
@@ -259,6 +278,12 @@ class Config:
             if not cls.DOCLING_SERVE_URL:
                 raise ValueError(
                     "Invalid Config: PARSER_BACKEND='docling_serve' requires DOCLING_SERVE_URL"
+                )
+
+        if cls.PARSER_BACKEND == "tika":
+            if not cls.TIKA_SERVER_URL:
+                raise ValueError(
+                    "Invalid Config: PARSER_BACKEND='tika' requires TIKA_SERVER_URL"
                 )
 
         if cls.ARCHIVE_BACKEND == "paperless":

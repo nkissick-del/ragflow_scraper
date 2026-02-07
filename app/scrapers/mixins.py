@@ -132,21 +132,16 @@ class MetadataIOMixin:
 
         output_dir = ensure_dir(Config.DOWNLOAD_DIR / self.name)
 
-        # Determine if we should generate a PDF archive
-        # We do this if html_content is provided (Archive Path)
-        temp_pdf_path = None
+        # Save raw HTML for pipeline Gotenberg conversion (replaces Selenium archiver)
+        temp_html_path = None
         if html_content:
             try:
-                from app.services.archiver import Archiver
-
-                # Use existing driver if available (from WebDriverLifecycleMixin)
-                driver = getattr(self, "driver", None)
-                archiver = Archiver(driver=driver)
-
-                temp_pdf_path = archiver.generate_pdf(html_content, article, output_dir)
+                safe_fn = sanitize_filename(article.filename)
+                temp_html_path = output_dir / f"{safe_fn}.html"
+                temp_html_path.write_text(html_content, encoding="utf-8")
             except Exception as e:
-                self.logger.error(f"Archiver failed for '{article.title}': {e}")
-                # Don't fail the whole save, just log error for archive path
+                self.logger.error(f"Failed to save HTML for '{article.title}': {e}")
+                temp_html_path = None
 
         temp_md_path = None
         temp_json_path = None
@@ -198,8 +193,10 @@ class MetadataIOMixin:
             article.local_path = str(md_path)
             article.file_size = file_size
             article.hash = file_hash
-            if temp_pdf_path:
-                article.pdf_path = str(temp_pdf_path)
+            if temp_html_path:
+                if not hasattr(article, "extra") or article.extra is None:
+                    article.extra = {}
+                article.extra["html_path"] = str(temp_html_path)
 
             self.logger.info(f"Saved: {md_path.name}")
             return str(md_path)
