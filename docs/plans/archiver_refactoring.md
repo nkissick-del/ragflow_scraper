@@ -1,5 +1,9 @@
 # Refactoring Plan: Replace Selenium Archiver with Gotenberg
 
+**Status: COMPLETED (2026-02-07)**
+
+All steps have been implemented. The Selenium-based `Archiver` has been fully replaced by `GotenbergClient`. The old `archiver.py` has been deleted and `bleach` removed as a dependency.
+
 ## Context
 Currently, the application uses a Selenium-based `Archiver` service (`app/services/archiver.py`) to generate archival-quality PDFs.
 1.  **Scraping**: Content is scraped and saved as **Markdown** (`.md`) and JSON metadata.
@@ -31,7 +35,7 @@ Gotenberg is a Docker-based API for converting documents to PDF. It supports con
 4.  **Stability**: No more managing zombie Chrome processes or driver version mismatches in the main app.
 
 ## Implementation Steps
-1.  **Verify Gotenberg**: Ensure a Gotenberg container is available in the stack.
-2.  **Create Client**: Implement a simple `GotenbergClient` or update `Archiver` to post to Gotenberg.
-3.  **Update Pipeline**: modify `app/orchestrator/pipeline.py` to use the new PDF generation method.
-4.  **Cleanup**: Deprecate/remove the Selenium logic from `Archiver`.
+1.  [x] **Verify Gotenberg**: Ensure a Gotenberg container is available in the stack.
+2.  [x] **Create Client**: Implement a simple `GotenbergClient` or update `Archiver` to post to Gotenberg.
+3.  [x] **Update Pipeline**: modify `app/orchestrator/pipeline.py` to use the new PDF generation method.
+4.  [x] **Cleanup**: Deprecate/remove the Selenium logic from `Archiver`.

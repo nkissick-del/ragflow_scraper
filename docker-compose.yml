@@ -43,8 +43,12 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # Guardian API
       - GUARDIAN_API_KEY=${GUARDIAN_API_KEY:-}
+      # Gotenberg (document → PDF conversion for archiving)
+      - GOTENBERG_URL=http://gotenberg:3000
     depends_on:
       chrome:
+        condition: service_healthy
+      gotenberg:
         condition: service_healthy
     networks:
       - scraper-net
@@ -60,6 +64,7 @@ services:
       retries: 3
       start_period: 10s
 
+  # Browser for web scraping (not used for PDF generation — see gotenberg)
   chrome:
     image: seleniarm/standalone-chromium:120.0
     platform: linux/arm64
@@ -80,6 +85,28 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
       interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: pdf-scraper-gotenberg
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${GOTENBERG_PORT:-3156}:3000"
+    networks:
+      - scraper-net
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.50"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s

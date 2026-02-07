@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover – fallback for envs without markdown l
         return "\n".join(html_lines)
 
 
-# Clean CSS for PDF rendering (shared with Archiver)
+# Clean CSS for PDF rendering
 READER_CSS = """
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -146,7 +146,7 @@ class GotenbergClient:
         Args:
             md_content: Markdown text
             title: Document title
-            css: Optional CSS override (defaults to Archiver.READER_CSS)
+            css: Optional CSS override (defaults to READER_CSS)
 
         Returns:
             PDF file bytes

@@ -1,402 +1,199 @@
-# Prioritized TODO (2026-01-08)
+# TODO — Prioritized Roadmap
 
-Legend: [Code] coding-only; [Local] requires local docker/compose; [External] needs RAGFlow/FlareSolverr or other outside services.
+Last updated: 2026-02-07
 
-## 0) Completed
+---
 
-- **Phase 1 (2026-01-07):** All critical refactors complete with test coverage.
-  - ✅ ServiceContainer: property-only API (removed all backward-compatible getters).
-  - ✅ BaseScraper: mixins extracted (IncrementalStateMixin, ExclusionRulesMixin, WebDriverLifecycleMixin, CloudflareBypassMixin, MetadataIOMixin, HttpDownloadMixin).
-  - ✅ Data models: DocumentMetadata, ExcludedDocument, ScraperResult consolidated in app/scrapers/models.py.
-  - ✅ All 10 scrapers: migrated to property-based container access, updated imports for models.
-  - ✅ Blueprint modularization: auth, scrapers, settings, metrics_logs, ragflow_api, api_scrapers split from monolithic routes.py.
-  - ✅ JobQueue: async job management with per-scraper exclusivity, cancel/status/preview support.
-  - ✅ Test coverage: **117 tests passing** (test_job_queue.py with 12 tests for JobQueue, test_scraper_mixins.py with 18 tests for mixin behaviors, all existing tests updated to new structure).
-- **Phase 2 (2026-01-08):** RAGFlow ingestion workflow & routes.py consolidation complete with integration tests.
-  - ✅ Phase 2.1: RAGFlowIngestionWorkflow extracted with full upload/poll/metadata workflow, error handling, and 14 unit tests.
-  - ✅ Phase 2.2: routes.py deleted - all routes migrated to blueprints (scrapers, settings, metrics_logs, api_scrapers, ragflow_api, auth).
-  - ✅ Phase 2.3: Integration test coverage - 4 web integration tests for blueprint registration and app creation.
-  - ✅ Test coverage: **139 tests passing** (135 baseline + 4 new web integration tests).
-- **Phase 3 (2026-01-08):** Documentation & Enablement complete - operations & developer docs delivered.
-  - ✅ Track A (Operations): 4 documents created
-    - ✅ DEPLOYMENT_GUIDE.md (500+ lines) - Prerequisites, environment config, compose profiles, setup, connectivity, troubleshooting
-    - ✅ RUNBOOK_COMMON_OPERATIONS.md (450+ lines) - Start/stop, running scrapers, monitoring, backup, scaling, updates, emergency procedures
-    - ✅ MIGRATION_AND_STATE_REPAIR.md (400+ lines) - State schema, operations, metadata management, common scenarios
-    - ✅ README.md updates - Deployment section, operations links, enhanced project structure
-  - ✅ Track B (Developer): 3 documents created
-    - ✅ DEVELOPER_GUIDE.md (350+ lines) - Setup, structure, adding scrapers, best practices, debugging, testing
-    - ✅ EXAMPLE_SCRAPER_WALKTHROUGH.md - Line-by-line AEMO scraper explanation with patterns
-    - ✅ CLAUDE.md enhancements - Common tasks section with 5 task templates, documentation links
-  - ✅ Total: 7 documents delivered, ~1,700 lines, 100% cross-referenced
-  - ✅ Test coverage: **140 tests passing** (no code changes in Phase 3, documentation only)
+## 1. Settings UI — Close Configuration Gaps
 
-## 0.5) Phase 1.5 - Integration Test Coverage (COMPLETE) [Code]
+**Priority:** HIGH | **Effort:** 6-10h | **Type:** [Code]
 
-- ✅ Web integration tests created (test_web_integration.py) covering:
-  - App creation and configuration
-  - Blueprint registration verification
-  - Root route rendering
-  - Static file configuration
-- Note: Detailed blueprint route testing deferred - requires complex mocking of container/job_queue dependencies.
-
-## 1) Critical Refactors (COMPLETE) [Code]
-
-**Status:** Phase 2 complete! All major refactorings done.
-
-- ✅ ragflow_client.py: RAGFlowIngestionWorkflow extracted with 14 unit tests covering upload/poll/metadata workflows.
-- ✅ base_scraper.py: Mixins extracted and wired; data classes moved to models.py.
-- ✅ routes.py: Deleted - all routes migrated to 6 blueprints (auth, scrapers, settings, metrics_logs, ragflow_api, api_scrapers).
-- ✅ container wiring: ServiceContainer consolidated with property-only API.
-
-## 2) Ops & Deployment Readiness ✅ COMPLETE [Local/External]
-
-**Status:** Phase 3 Track A complete - all operations documentation delivered.
-
-- ✅ DEPLOYMENT_GUIDE.md: Environment setup, platform notes, .env configuration, compose profiles (base/full/flaresolverr-only), connectivity tests, deployment scenarios, troubleshooting matrix, production checklist
-- ✅ RUNBOOK_COMMON_OPERATIONS.md: Common operations (start/stop/scale/monitor/backup/recover/update), emergency procedures, quick reference commands
-- ✅ MIGRATION_AND_STATE_REPAIR.md: State file schema/paths, migrate/repair/reset/export-import operations, metadata management, common scenarios, troubleshooting
-- ✅ README.md updates: Deployment section with link to guide, operations section with RUNBOOK link, enhanced project structure
-
-## 3) Contributor Enablement ✅ COMPLETE [Code]
-
-**Status:** Phase 3 Track B complete - all developer documentation delivered.
-
-- ✅ DEVELOPER_GUIDE.md: Project structure, add-scraper workflow (5 steps), debugging with Chrome VNC/logs/state inspection/pdb, error-handling patterns, testing approach, code standards, service container usage
-- ✅ EXAMPLE_SCRAPER_WALKTHROUGH.md: Line-by-line AEMO scraper walkthrough covering class definition, initialization, scrape() method, pagination, document extraction, metadata, state management, error handling, testing, key takeaways (7 best practices), common patterns (5 code snippets)
-- ✅ CLAUDE.md enhancements: "Common Tasks for AI Assistants" section with 5 task templates (adding scraper, debugging, web UI, RAGFlow, documentation lookup), updated references with all Phase 3 docs
-
-## 4) External/RAGFlow-Dependent Validation [External]
-
-Status: Awaiting live services; keep after refactors unless blocking release.
-
-- RAGFlow metadata end-to-end validation (API assumptions, status polling, hash/dedup, flat meta) per docs/ragflow_scraper_audit.md.
-- FlareSolverr/Cloudflare bypass observability (success-rate metrics, timeouts, fallback rules) per audit doc.
-- Production security hardening (TLS termination, UI auth, secrets rotation) validated against live stack.
-
-## Quick commands (when services are available)
-
-- RAGFlow health: `curl -sS --fail --connect-timeout 5 --max-time 10 http://localhost:9380/`
-- Auth check: `curl -sS --fail -H "Authorization: Bearer $RAGFLOW_API_KEY" http://localhost:9380/api/v1/datasets`
-- Scraper dry-run example: `docker compose exec scraper python scripts/run_scraper.py --scraper aemo --max-pages 1 --dry-run`
-
-## 4) Phase 4: Pre-Deployment Readiness [Code/Local/External]
-
-**Status:** 🚧 In Progress  
-**Goal:** Complete critical features and validation before production deployment  
-**Target:** AnythingLLM as primary RAG backend (RAGFlow deferred)
-
-### Phase 4.1: AnythingLLM Implementation [Code] ✅ COMPLETE
-
-**Priority:** BLOCKER - ~~Currently stub implementation~~ **IMPLEMENTED & VALIDATED**
+The Phase 4.4 config audit found only 40% of user-facing settings are exposed in the Web UI, with 12 specific gaps. Operators currently need to edit `.env` and restart to change backend selection, timeouts, or service URLs.
 
 **Tasks:**
-- [x] Research AnythingLLM API documentation
-  - Document upload endpoints
-  - Workspace/collection management
-  - Authentication patterns
-  - Metadata support
-- [x] Implement `AnythingLLMBackend.test_connection()`
-  - Health check endpoint
-  - Workspace validation
-- [x] Implement `AnythingLLMBackend.ingest_document()`
-  - Document upload workflow
-  - Metadata mapping
-  - Workspace selection
-- [x] Create `AnythingLLMClient` service
-  - HTTP adapter with Bearer auth
-  - Multipart file upload
-  - Retry logic
-- [x] Add unit tests
-  - Client tests (17 tests)
-  - Backend tests (22 tests)
-  - Container integration tests (2 tests)
-- [x] Add integration tests (mocked API)
-  - Created using `responses` library
-- [x] Manual testing with live AnythingLLM instance
-  - ✅ Connection test (successful)
-  - ✅ Document upload (successful with doc ID)
-  - ✅ Metadata verification (working)
-  - ✅ Workspace assignment (working)
-  - See [walkthrough.md](../../../.gemini/antigravity/brain/ca76dfe9-5ce0-4f09-a2f6-8db2f54a5b5a/walkthrough.md) for details
+- [ ] Backend selection dropdowns (PARSER_BACKEND, ARCHIVE_BACKEND, RAG_BACKEND)
+- [ ] Service URL configuration (DOCLING_SERVE_URL, TIKA_SERVER_URL, GOTENBERG_URL)
+- [ ] Timeout configuration (parser, archive, Gotenberg timeouts)
+- [ ] Metadata merge strategy selector
+- [ ] Filename template editor with preview
+- [ ] Connection test buttons for each service (pattern exists for RAGFlow/FlareSolverr)
+- [ ] Persist settings changes (currently settings.json handles per-scraper; extend to global config)
 
-**Files:**
-- ✅ `app/services/anythingllm_client.py` (NEW - 281 lines)
-- ✅ `app/backends/rag/anythingllm_adapter.py` (UPDATED - 169 lines)
-- ✅ `tests/unit/test_anythingllm_client.py` (NEW - 307 lines)
-- ✅ `tests/unit/test_anythingllm_backend.py` (NEW - 277 lines)
-- ✅ `tests/integration/test_anythingllm_integration.py` (NEW - 309 lines)
-
-**Test Results:** ✅ 41/41 unit tests passing
-
-**Estimated Effort:** 8-12h  
-**Actual Effort:** ~5-6h  
-**Completed:** 2026-02-05
+**Reference:** config_audit.md (from Phase 4.4)
 
 ---
 
-### Phase 4.2: Paperless Metadata Enhancement [Code] ✅ COMPLETE
+## 2. Paperless Custom Fields
 
-**Priority:** BLOCKER - ~~Metadata upload currently incomplete~~ **COMPLETE & VALIDATED**
+**Priority:** MEDIUM | **Effort:** 3-5h | **Type:** [Code]
+
+Basic correspondent/tag mapping is complete (Phase 4.2), but the [paperless_metadata.md](plans/paperless_metadata.md) plan includes structured custom fields that unlock rich search and filtering in Paperless.
+
+**What exists today:**
+- Correspondent and tag ID lookup with caching
+- `post_document()` resolves string names→integer IDs
+
+**What's missing (Phase 2-3 of paperless_metadata plan):**
+- [ ] Custom field mapping: Original URL, Scraped Date, Page Count, File Size, Source Scraper
+- [ ] `_get_custom_fields()` method to discover Paperless custom field IDs
+- [ ] Map `DocumentMetadata` fields to Paperless custom field values during upload
+- [ ] Unit tests for custom field resolution
+- [ ] Document required Paperless custom field setup
+
+**Value:** Enables filtering documents by source URL, scrape date, page count — directly useful for dedup auditing and provenance tracking.
+
+**Reference:** [docs/plans/paperless_metadata.md](plans/paperless_metadata.md) (Phases 2-3)
+
+---
+
+## 3. Tika Metadata Enrichment Pipeline
+
+**Priority:** MEDIUM | **Effort:** 3-4h | **Type:** [Code]
+
+Tika is implemented as a standalone parser backend, but the [tika_integration.md](plans/tika_integration.md) plan envisions it as a metadata *enrichment* layer that runs *alongside* Docling. The `TIKA_ENRICHMENT_ENABLED` config var already exists but the enrichment pipeline isn't wired.
+
+**Use case:** Docling extracts semantic metadata (title, headings, structure) but misses physical file metadata (creation date, author from PDF properties, page count, language). Tika fills those gaps.
 
 **Tasks:**
-- [x] Implement correspondent ID lookup
-  - `get_or_create_correspondent(name: str) -> int`
-  - Cache lookups to reduce API calls
-  - Handle creation if not exists
-- [x] Implement tag ID lookup
-  - `get_or_create_tags(names: list[str]) -> list[int]`
-  - Cache tag mappings
-  - Internal batch lookup with pagination
-- [x] Update `post_document()` to use ID lookups
-  - Automatically resolves string names → integer IDs
-  - Graceful degradation if lookup fails
-- [x] Add unit tests (24 passing)
-  - Caching, pagination, creation, workflow
-- [x] Remove TODO comments
+- [ ] Wire Tika enrichment step in `pipeline.py` — after Docling parse, optionally run Tika metadata extraction
+- [ ] Merge Tika metadata into existing metadata using fill-missing strategy (don't override Docling/scraper data)
+- [ ] Gate behind `TIKA_ENRICHMENT_ENABLED` flag (default: false)
+- [ ] Unit tests for enrichment merge logic
+- [ ] Add to Settings UI (toggle + Tika URL)
 
-**Files:**
-- ✅ `app/services/paperless_client.py` (UPDATED - 415 lines)
-- ✅ `tests/unit/test_paperless_client.py` (NEW - 356 lines)
-- ✅ `.env.test` (NEW) - fixes local test collection
-
-**Completed:** 2026-02-06
+**Reference:** [docs/plans/tika_integration.md](plans/tika_integration.md)
 
 ---
 
-### Phase 4.3: Jinja2 Filename Templating [Code] ✅ COMPLETE
+## 4. Backend Registry Pattern
 
-**Priority:** BLOCKER - **IMPLEMENTED & VALIDATED**
+**Priority:** MEDIUM | **Effort:** 2-3h | **Type:** [Code]
+
+Backend selection in `container.py` uses hardcoded `if/elif` chains. A registry pattern would make adding new backends a single-line registration instead of modifying container code.
 
 **Tasks:**
-- [x] Verify `jinja2` in requirements.txt (already in constraints.txt)
-- [x] Add filename template configuration
-  - [x] Add `FILENAME_TEMPLATE` to Config
-  - [x] Default: `"{{ date_prefix }}_{{ org }}_{{ title | slugify }}{{ extension }}"`
-  - [x] Validate template on startup
-- [x] Implement custom Jinja2 filters
-  - [x] `slugify` - Convert to filesystem-safe names
-  - [x] `shorten(n)` - Truncate long titles
-  - [x] `secure_filename` - Remove dangerous characters
-- [x] Update `generate_filename_from_template()`
-  - [x] Use Jinja2 rendering
-  - [x] Handle template errors gracefully
-  - [x] Add template variable documentation
-- [x] Add unit tests
-  - [x] Test various template patterns
-  - [x] Test filter functions
-  - [x] Test error handling
-- [x] Update documentation
-  - [x] Document available template variables
-  - [x] Provide example templates
-  - [x] Add customization guide
+- [ ] Create `BackendRegistry` with `register(name, factory_fn)` and `get(name)` methods
+- [ ] Register existing backends (docling, docling_serve, tika, paperless, ragflow, anythingllm)
+- [ ] Replace `if/elif` chains in `container.py` with registry lookups
+- [ ] Allow third-party backend registration via entry points or config (optional)
 
-**Reference:**
-- [docs/plans/naming_strategy.md](docs/plans/naming_strategy.md)
-- [docs/plans/consolidated_architecture.md](docs/plans/consolidated_architecture.md#L60-L64)
-- [app/utils/file_utils.py](app/utils/file_utils.py)
-- [walkthrough.md](../../../.gemini/antigravity/brain/32c63d9a-c80a-4ced-b617-986bf81875ac/walkthrough.md) (Feb 6)
-
-**Completed:** 2026-02-06
+**Value:** Clean architecture, easier to extend, removes container.py as a bottleneck for new backends.
 
 ---
 
-### Phase 4.4: Testing & Quality Assurance [Code/Local] ✅ COMPLETE
+## 5. CI/CD Pipeline
 
-**Priority:** HIGH - Ensure stability before deployment
+**Priority:** MEDIUM | **Effort:** 4-6h | **Type:** [Code]
+
+No automated testing or build pipeline exists. With 438+ tests, this is low-hanging fruit for preventing regressions.
 
 **Tasks:**
-- [x] Fix test collection errors (2 failing)
-  - [x] Identify problematic test files
-  - [x] Fix import/dependency issues
-  - [x] Verify all 158 tests collect successfully (fixed via `.env.test`)
-- [x] Create `.env.test` for local testing
-  - [x] Override Docker-specific paths
-  - [x] Document test environment setup
-  - [x] Add to .gitignore
-- [x] Expand integration test coverage
-  - [x] E2E pipeline test (happy path) - `test_pipeline_e2e.py` (7 tests)
-  - [x] AnythingLLM integration test (already existed)
-  - [x] Paperless integration test - `test_paperless_integration.py` (12 tests)
-  - [x] Docling parser integration test - `test_docling_integration.py` (11 tests)
-- [x] Frontend Configuration Parity
-  - [x] Audit all environment variables in `app/config.py`
-  - [x] Ensure all relevant user-facing settings are manageable via Web UI (Settings page)
-  - [x] Validate setting persistence/sync between UI and Backend
-  - [x] **Findings:** 40% UI coverage, 12 gaps identified (see config_audit.md)
-- [ ] Add performance benchmarks (optional - DEFERRED)
-  - PDF parsing benchmark
-  - Concurrent download benchmark
-  - Metadata merge benchmark
-
-**Reference:** [walkthrough.md](../../../.gemini/antigravity/brain/73e33f61-3838-4e58-b0fc-eeaec1244b60/walkthrough.md)
-
-**Completed:** 2026-02-07
-
-**Actual Effort:** ~6 hours
-
-**Deliverables:**
-- ✅ 3 new integration test files (30+ tests)
-- ✅ Configuration audit report with recommendations
-- ✅ Test syntax validated (Docker required for execution)
-
-
+- [ ] GitHub Actions workflow: lint + unit tests on PR
+- [ ] Integration test job (mocked services, no external deps)
+- [ ] Security scanning (`pip-audit` or `safety`)
+- [ ] Docker image build + push on merge to main
+- [ ] Badge in README for build status
 
 ---
 
-### Phase 4.5: Production Validation [Local/External] ✅ COMPLETE
+## 6. Security Hardening
 
-**Priority:** HIGH - Validate with real services before deployment
+**Priority:** MEDIUM | **Effort:** 3-5h | **Type:** [Local/External]
+
+Deferred from Phase 4.5. Basic auth exists but production security hasn't been validated.
 
 **Tasks:**
-- [x] **Stack Tests** (Test against real services on Unraid)
-  - [x] Create stack test suite (`tests/stack/`) — 4 test files, conftest, fixtures
-  - [x] Add pytest markers (`@pytest.mark.stack`)
-  - [x] Test Paperless integration with real API (6 tests)
-    - ✅ Health check, list correspondents/tags
-    - ✅ Create & cleanup correspondent/tag
-    - ✅ Full document lifecycle: upload → poll task → verify → delete
-  - [x] Test AnythingLLM integration with real API (3 tests)
-    - ✅ Connection test, list workspaces, document upload with cleanup
-  - [x] Test Docling parser with real PDFs (4 tests)
-    - ✅ Service availability, supported formats, PDF parsing, error handling
-  - [x] E2E pipeline with real stack (2 tests)
-    - ✅ Parse + archive pipeline (docling-serve → Paperless)
-    - ✅ Full pipeline: parse → archive → RAG (all 3 services)
-  - [x] Update Makefile with `test-stack` target
-  - [x] Created `.env.stack` (gitignored) for service credentials
-- [x] Test with live AnythingLLM instance (Phase 4.1)
-  - ✅ Verify document upload
-  - ✅ Verify metadata handling
-  - ✅ Test workspace management
-  - Validate search/retrieval (deferred - use AnythingLLM UI)
-- [x] Manual validation with live Paperless-ngx
-  - ✅ Correspondent/tag creation validated via stack tests
-  - ✅ Document archiving workflow validated (upload → verify → cleanup)
-  - ✅ Verification polling validated (task list endpoint with pagination)
-  - ✅ Metadata accuracy validated (title, correspondent, tags)
-- [ ] Security validation (DEFERRED - post-deployment)
-  - Test TLS/HTTPS with reverse proxy
-  - Verify basic auth works
-  - Test CSRF protection
-  - Validate security headers
-- [ ] Backup/restore procedures (DEFERRED - post-deployment)
-  - Test state file backup
-  - Test metadata backup
-  - Test restore process
-
-**Additional Deliverables:**
-- ✅ **New backend: `DoclingServeParser`** — HTTP REST parser for docling-serve (173 lines)
-- ✅ **Bug fix: `is_available()` on base classes** — Added to `ArchiveBackend` and `RAGBackend`
-- ✅ **Bug fix: Paperless task endpoint** — Fixed `get_task_status()` to use list endpoint with pagination
-- ✅ **15 stack tests passing** (all services on Unraid 192.168.1.101)
-- ✅ **15 unit tests for DoclingServeParser** (`tests/unit/test_docling_serve_parser.py`)
-- ✅ **CodeRabbit review: clean pass** (0 findings on second review)
-
-**Completed:** 2026-02-07
-
-**Actual Effort:** ~8 hours
+- [ ] TLS termination via reverse proxy (Caddy/Traefik config template)
+- [ ] Verify basic auth works end-to-end with HTMX
+- [ ] CSRF protection audit (Flask-WTF or manual tokens)
+- [ ] Security headers (CSP, X-Frame-Options, etc.)
+- [ ] Secrets rotation documentation
 
 ---
 
-## Phase 4 Summary
+## 7. New Scrapers
 
-**Total Estimated Effort:** 29-42 hours (4-6 days)
+**Priority:** LOW | **Effort:** 2-3h each | **Type:** [Code]
 
-**Critical Path:**
-1. ✅ AnythingLLM implementation (8-12h) - **COMPLETE** (2026-02-05)
-2. ✅ Paperless metadata (4-6h) - **COMPLETE** (2026-02-06)
-3. ✅ Jinja2 templating (3-4h) - **COMPLETE** (2026-02-06)
-4. ✅ Testing (8-12h) - **COMPLETE** (2026-02-07)
-5. ✅ Production validation (~8h) - **COMPLETE** (2026-02-07)
+The scraper pattern is well-established (9 scrapers, documented walkthrough). Adding new sources is straightforward.
 
-**Target Completion Criteria:**
-- [x] AnythingLLM backend fully functional ✅
-- [x] Validated with live AnythingLLM instance ✅
-- [x] Paperless metadata upload working (correspondents + tags) ✅
-- [x] Jinja2 filename templating implemented ✅
-- [x] 156/186 tests passing (83.9%) ✅
-- [x] Integration tests for critical paths ✅
-- [x] E2E pipeline test (scraper → parse → archive → RAG) ✅
-- [x] Validated with live Paperless instance ✅
-- [ ] Security hardening verified (deferred)
-
-**Current Status:**
-- ✅ Phase 4.1 COMPLETE - AnythingLLM backend validated
-- ✅ Phase 4.2 COMPLETE - Paperless metadata resolved via ID lookups
-- ✅ Phase 4.3 COMPLETE - Jinja2 filename templating implemented
-- ✅ Phase 4.4 COMPLETE - Integration tests expanded, configuration audit done
-- ✅ Phase 4.5 COMPLETE - Stack tests against live services, DoclingServeParser, bug fixes
-- ✅ 93 new tests added (30 integration + 33 unit + 15 stack + 15 DoclingServeParser unit)
-- ✅ 216 total tests (123 baseline + 93 new)
-- ✅ Stack tests: 15/15 passing against live Unraid services
-- ✅ Test collection errors fixed via `.env.test`
+**Identified targets:**
+- [ ] blog.energy-insights.com.au (per [websites_to_add.md](plans/websites_to_add.md))
 
 ---
 
-## 5) Future Enhancements (Post-Deployment) [Code/External]
+## 8. Additional Backends (As Needed)
 
-**Status:** Deferred - Not required for initial deployment
+**Priority:** LOW | **Effort:** varies | **Type:** [Code]
 
-### Optional Improvements
+Only implement when there's a concrete use case. Stubs exist in container.py for S3 and local archive.
 
-**Gotenberg Archiver Refactoring** 🟢 LOW
-- Replace Selenium-based PDF generation with Gotenberg
-- Unified Markdown source for RAG and Archive
-- Simpler deployment (no Chrome dependency for archiving)
-- Reference: [docs/plans/archiver_refactoring.md](docs/plans/archiver_refactoring.md)
-
-**Apache Tika Integration** 🟢 LOW
-- Enhanced metadata extraction (page count, language, creation date)
-- Fallback for missing web metadata
-- Better search capabilities
-- Reference: [docs/plans/tika_integration.md](docs/plans/tika_integration.md)
-
-**Additional Parser Backends** 🟢 LOW
-- MinerU parser implementation
-- Tika parser implementation
-- Parser backend registry pattern
-
-**Additional Archive Backends** 🟢 LOW
-- S3 storage backend
-- Local filesystem backend
-- Multi-archive support
-
-**CI/CD Pipeline** 🟢 LOW
-- GitHub Actions workflow
-- Automated testing on PR
-- Security scanning (pip-audit)
-- Docker image builds
-
-**Monitoring & Observability** 🟢 LOW
-- Prometheus metrics endpoint
-- Grafana dashboard template
-- Health check endpoints
-- Alerting rules
+- [ ] **Local filesystem archive** — useful for development/testing without Paperless
+- [ ] **S3 archive** — cloud storage for large-scale deployments
+- [ ] **MinerU parser** — alternative to Docling for specific document types
 
 ---
 
-## Next Steps
+## 9. Backup & Restore Procedures
 
-**Phase 4 COMPLETE** — All critical pre-deployment tasks done.
+**Priority:** LOW | **Effort:** 2-3h | **Type:** [Local]
 
-**Remaining (Post-Deployment / Optional):**
-1. 🟡 Security validation (TLS, auth, CSRF, headers) — deferred from Phase 4.5
-2. 🟡 Backup/restore procedures — deferred from Phase 4.5
-3. 🟢 Implement backend selection UI (9-13 hours) - See config_audit.md
-4. 🟢 Add performance benchmarks (deferred from 4.4)
+Deferred from Phase 4.5. State files and scraper configs are the primary data to protect.
 
-**Target:** Ready for production deployment
+**Tasks:**
+- [ ] Document state file backup/restore procedure
+- [ ] Script for exporting/importing scraper state
+- [ ] Validate restore from backup works end-to-end
 
 ---
 
-## Notes
+## Completed Work
 
-- Testing harness: 216+ tests (123 baseline + 93 new in Phase 4)
-- Stack tests: 15 tests against live Unraid services (Paperless, AnythingLLM, docling-serve)
-- Documentation: 7 comprehensive guides (~1,700 lines)
-- Architecture: Modular backend system complete (4 parser backends, 3 archive backends, 2 RAG backends)
-- **New backend:** DoclingServeParser — HTTP REST parser for docling-serve
-- **Bug fixes:** `is_available()` on base classes, Paperless task endpoint pagination
-- **Configuration:** 40% UI coverage, 12 gaps identified (optional improvement)
-- **RAGFlow:** Deferred - focusing on AnythingLLM
-- **Current blockers:** None — **Phase 4 COMPLETE, ready for production deployment**
+<details>
+<summary>Phase 1-3 (2026-01-07 to 2026-01-08) — Core Refactoring & Documentation</summary>
+
+- ServiceContainer: property-only API, removed legacy getters
+- BaseScraper: 6 mixins extracted (Incremental, Exclusion, WebDriver, Cloudflare, MetadataIO, HttpDownload)
+- Data models consolidated in `app/scrapers/models.py`
+- All 10 scrapers migrated to new structure
+- Blueprint modularization (6 blueprints from monolithic routes.py)
+- JobQueue: async management with per-scraper exclusivity
+- RAGFlowIngestionWorkflow extracted with full upload/poll/metadata workflow
+- 7 documentation guides (~1,700 lines)
+- 140 tests passing
+
+</details>
+
+<details>
+<summary>Phase 4 (2026-02-05 to 2026-02-07) — Pre-Deployment Readiness</summary>
+
+- **4.1** AnythingLLM backend — full implementation, 41 tests, live-validated
+- **4.2** Paperless metadata — correspondent/tag ID lookup with caching, 24 tests
+- **4.3** Jinja2 filename templating — custom filters (slugify, shorten, secure_filename)
+- **4.4** Testing & QA — 30+ integration tests, config audit (40% UI coverage, 12 gaps)
+- **4.5** Stack tests — 15 tests against live Unraid services, DoclingServeParser backend, bug fixes
+
+</details>
+
+<details>
+<summary>Post-Phase 4 (2026-02-07) — Gotenberg & Tika</summary>
+
+- Gotenberg client — HTML/Markdown/Office→PDF conversion, stack-tested
+- Tika client & parser backend — 18+ format support, Dublin Core normalization, stack-tested
+- Format-aware pipeline routing in ServiceContainer
+- **Selenium Archiver removal** — deleted dead `archiver.py`, removed `bleach` dependency, added Gotenberg to docker-compose, Chrome retained for scraping only
+
+</details>
+
+---
+
+## Current State
+
+- **438+ tests** (unit + integration; stack tests excluded from default collection)
+- **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika)
+- **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
+- **Archives:** Paperless-ngx | Stubs: S3, Local
+- **RAG:** AnythingLLM, RAGFlow
+- **Conversion:** Gotenberg (HTML/MD/Office→PDF)
+- **Scrapers:** 9 (AEMO, AEMC, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy)
+- **No current blockers** — system is deployable

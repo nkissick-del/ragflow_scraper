@@ -132,7 +132,7 @@ class MetadataIOMixin:
 
         output_dir = ensure_dir(Config.DOWNLOAD_DIR / self.name)
 
-        # Save raw HTML for pipeline Gotenberg conversion (replaces Selenium archiver)
+        # Save raw HTML for pipeline Gotenberg conversion
         temp_html_path = None
         if html_content:
             try:
