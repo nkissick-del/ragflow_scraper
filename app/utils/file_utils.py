@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Any, Protocol, runtime_checkable
 
-from jinja2 import Environment, BaseLoader
+from jinja2.sandbox import SandboxedEnvironment
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +24,9 @@ class MetadataProtocol(Protocol):
     def to_dict(self) -> dict[str, Any]: ...
 
 
-# Shared Jinja2 Environment for filename generation
-JINJA_ENV = Environment(loader=BaseLoader())
+# Shared sandboxed Jinja2 Environment for filename generation
+# SandboxedEnvironment prevents SSTI attacks from user-provided templates
+JINJA_ENV = SandboxedEnvironment()
 
 
 def _set_context_date_from_dt(context: dict[str, str], dt: datetime) -> None:
@@ -291,9 +292,14 @@ def generate_filename_from_template(
         '2024/AEMO/annual-report.pdf'
     """
     if template is None:
-        from app.config import Config
-
-        template = Config.FILENAME_TEMPLATE
+        # Check settings override before Config fallback
+        from app.services.settings_manager import get_settings
+        override = get_settings().get("pipeline.filename_template", "")
+        if override:
+            template = override
+        else:
+            from app.config import Config
+            template = Config.FILENAME_TEMPLATE
 
     # Convert metadata to dict if needed
     if isinstance(metadata, MetadataProtocol):

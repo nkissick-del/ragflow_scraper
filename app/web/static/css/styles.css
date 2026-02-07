@@ -315,7 +315,8 @@ code {
 }
 
 .status-idle,
-.status-ready {
+.status-ready,
+.status-configured {
     background: #e0f2fe;
     color: #0369a1;
 }

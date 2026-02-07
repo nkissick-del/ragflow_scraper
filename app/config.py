@@ -343,11 +343,12 @@ class Config:
         # 1. This only checks for syntax errors, not missing runtime variables.
         # 2. Imports are local to avoid circular dependencies.
         if cls.FILENAME_TEMPLATE:
-            from jinja2 import Environment, BaseLoader, TemplateSyntaxError
+            from jinja2 import TemplateSyntaxError
+            from jinja2.sandbox import SandboxedEnvironment
             from app.utils.file_utils import slugify, shorten, sanitize_filename
 
             try:
-                env = Environment(loader=BaseLoader())
+                env = SandboxedEnvironment()
                 env.filters["slugify"] = slugify
                 env.filters["shorten"] = shorten
                 env.filters["secure_filename"] = sanitize_filename

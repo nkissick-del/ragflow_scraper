@@ -63,6 +63,10 @@ DEFAULT_SETTINGS = {
         "enabled": False,
         "run_on_startup": False,
     },
+    "pipeline": {
+        "metadata_merge_strategy": "",  # Empty = use Config.METADATA_MERGE_STRATEGY
+        "filename_template": "",        # Empty = use Config.FILENAME_TEMPLATE
+    },
 }
 
 SETTINGS_SCHEMA = {
@@ -123,6 +127,14 @@ SETTINGS_SCHEMA = {
             "properties": {
                 "enabled": {"type": "boolean"},
                 "run_on_startup": {"type": "boolean"},
+            },
+            "additionalProperties": False,
+        },
+        "pipeline": {
+            "type": "object",
+            "properties": {
+                "metadata_merge_strategy": {"type": "string"},
+                "filename_template": {"type": "string"},
             },
             "additionalProperties": False,
         },

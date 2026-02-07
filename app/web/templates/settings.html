@@ -351,6 +351,258 @@
 <section class="section">
     <div class="card">
         <div class="card-header">
+            <h2>Pipeline Backends</h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                Active backends configured via environment variables (.env). Changing backends requires editing .env and restarting.
+            </p>
+
+            <div class="setting-group">
+                <label>Parser</label>
+                <p class="setting-value">
+                    <span class="status-badge status-configured">{{ config.PARSER_BACKEND }}</span>
+                    {% if config.PARSER_BACKEND == 'docling_serve' and config.DOCLING_SERVE_URL %}
+                        <code class="ml-2">{{ config.DOCLING_SERVE_URL }}</code>
+                    {% elif config.PARSER_BACKEND == 'tika' and config.TIKA_SERVER_URL %}
+                        <code class="ml-2">{{ config.TIKA_SERVER_URL }}</code>
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="setting-group">
+                <label>Archive</label>
+                <p class="setting-value">
+                    <span class="status-badge status-configured">{{ config.ARCHIVE_BACKEND }}</span>
+                    {% if config.ARCHIVE_BACKEND == 'paperless' and config.PAPERLESS_API_URL %}
+                        <code class="ml-2">{{ config.PAPERLESS_API_URL }}</code>
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="setting-group">
+                <label>RAG</label>
+                <p class="setting-value">
+                    <span class="status-badge status-configured">{{ config.RAG_BACKEND }}</span>
+                    {% if config.RAG_BACKEND == 'ragflow' and config.RAGFLOW_API_URL %}
+                        <code class="ml-2">{{ config.RAGFLOW_API_URL }}</code>
+                    {% elif config.RAG_BACKEND == 'anythingllm' and config.ANYTHINGLLM_API_URL %}
+                        <code class="ml-2">{{ config.ANYTHINGLLM_API_URL }}</code>
+                    {% endif %}
+                </p>
+            </div>
+
+            {% if config.GOTENBERG_URL %}
+            <div class="setting-group">
+                <label>Conversion</label>
+                <p class="setting-value">
+                    <span class="status-badge status-configured">gotenberg</span>
+                    <code class="ml-2">{{ config.GOTENBERG_URL }}</code>
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>Service Health</h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                Test connectivity to configured services. Timeouts are configured via environment variables (.env).
+            </p>
+
+            {% if config.GOTENBERG_URL %}
+            <div class="setting-group">
+                <div class="setting-row">
+                    <div>
+                        <label>Gotenberg</label>
+                        <p class="setting-value">
+                            <code>{{ config.GOTENBERG_URL }}</code>
+                            <span class="text-muted text-small ml-2">timeout: {{ config.GOTENBERG_TIMEOUT }}s</span>
+                        </p>
+                    </div>
+                    <div id="gotenberg-status">
+                        <span class="status-badge status-{{ gotenberg_status }}">{{ gotenberg_status | replace('_', ' ') }}</span>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            hx-post="{{ url_for('settings.test_gotenberg') }}"
+                            hx-target="#gotenberg-status"
+                            hx-swap="innerHTML">
+                        Test
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if config.TIKA_SERVER_URL %}
+            <div class="setting-group">
+                <div class="setting-row">
+                    <div>
+                        <label>Tika</label>
+                        <p class="setting-value">
+                            <code>{{ config.TIKA_SERVER_URL }}</code>
+                            <span class="text-muted text-small ml-2">timeout: {{ config.TIKA_TIMEOUT }}s</span>
+                        </p>
+                    </div>
+                    <div id="tika-status">
+                        <span class="status-badge status-{{ tika_status }}">{{ tika_status | replace('_', ' ') }}</span>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            hx-post="{{ url_for('settings.test_tika') }}"
+                            hx-target="#tika-status"
+                            hx-swap="innerHTML">
+                        Test
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if config.PAPERLESS_API_URL and config.PAPERLESS_API_TOKEN %}
+            <div class="setting-group">
+                <div class="setting-row">
+                    <div>
+                        <label>Paperless-ngx</label>
+                        <p class="setting-value">
+                            <code>{{ config.PAPERLESS_API_URL }}</code>
+                        </p>
+                    </div>
+                    <div id="paperless-status">
+                        <span class="status-badge status-{{ paperless_status }}">{{ paperless_status | replace('_', ' ') }}</span>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            hx-post="{{ url_for('settings.test_paperless') }}"
+                            hx-target="#paperless-status"
+                            hx-swap="innerHTML">
+                        Test
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if config.DOCLING_SERVE_URL %}
+            <div class="setting-group">
+                <div class="setting-row">
+                    <div>
+                        <label>Docling-serve</label>
+                        <p class="setting-value">
+                            <code>{{ config.DOCLING_SERVE_URL }}</code>
+                            <span class="text-muted text-small ml-2">timeout: {{ config.DOCLING_SERVE_TIMEOUT }}s</span>
+                        </p>
+                    </div>
+                    <div id="docling-serve-status">
+                        <span class="status-badge status-{{ docling_serve_status }}">{{ docling_serve_status | replace('_', ' ') }}</span>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            hx-post="{{ url_for('settings.test_docling_serve') }}"
+                            hx-target="#docling-serve-status"
+                            hx-swap="innerHTML">
+                        Test
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if config.ANYTHINGLLM_API_URL and config.ANYTHINGLLM_API_KEY %}
+            <div class="setting-group">
+                <div class="setting-row">
+                    <div>
+                        <label>AnythingLLM</label>
+                        <p class="setting-value">
+                            <code>{{ config.ANYTHINGLLM_API_URL }}</code>
+                        </p>
+                    </div>
+                    <div id="anythingllm-status">
+                        <span class="status-badge status-{{ anythingllm_status }}">{{ anythingllm_status | replace('_', ' ') }}</span>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            hx-post="{{ url_for('settings.test_anythingllm') }}"
+                            hx-target="#anythingllm-status"
+                            hx-swap="innerHTML">
+                        Test
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>Pipeline Settings</h2>
+        </div>
+        <form hx-post="{{ url_for('settings.save_pipeline_settings') }}"
+              hx-target="#pipeline-message"
+              hx-swap="innerHTML">
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Configure how documents are processed through the pipeline. These settings override environment variable defaults and take effect immediately.
+                </p>
+
+                <div class="setting-group">
+                    <label for="merge-strategy">Metadata Merge Strategy</label>
+                    <select id="merge-strategy" name="metadata_merge_strategy" class="input-field">
+                        <option value="" {% if not settings.pipeline.metadata_merge_strategy %}selected{% endif %}>
+                            Default ({{ config.METADATA_MERGE_STRATEGY }})
+                        </option>
+                        <option value="smart" {% if current_merge_strategy == 'smart' and settings.pipeline.metadata_merge_strategy %}selected{% endif %}>
+                            Smart
+                        </option>
+                        <option value="parser_wins" {% if current_merge_strategy == 'parser_wins' and settings.pipeline.metadata_merge_strategy %}selected{% endif %}>
+                            Parser Wins
+                        </option>
+                        <option value="scraper_wins" {% if current_merge_strategy == 'scraper_wins' and settings.pipeline.metadata_merge_strategy %}selected{% endif %}>
+                            Scraper Wins
+                        </option>
+                    </select>
+                    <p class="text-muted text-small">
+                        <strong>Smart</strong>: Context from scraper, content from parser.
+                        <strong>Parser Wins</strong>: Parser metadata overrides scraper.
+                        <strong>Scraper Wins</strong>: Scraper metadata overrides parser.
+                    </p>
+                </div>
+
+                <div class="setting-group">
+                    <label for="filename-template">Filename Template</label>
+                    <input type="text" id="filename-template" name="filename_template"
+                           class="input-field"
+                           value="{{ settings.pipeline.filename_template or '' }}"
+                           placeholder="{{ config.FILENAME_TEMPLATE }}">
+                    <p class="text-muted text-small">
+                        Leave blank to use the default template. Available variables:
+                        <code>date_prefix</code>, <code>year</code>, <code>month</code>, <code>day</code>,
+                        <code>org</code>, <code>title</code>, <code>original_name</code>, <code>extension</code>.
+                        Filters: <code>slugify</code>, <code>shorten(n)</code>, <code>secure_filename</code>.
+                    </p>
+                    <div class="setting-row mt-2">
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                hx-post="{{ url_for('settings.preview_filename') }}"
+                                hx-target="#filename-preview"
+                                hx-swap="innerHTML"
+                                hx-include="#filename-template">
+                            Preview
+                        </button>
+                        <div id="filename-preview" class="ml-2"></div>
+                    </div>
+                </div>
+
+                <div id="pipeline-message"></div>
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
             <h2>Selenium Configuration</h2>
         </div>
         <div class="card-body">

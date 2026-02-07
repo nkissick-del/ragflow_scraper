@@ -11,13 +11,16 @@ Last updated: 2026-02-07
 The Phase 4.4 config audit found only 40% of user-facing settings are exposed in the Web UI, with 12 specific gaps. Operators currently need to edit `.env` and restart to change backend selection, timeouts, or service URLs.
 
 **Tasks:**
-- [ ] Backend selection dropdowns (PARSER_BACKEND, ARCHIVE_BACKEND, RAG_BACKEND)
-- [ ] Service URL configuration (DOCLING_SERVE_URL, TIKA_SERVER_URL, GOTENBERG_URL)
-- [ ] Timeout configuration (parser, archive, Gotenberg timeouts)
-- [ ] Metadata merge strategy selector
-- [ ] Filename template editor with preview
-- [ ] Connection test buttons for each service (pattern exists for RAGFlow/FlareSolverr)
-- [ ] Persist settings changes (currently settings.json handles per-scraper; extend to global config)
+- [x] Backend selection display (read-only badges for PARSER_BACKEND, ARCHIVE_BACKEND, RAG_BACKEND)
+- [x] Service URL display (read-only, shown alongside service health)
+- [x] Timeout display (read-only, shown alongside their service)
+- [x] Metadata merge strategy selector (editable dropdown, persisted to settings.json)
+- [x] Filename template editor with live preview
+- [x] Connection test buttons for Gotenberg, Tika, Paperless, AnythingLLM, Docling-serve
+- [x] Persist pipeline settings (settings.json `pipeline` section, overrides Config fallback)
+- [ ] Backend selection dropdowns (currently read-only; changing requires .env edit + restart)
+- [ ] Service URL configuration (currently read-only; changing requires .env edit + restart)
+- [ ] Timeout configuration (currently read-only; changing requires .env edit + restart)
 
 **Reference:** config_audit.md (from Phase 4.4)
 
@@ -189,11 +192,12 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 ## Current State
 
-- **438+ tests** (unit + integration; stack tests excluded from default collection)
+- **445+ tests** (unit + integration; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx | Stubs: S3, Local
 - **RAG:** AnythingLLM, RAGFlow
 - **Conversion:** Gotenberg (HTML/MD/Office→PDF)
 - **Scrapers:** 9 (AEMO, AEMC, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy)
+- **Settings UI:** ~70% coverage (backends, service health, merge strategy, filename template; backend selection/URLs/timeouts still read-only)
 - **No current blockers** — system is deployable

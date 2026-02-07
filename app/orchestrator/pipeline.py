@@ -431,12 +431,18 @@ class Pipeline:
                     )
 
         # -- Step 2: Merge metadata --
+        # Check settings override before Config fallback
+        merge_strategy = Config.METADATA_MERGE_STRATEGY
+        override = self.container.settings.get("pipeline.metadata_merge_strategy", "")
+        if override:
+            merge_strategy = override
+
         merged_metadata = doc_metadata.merge_parser_metadata(
             parse_metadata,
-            strategy=Config.METADATA_MERGE_STRATEGY,
+            strategy=merge_strategy,
         )
         self.logger.debug(
-            f"Metadata merged using '{Config.METADATA_MERGE_STRATEGY}' strategy"
+            f"Metadata merged using '{merge_strategy}' strategy"
         )
 
         # -- Step 3: Generate canonical filename --

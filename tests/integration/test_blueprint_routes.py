@@ -1,5 +1,7 @@
 """Integration tests for Flask blueprint routes."""
 
+import base64
+
 import pytest
 from unittest.mock import patch, MagicMock
 from flask import Flask
@@ -10,30 +12,120 @@ from app.scrapers.models import ScraperResult
 from app.scrapers.scraper_registry import ScraperRegistry
 
 
+def _make_mock_settings():
+    """Create a properly configured mock SettingsManager."""
+    mock = MagicMock()
+    mock.get_all.return_value = {
+        "ragflow": {
+            "default_dataset_id": "",
+            "auto_upload": False,
+            "auto_create_dataset": True,
+            "default_embedding_model": "",
+            "default_chunk_method": "paper",
+            "wait_for_parsing": True,
+            "parser_config": {"chunk_token_num": 128, "layout_recognize": "DeepDOC"},
+        },
+        "flaresolverr": {"enabled": False, "timeout": 60, "max_timeout": 120},
+        "scraping": {
+            "use_flaresolverr_by_default": False,
+            "default_request_delay": 2.0,
+            "default_timeout": 60,
+            "default_retry_attempts": 3,
+            "max_concurrent_downloads": 3,
+        },
+        "pipeline": {"metadata_merge_strategy": "", "filename_template": ""},
+        "application": {"name": "PDF Scraper", "version": "0.1.0"},
+        "scrapers": {},
+        "scheduler": {"enabled": False, "run_on_startup": False},
+    }
+    mock.flaresolverr_enabled = False
+    return mock
+
+
+def _make_mock_container():
+    """Create a fully stubbed ServiceContainer mock."""
+    mock = MagicMock()
+    mock.settings = _make_mock_settings()
+    mock.ragflow_client.test_connection.return_value = False
+    mock.ragflow_client.list_embedding_models.return_value = []
+    mock.ragflow_client.list_chunk_methods.return_value = []
+    mock.flaresolverr_client.test_connection.return_value = False
+    mock.gotenberg_client.health_check.return_value = False
+    mock.tika_client.health_check.return_value = False
+    mock.state_tracker.return_value.get_all_status.return_value = {}
+    mock.state_tracker.return_value.get_status.return_value = {
+        "scraper": "test", "status": "idle", "is_running": False
+    }
+    mock.state_tracker.return_value.get_last_run_info.return_value = {}
+    return mock
+
+
+# Auth header for basic auth (testuser:testpass from .env.test)
+_AUTH_HEADER = {
+    "Authorization": "Basic " + base64.b64encode(b"testuser:testpass").decode()
+}
+
+
 @pytest.fixture
 def app():
-    """Create test Flask app with mocked dependencies."""
-    with patch("app.web.runtime.container") as mock_container, \
-         patch("app.web.runtime.job_queue") as mock_queue:
-        
-        # Mock container services
-        mock_container.settings_manager.return_value.get_settings.return_value = {
-            "ragflow": {"api_url": "http://test", "api_key": "test"},
-            "flaresolverr": {"api_url": "http://test"},
-            "scraping": {"cloudflare_bypass": False}
-        }
-        mock_container.state_tracker.return_value.get_all_status.return_value = {}
-        
-        app = create_app()
-        app.config["TESTING"] = True
-        app.config["WTF_CSRF_ENABLED"] = False
-        yield app
+    """Create test Flask app with mocked dependencies.
+
+    Patches the container and http_requests at each blueprint's module level
+    so that route handlers see mocks instead of real services.
+    """
+    mock_container = _make_mock_container()
+
+    patches = [
+        # Patch container in every module that imports it from runtime
+        patch("app.web.blueprints.settings.container", mock_container),
+        patch("app.web.blueprints.scrapers.container", mock_container),
+        patch("app.web.blueprints.metrics_logs.container", mock_container),
+        patch("app.web.helpers.container", mock_container),
+        # Patch http_requests in settings to prevent real HTTP calls
+        patch("app.web.blueprints.settings.http_requests"),
+        # Patch job_queue in modules that use it
+        patch("app.web.blueprints.scrapers.job_queue"),
+        patch("app.web.blueprints.api_scrapers.job_queue"),
+        patch("app.web.helpers.job_queue"),
+    ]
+
+    for p in patches:
+        p.start()
+
+    try:
+        flask_app = create_app()
+        flask_app.config["TESTING"] = True
+        flask_app.config["WTF_CSRF_ENABLED"] = False
+
+        yield flask_app
+    finally:
+        for p in reversed(patches):
+            p.stop()
 
 
 @pytest.fixture
 def client(app):
-    """Create test client."""
-    return app.test_client()
+    """Create test client with auth headers."""
+
+    _HTTP_METHODS = frozenset({"get", "post", "put", "delete", "patch", "head", "options"})
+
+    class AuthClient:
+        """Thin wrapper that injects Basic Auth on every request."""
+
+        def __init__(self, test_client):
+            self._client = test_client
+
+        def __getattr__(self, name):
+            attr = getattr(self._client, name)
+            if callable(attr) and name in _HTTP_METHODS:
+                def _wrapper(*args, **kwargs):
+                    headers = dict(kwargs.pop("headers", {}) or {})
+                    headers.update(_AUTH_HEADER)
+                    return attr(*args, headers=headers, **kwargs)
+                return _wrapper
+            return attr
+
+    return AuthClient(app.test_client())
 
 
 class TestScraperEndpoints:
@@ -226,13 +318,122 @@ class TestSettingsEndpoints:
         with patch("app.web.blueprints.settings.container") as mock_container:
             mock_settings = MagicMock()
             mock_container.settings = mock_settings
-            
+
             response = client.post("/settings/ragflow", data={
                 "default_embedding_model": "test_model",
                 "default_chunk_method": "paper"
             })
             assert response.status_code == 200
             mock_settings.update_section.assert_called_once()
+
+    def test_test_gotenberg_connection(self, client):
+        """Test Gotenberg connection test endpoint."""
+        with patch("app.web.blueprints.settings.container") as mock_container, \
+             patch("app.web.blueprints.settings.Config") as mock_config:
+            mock_config.GOTENBERG_URL = "http://test:3000"
+            mock_gotenberg = MagicMock()
+            mock_gotenberg.health_check.return_value = True
+            mock_container.gotenberg_client = mock_gotenberg
+
+            response = client.post("/settings/test-gotenberg")
+            assert response.status_code == 200
+            assert b"connected" in response.data.lower()
+
+    def test_test_tika_connection(self, client):
+        """Test Tika connection test endpoint."""
+        with patch("app.web.blueprints.settings.container") as mock_container, \
+             patch("app.web.blueprints.settings.Config") as mock_config:
+            mock_config.TIKA_SERVER_URL = "http://test:9998"
+            mock_tika = MagicMock()
+            mock_tika.health_check.return_value = True
+            mock_container.tika_client = mock_tika
+
+            response = client.post("/settings/test-tika")
+            assert response.status_code == 200
+            assert b"connected" in response.data.lower()
+
+    def test_test_paperless_connection(self, client):
+        """Test Paperless connection test endpoint."""
+        with patch("app.web.blueprints.settings.Config") as mock_config, \
+             patch("app.web.blueprints.settings.http_requests") as mock_requests:
+            mock_config.PAPERLESS_API_URL = "http://test:8000"
+            mock_config.PAPERLESS_API_TOKEN = "test-token"
+
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_requests.get.return_value = mock_resp
+
+            response = client.post("/settings/test-paperless")
+            assert response.status_code == 200
+            assert b"connected" in response.data.lower()
+            mock_requests.get.assert_called_once_with(
+                "http://test:8000/api/",
+                headers={"Authorization": "Token test-token"},
+                timeout=10,
+            )
+
+    def test_test_anythingllm_connection(self, client):
+        """Test AnythingLLM connection test endpoint."""
+        with patch("app.web.blueprints.settings.Config") as mock_config:
+            mock_config.ANYTHINGLLM_API_URL = "http://test:3001"
+            mock_config.ANYTHINGLLM_API_KEY = "test-key"
+
+            mock_instance = MagicMock()
+            mock_instance.test_connection.return_value = True
+
+            with patch("app.services.anythingllm_client.AnythingLLMClient", return_value=mock_instance):
+                response = client.post("/settings/test-anythingllm")
+                assert response.status_code == 200
+                assert b"connected" in response.data.lower()
+
+    def test_test_docling_serve_connection(self, client):
+        """Test Docling-serve connection test endpoint."""
+        with patch("app.web.blueprints.settings.Config") as mock_config, \
+             patch("app.web.blueprints.settings.http_requests") as mock_requests:
+            mock_config.DOCLING_SERVE_URL = "http://test:4949"
+
+            mock_resp = MagicMock()
+            mock_resp.ok = True
+            mock_requests.get.return_value = mock_resp
+
+            response = client.post("/settings/test-docling-serve")
+            assert response.status_code == 200
+            assert b"connected" in response.data.lower()
+            mock_requests.get.assert_called_once_with(
+                "http://test:4949/health",
+                timeout=10,
+            )
+
+    def test_save_pipeline_settings(self, client):
+        """Test save pipeline settings."""
+        with patch("app.web.blueprints.settings.container") as mock_container, \
+             patch("app.web.blueprints.settings.Config") as mock_config:
+            mock_config.VALID_METADATA_MERGE_STRATEGIES = ("smart", "parser_wins", "scraper_wins")
+            mock_settings = MagicMock()
+            mock_container.settings = mock_settings
+
+            response = client.post("/settings/pipeline", data={
+                "metadata_merge_strategy": "smart",
+                "filename_template": "{{ title }}{{ extension }}",
+            })
+            assert response.status_code == 200
+            assert b"saved" in response.data.lower()
+            mock_settings.update_section.assert_called_once_with("pipeline", {
+                "metadata_merge_strategy": "smart",
+                "filename_template": "{{ title }}{{ extension }}",
+            })
+
+    def test_preview_filename(self, client):
+        """Test filename preview endpoint."""
+        with patch("app.web.blueprints.settings.Config") as mock_config:
+            mock_config.FILENAME_TEMPLATE = "{{ title }}{{ extension }}"
+
+            response = client.post("/settings/pipeline/preview-filename", data={
+                "template": "{{ org }}_{{ title | slugify }}{{ extension }}",
+            })
+            assert response.status_code == 200
+            assert b"AEMO" in response.data
+            assert b"annual-report-2024" in response.data
 
 
 class TestMetricsLogsEndpoints:
