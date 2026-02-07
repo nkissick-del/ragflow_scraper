@@ -66,6 +66,20 @@ DEFAULT_SETTINGS = {
     "pipeline": {
         "metadata_merge_strategy": "",  # Empty = use Config.METADATA_MERGE_STRATEGY
         "filename_template": "",        # Empty = use Config.FILENAME_TEMPLATE
+        "parser_backend": "",           # Empty = use Config.PARSER_BACKEND
+        "archive_backend": "",          # Empty = use Config.ARCHIVE_BACKEND
+        "rag_backend": "",              # Empty = use Config.RAG_BACKEND
+    },
+    "services": {
+        "gotenberg_url": "",            # Empty = use Config.GOTENBERG_URL
+        "gotenberg_timeout": 0,         # 0 = use Config.GOTENBERG_TIMEOUT
+        "tika_url": "",
+        "tika_timeout": 0,
+        "docling_serve_url": "",
+        "docling_serve_timeout": 0,
+        "paperless_url": "",
+        "ragflow_url": "",
+        "anythingllm_url": "",
     },
 }
 
@@ -135,6 +149,24 @@ SETTINGS_SCHEMA = {
             "properties": {
                 "metadata_merge_strategy": {"type": "string"},
                 "filename_template": {"type": "string"},
+                "parser_backend": {"type": "string"},
+                "archive_backend": {"type": "string"},
+                "rag_backend": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "services": {
+            "type": "object",
+            "properties": {
+                "gotenberg_url": {"type": "string"},
+                "gotenberg_timeout": {"type": "integer", "minimum": 0, "maximum": 600},
+                "tika_url": {"type": "string"},
+                "tika_timeout": {"type": "integer", "minimum": 0, "maximum": 600},
+                "docling_serve_url": {"type": "string"},
+                "docling_serve_timeout": {"type": "integer", "minimum": 0, "maximum": 600},
+                "paperless_url": {"type": "string"},
+                "ragflow_url": {"type": "string"},
+                "anythingllm_url": {"type": "string"},
             },
             "additionalProperties": False,
         },

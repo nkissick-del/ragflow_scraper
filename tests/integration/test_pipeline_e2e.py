@@ -60,6 +60,8 @@ def mock_container():
     container.parser_backend = Mock()
     container.archive_backend = Mock()
     container.rag_backend = Mock()
+    # Pipeline reads settings overrides (e.g. merge strategy); return empty = use Config default
+    container.settings.get.return_value = ""
     return container
 
 

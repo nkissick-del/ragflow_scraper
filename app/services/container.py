@@ -153,6 +153,43 @@ class ServiceContainer:
             self.logger.debug(f"Initialized StateTracker for {scraper_name}")
         return self._state_trackers[scraper_name]
 
+    def _get_effective_backend(self, backend_type: str) -> str:
+        """Get effective backend name from settings override or Config fallback."""
+        override = self.settings.get(f"pipeline.{backend_type}_backend", "")
+        if override:
+            return override
+        config_attr = f"{backend_type.upper()}_BACKEND"
+        return getattr(Config, config_attr, "")
+
+    def _get_effective_url(self, service: str, config_attr: str) -> str:
+        """Get effective service URL from settings override or Config fallback."""
+        override = self.settings.get(f"services.{service}_url", "")
+        if override:
+            return override
+        return getattr(Config, config_attr, "")
+
+    def _get_effective_timeout(self, service: str, config_attr: str) -> int:
+        """Get effective timeout from settings override (if >0) or Config fallback."""
+        override = self.settings.get(f"services.{service}_timeout", 0)
+        if override and override > 0:
+            return override
+        return getattr(Config, config_attr, 60)
+
+    def reset_services(self):
+        """
+        Reset cached service/backend instances so they pick up new settings.
+
+        More targeted than reset() — leaves settings, scheduler, state_trackers intact.
+        """
+        self._parser_backend = None
+        self._archive_backend = None
+        self._rag_backend = None
+        self._gotenberg_client = None
+        self._tika_client = None
+        self._ragflow_client = None
+        self._flaresolverr_client = None
+        self.logger.debug("Service/backend instances reset (settings preserved)")
+
     @property
     def parser_backend(self) -> ParserBackend:
         """
@@ -165,7 +202,7 @@ class ServiceContainer:
             ParserBackend instance
         """
         if self._parser_backend is None:
-            backend_name = Config.PARSER_BACKEND
+            backend_name = self._get_effective_backend("parser")
 
             if backend_name == "docling":
                 from app.backends.parsers.docling_parser import DoclingParser
@@ -176,13 +213,19 @@ class ServiceContainer:
                     DoclingServeParser,
                 )
 
-                candidate = DoclingServeParser()
+                candidate = DoclingServeParser(
+                    url=self._get_effective_url("docling_serve", "DOCLING_SERVE_URL"),
+                    timeout=self._get_effective_timeout("docling_serve", "DOCLING_SERVE_TIMEOUT"),
+                )
             elif backend_name == "mineru":
                 raise ValueError(f"Parser backend '{backend_name}' not yet implemented")
             elif backend_name == "tika":
                 from app.backends.parsers.tika_parser import TikaParser
 
-                candidate = TikaParser()
+                candidate = TikaParser(
+                    url=self._get_effective_url("tika", "TIKA_SERVER_URL"),
+                    timeout=self._get_effective_timeout("tika", "TIKA_TIMEOUT"),
+                )
             else:
                 raise ValueError(f"Unknown parser backend: {backend_name}")
 
@@ -208,7 +251,7 @@ class ServiceContainer:
             ArchiveBackend instance
         """
         if self._archive_backend is None:
-            backend_name = Config.ARCHIVE_BACKEND
+            backend_name = self._get_effective_backend("archive")
 
             if backend_name == "paperless":
                 from app.backends.archives.paperless_adapter import (
@@ -249,10 +292,11 @@ class ServiceContainer:
             RAGBackend instance
         """
         if self._rag_backend is None:
-            backend_name = Config.RAG_BACKEND
+            backend_name = self._get_effective_backend("rag")
 
             if backend_name == "ragflow":
-                if not Config.RAGFLOW_API_URL or not Config.RAGFLOW_API_KEY:
+                ragflow_url = self._get_effective_url("ragflow", "RAGFLOW_API_URL")
+                if not ragflow_url or not Config.RAGFLOW_API_KEY:
                     raise ValueError(
                         "RAGFlow configuration missing: "
                         "RAGFLOW_API_URL and RAGFLOW_API_KEY are required"
@@ -262,7 +306,8 @@ class ServiceContainer:
 
                 candidate = RAGFlowBackend()
             elif backend_name == "anythingllm":
-                if not Config.ANYTHINGLLM_API_URL or not Config.ANYTHINGLLM_API_KEY:
+                anythingllm_url = self._get_effective_url("anythingllm", "ANYTHINGLLM_API_URL")
+                if not anythingllm_url or not Config.ANYTHINGLLM_API_KEY:
                     raise ValueError(
                         "AnythingLLM configuration missing: "
                         "ANYTHINGLLM_API_URL and ANYTHINGLLM_API_KEY are required"
@@ -271,7 +316,7 @@ class ServiceContainer:
                 from app.backends.rag.anythingllm_adapter import AnythingLLMBackend
 
                 candidate = AnythingLLMBackend(
-                    api_url=Config.ANYTHINGLLM_API_URL,
+                    api_url=anythingllm_url,
                     api_key=Config.ANYTHINGLLM_API_KEY,
                     workspace_id=Config.ANYTHINGLLM_WORKSPACE_ID,
                 )
@@ -299,7 +344,10 @@ class ServiceContainer:
         if self._gotenberg_client is None:
             from app.services.gotenberg_client import GotenbergClient
 
-            self._gotenberg_client = GotenbergClient()
+            self._gotenberg_client = GotenbergClient(
+                url=self._get_effective_url("gotenberg", "GOTENBERG_URL"),
+                timeout=self._get_effective_timeout("gotenberg", "GOTENBERG_TIMEOUT"),
+            )
             self.logger.debug("Initialized GotenbergClient")
         return self._gotenberg_client
 
@@ -314,7 +362,10 @@ class ServiceContainer:
         if self._tika_client is None:
             from app.services.tika_client import TikaClient
 
-            self._tika_client = TikaClient()
+            self._tika_client = TikaClient(
+                url=self._get_effective_url("tika", "TIKA_SERVER_URL"),
+                timeout=self._get_effective_timeout("tika", "TIKA_TIMEOUT"),
+            )
             self.logger.debug("Initialized TikaClient")
         return self._tika_client
 

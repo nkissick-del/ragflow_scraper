@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import ipaddress
+import socket
+from urllib.parse import urlparse
+
 import requests as http_requests
 
 from flask import Blueprint, render_template, request
@@ -29,10 +33,82 @@ def _check_service_status(check_fn, service_name: str) -> str:
         return "error"
 
 
+def _get_effective_url(service: str, config_attr: str) -> str:
+    """Get effective service URL from settings override or Config fallback."""
+    override = container.settings.get(f"services.{service}_url", "")
+    if override:
+        return override
+    return getattr(Config, config_attr, "")
+
+
+def _get_effective_timeout(service: str, config_attr: str) -> int:
+    """Get effective timeout from settings override (if >0) or Config fallback."""
+    override = container.settings.get(f"services.{service}_timeout", 0)
+    if override and override > 0:
+        return override
+    return getattr(Config, config_attr, 60)
+
+
+def _get_effective_backend(backend_type: str) -> str:
+    """Get effective backend name from settings override or Config fallback."""
+    override = container.settings.get(f"pipeline.{backend_type}_backend", "")
+    if override:
+        return override
+    return getattr(Config, f"{backend_type.upper()}_BACKEND", "")
+
+
+# Cloud metadata / link-local networks to block (SSRF mitigation).
+# Private RFC1918 ranges (10.x, 172.16-31.x, 192.168.x) are intentionally
+# ALLOWED because this self-hosted app connects to local-network services.
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("169.254.0.0/16"),   # link-local / cloud metadata
+    ipaddress.ip_network("fe80::/10"),         # IPv6 link-local
+]
+
+
+def _validate_url_ssrf(url: str) -> str | None:
+    """Return an error message if *url* targets a blocked address, else None."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return "URL has no hostname"
+
+        # Resolve hostname to IP(s) and check each
+        infos = socket.getaddrinfo(hostname, parsed.port or 80, proto=socket.IPPROTO_TCP)
+        for _family, _type, _proto, _canonname, sockaddr in infos:
+            addr = ipaddress.ip_address(sockaddr[0])
+            for net in _BLOCKED_NETWORKS:
+                if addr in net:
+                    return f"URL resolves to a blocked address range ({net})"
+    except socket.gaierror:
+        # DNS resolution failed — allow it; the health-check will surface the real error
+        pass
+    except Exception:
+        return "URL could not be validated"
+    return None
+
+
 @bp.route("/settings")
 def settings_page():
     settings_mgr = container.settings
     current_settings = settings_mgr.get_all()
+
+    # Compute effective values for all services
+    eff_gotenberg_url = _get_effective_url("gotenberg", "GOTENBERG_URL")
+    eff_gotenberg_timeout = _get_effective_timeout("gotenberg", "GOTENBERG_TIMEOUT")
+    eff_tika_url = _get_effective_url("tika", "TIKA_SERVER_URL")
+    eff_tika_timeout = _get_effective_timeout("tika", "TIKA_TIMEOUT")
+    eff_docling_serve_url = _get_effective_url("docling_serve", "DOCLING_SERVE_URL")
+    eff_docling_serve_timeout = _get_effective_timeout("docling_serve", "DOCLING_SERVE_TIMEOUT")
+    eff_paperless_url = _get_effective_url("paperless", "PAPERLESS_API_URL")
+    eff_ragflow_url = _get_effective_url("ragflow", "RAGFLOW_API_URL")
+    eff_anythingllm_url = _get_effective_url("anythingllm", "ANYTHINGLLM_API_URL")
+
+    # Effective backend selections
+    eff_parser_backend = _get_effective_backend("parser")
+    eff_archive_backend = _get_effective_backend("archive")
+    eff_rag_backend = _get_effective_backend("rag")
 
     ragflow_status = "unknown"
     ragflow_models = []
@@ -78,24 +154,24 @@ def settings_page():
     else:
         flaresolverr_status = "not_configured"
 
-    # Service health checks
+    # Service health checks — use effective URLs
     gotenberg_status = "not_configured"
-    if Config.GOTENBERG_URL:
+    if eff_gotenberg_url:
         gotenberg_status = _check_service_status(
             lambda: container.gotenberg_client.health_check(), "gotenberg"
         )
 
     tika_status = "not_configured"
-    if Config.TIKA_SERVER_URL:
+    if eff_tika_url:
         tika_status = _check_service_status(
             lambda: container.tika_client.health_check(), "tika"
         )
 
     paperless_status = "not_configured"
-    if Config.PAPERLESS_API_URL and Config.PAPERLESS_API_TOKEN:
+    if eff_paperless_url and Config.PAPERLESS_API_TOKEN:
         def _check_paperless():
             resp = http_requests.get(
-                f"{Config.PAPERLESS_API_URL}/api/",
+                f"{eff_paperless_url}/api/",
                 headers={"Authorization": f"Token {Config.PAPERLESS_API_TOKEN}"},
                 timeout=10,
             )
@@ -103,18 +179,18 @@ def settings_page():
         paperless_status = _check_service_status(_check_paperless, "paperless")
 
     docling_serve_status = "not_configured"
-    if Config.DOCLING_SERVE_URL:
+    if eff_docling_serve_url:
         def _check_docling():
-            resp = http_requests.get(f"{Config.DOCLING_SERVE_URL}/health", timeout=10)
+            resp = http_requests.get(f"{eff_docling_serve_url}/health", timeout=10)
             return resp.ok
         docling_serve_status = _check_service_status(_check_docling, "docling_serve")
 
     anythingllm_status = "not_configured"
-    if Config.ANYTHINGLLM_API_URL and Config.ANYTHINGLLM_API_KEY:
+    if eff_anythingllm_url and Config.ANYTHINGLLM_API_KEY:
         def _check_anythingllm():
             from app.services.anythingllm_client import AnythingLLMClient
             client = AnythingLLMClient(
-                api_url=Config.ANYTHINGLLM_API_URL,
+                api_url=eff_anythingllm_url,
                 api_key=Config.ANYTHINGLLM_API_KEY,
             )
             try:
@@ -151,6 +227,19 @@ def settings_page():
         current_merge_strategy=current_merge_strategy,
         current_filename_template=current_filename_template,
         config=Config,
+        # Effective values for template
+        eff_parser_backend=eff_parser_backend,
+        eff_archive_backend=eff_archive_backend,
+        eff_rag_backend=eff_rag_backend,
+        eff_gotenberg_url=eff_gotenberg_url,
+        eff_gotenberg_timeout=eff_gotenberg_timeout,
+        eff_tika_url=eff_tika_url,
+        eff_tika_timeout=eff_tika_timeout,
+        eff_docling_serve_url=eff_docling_serve_url,
+        eff_docling_serve_timeout=eff_docling_serve_timeout,
+        eff_paperless_url=eff_paperless_url,
+        eff_ragflow_url=eff_ragflow_url,
+        eff_anythingllm_url=eff_anythingllm_url,
     )
 
 
@@ -267,7 +356,8 @@ def save_ragflow_settings():
 
 @bp.route("/settings/test-gotenberg", methods=["POST"])
 def test_gotenberg():
-    if not Config.GOTENBERG_URL:
+    eff_url = _get_effective_url("gotenberg", "GOTENBERG_URL")
+    if not eff_url:
         return '<span class="status-badge status-not_configured">Not Configured</span>'
 
     try:
@@ -283,7 +373,8 @@ def test_gotenberg():
 
 @bp.route("/settings/test-tika", methods=["POST"])
 def test_tika():
-    if not Config.TIKA_SERVER_URL:
+    eff_url = _get_effective_url("tika", "TIKA_SERVER_URL")
+    if not eff_url:
         return '<span class="status-badge status-not_configured">Not Configured</span>'
 
     try:
@@ -299,12 +390,13 @@ def test_tika():
 
 @bp.route("/settings/test-paperless", methods=["POST"])
 def test_paperless():
-    if not Config.PAPERLESS_API_URL or not Config.PAPERLESS_API_TOKEN:
+    eff_url = _get_effective_url("paperless", "PAPERLESS_API_URL")
+    if not eff_url or not Config.PAPERLESS_API_TOKEN:
         return '<span class="status-badge status-not_configured">Not Configured</span>'
 
     try:
         resp = http_requests.get(
-            f"{Config.PAPERLESS_API_URL}/api/",
+            f"{eff_url}/api/",
             headers={"Authorization": f"Token {Config.PAPERLESS_API_TOKEN}"},
             timeout=10,
         )
@@ -319,13 +411,14 @@ def test_paperless():
 
 @bp.route("/settings/test-anythingllm", methods=["POST"])
 def test_anythingllm():
-    if not Config.ANYTHINGLLM_API_URL or not Config.ANYTHINGLLM_API_KEY:
+    eff_url = _get_effective_url("anythingllm", "ANYTHINGLLM_API_URL")
+    if not eff_url or not Config.ANYTHINGLLM_API_KEY:
         return '<span class="status-badge status-not_configured">Not Configured</span>'
 
     try:
         from app.services.anythingllm_client import AnythingLLMClient
         client = AnythingLLMClient(
-            api_url=Config.ANYTHINGLLM_API_URL,
+            api_url=eff_url,
             api_key=Config.ANYTHINGLLM_API_KEY,
         )
         try:
@@ -342,12 +435,13 @@ def test_anythingllm():
 
 @bp.route("/settings/test-docling-serve", methods=["POST"])
 def test_docling_serve():
-    if not Config.DOCLING_SERVE_URL:
+    eff_url = _get_effective_url("docling_serve", "DOCLING_SERVE_URL")
+    if not eff_url:
         return '<span class="status-badge status-not_configured">Not Configured</span>'
 
     try:
         resp = http_requests.get(
-            f"{Config.DOCLING_SERVE_URL}/health",
+            f"{eff_url}/health",
             timeout=10,
         )
         if resp.ok:
@@ -357,6 +451,134 @@ def test_docling_serve():
     except Exception as exc:
         log_exception(logger, exc, "docling_serve.test.error")
         return '<span class="status-badge status-error">Connection test failed</span>'
+
+
+@bp.route("/settings/backends", methods=["POST"])
+def save_backend_settings():
+    settings_mgr = container.settings
+
+    parser_backend = request.form.get("parser_backend", "")
+    archive_backend = request.form.get("archive_backend", "")
+    rag_backend = request.form.get("rag_backend", "")
+
+    # Validate backends if non-empty
+    if parser_backend and parser_backend not in Config.VALID_PARSER_BACKENDS:
+        return f'''
+            <div class="alert alert-danger">
+                Invalid parser backend: {escape(parser_backend)}.
+                Must be one of: {", ".join(Config.VALID_PARSER_BACKENDS)}
+            </div>
+        '''
+    if archive_backend and archive_backend not in Config.VALID_ARCHIVE_BACKENDS:
+        return f'''
+            <div class="alert alert-danger">
+                Invalid archive backend: {escape(archive_backend)}.
+                Must be one of: {", ".join(Config.VALID_ARCHIVE_BACKENDS)}
+            </div>
+        '''
+    if rag_backend and rag_backend not in Config.VALID_RAG_BACKENDS:
+        return f'''
+            <div class="alert alert-danger">
+                Invalid RAG backend: {escape(rag_backend)}.
+                Must be one of: {", ".join(Config.VALID_RAG_BACKENDS)}
+            </div>
+        '''
+
+    settings_mgr.update_section("pipeline", {
+        "parser_backend": parser_backend,
+        "archive_backend": archive_backend,
+        "rag_backend": rag_backend,
+    })
+
+    container.reset_services()
+
+    logger.info(
+        f"Backend settings updated: parser={parser_backend or '(default)'}, "
+        f"archive={archive_backend or '(default)'}, rag={rag_backend or '(default)'}"
+    )
+
+    return '''
+        <div class="alert alert-success">
+            Backend settings saved. Services will use new backends on next operation.
+        </div>
+    '''
+
+
+@bp.route("/settings/services", methods=["POST"])
+def save_service_settings():
+    settings_mgr = container.settings
+
+    # Extract URLs
+    gotenberg_url = request.form.get("gotenberg_url", "").strip()
+    tika_url = request.form.get("tika_url", "").strip()
+    docling_serve_url = request.form.get("docling_serve_url", "").strip()
+    paperless_url = request.form.get("paperless_url", "").strip()
+    ragflow_url = request.form.get("ragflow_url", "").strip()
+    anythingllm_url = request.form.get("anythingllm_url", "").strip()
+
+    # Extract timeouts
+    gotenberg_timeout = request.form.get("gotenberg_timeout", 0, type=int)
+    tika_timeout = request.form.get("tika_timeout", 0, type=int)
+    docling_serve_timeout = request.form.get("docling_serve_timeout", 0, type=int)
+
+    # Validate URLs (scheme + SSRF check)
+    for label, url in [
+        ("Gotenberg", gotenberg_url),
+        ("Tika", tika_url),
+        ("Docling-serve", docling_serve_url),
+        ("Paperless", paperless_url),
+        ("RAGFlow", ragflow_url),
+        ("AnythingLLM", anythingllm_url),
+    ]:
+        if url and not url.startswith(("http://", "https://")):
+            return f'''
+                <div class="alert alert-danger">
+                    {escape(label)} URL must start with http:// or https://
+                </div>
+            '''
+        if url:
+            ssrf_err = _validate_url_ssrf(url)
+            if ssrf_err:
+                return f'''
+                    <div class="alert alert-danger">
+                        {escape(label)}: {escape(ssrf_err)}
+                    </div>
+                '''
+
+    # Validate timeouts (0 or 1-600)
+    for label, timeout in [
+        ("Gotenberg", gotenberg_timeout),
+        ("Tika", tika_timeout),
+        ("Docling-serve", docling_serve_timeout),
+    ]:
+        if timeout != 0 and not (1 <= timeout <= 600):
+            return f'''
+                <div class="alert alert-danger">
+                    {escape(label)} timeout must be 0 (use default) or between 1 and 600 seconds.
+                </div>
+            '''
+
+    settings_mgr.update_section("services", {
+        "gotenberg_url": gotenberg_url,
+        "gotenberg_timeout": gotenberg_timeout,
+        "tika_url": tika_url,
+        "tika_timeout": tika_timeout,
+        "docling_serve_url": docling_serve_url,
+        "docling_serve_timeout": docling_serve_timeout,
+        "paperless_url": paperless_url,
+        "ragflow_url": ragflow_url,
+        "anythingllm_url": anythingllm_url,
+    })
+
+    container.reset_services()
+
+    logger.info("Service configuration updated")
+
+    return '''
+        <div class="alert alert-success">
+            Service configuration saved. Clients will reconnect with new settings.
+        </div>
+    '''
 
 
 @bp.route("/settings/pipeline", methods=["POST"])

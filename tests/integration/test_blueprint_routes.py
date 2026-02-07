@@ -33,12 +33,33 @@ def _make_mock_settings():
             "default_retry_attempts": 3,
             "max_concurrent_downloads": 3,
         },
-        "pipeline": {"metadata_merge_strategy": "", "filename_template": ""},
+        "pipeline": {
+            "metadata_merge_strategy": "", "filename_template": "",
+            "parser_backend": "", "archive_backend": "", "rag_backend": "",
+        },
+        "services": {
+            "gotenberg_url": "", "gotenberg_timeout": 0,
+            "tika_url": "", "tika_timeout": 0,
+            "docling_serve_url": "", "docling_serve_timeout": 0,
+            "paperless_url": "", "ragflow_url": "", "anythingllm_url": "",
+        },
         "application": {"name": "PDF Scraper", "version": "0.1.0"},
         "scrapers": {},
         "scheduler": {"enabled": False, "run_on_startup": False},
     }
     mock.flaresolverr_enabled = False
+    # _get_effective_* helpers call settings.get("services.xxx", ""); return the default
+    _all_settings = mock.get_all.return_value
+    def _mock_get(key, default=None):
+        keys = key.split(".")
+        value = _all_settings
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        return value
+    mock.get.side_effect = _mock_get
     return mock
 
 
@@ -89,17 +110,19 @@ def app():
         patch("app.web.helpers.job_queue"),
     ]
 
-    for p in patches:
-        p.start()
-
+    started = []
     try:
+        for p in patches:
+            p.start()
+            started.append(p)
+
         flask_app = create_app()
         flask_app.config["TESTING"] = True
         flask_app.config["WTF_CSRF_ENABLED"] = False
 
         yield flask_app
     finally:
-        for p in reversed(patches):
+        for p in reversed(started):
             p.stop()
 
 
@@ -331,6 +354,7 @@ class TestSettingsEndpoints:
         with patch("app.web.blueprints.settings.container") as mock_container, \
              patch("app.web.blueprints.settings.Config") as mock_config:
             mock_config.GOTENBERG_URL = "http://test:3000"
+            mock_container.settings.get.return_value = ""
             mock_gotenberg = MagicMock()
             mock_gotenberg.health_check.return_value = True
             mock_container.gotenberg_client = mock_gotenberg
@@ -344,6 +368,7 @@ class TestSettingsEndpoints:
         with patch("app.web.blueprints.settings.container") as mock_container, \
              patch("app.web.blueprints.settings.Config") as mock_config:
             mock_config.TIKA_SERVER_URL = "http://test:9998"
+            mock_container.settings.get.return_value = ""
             mock_tika = MagicMock()
             mock_tika.health_check.return_value = True
             mock_container.tika_client = mock_tika
@@ -354,10 +379,13 @@ class TestSettingsEndpoints:
 
     def test_test_paperless_connection(self, client):
         """Test Paperless connection test endpoint."""
-        with patch("app.web.blueprints.settings.Config") as mock_config, \
+        with patch("app.web.blueprints.settings.container") as mock_container, \
+             patch("app.web.blueprints.settings.Config") as mock_config, \
              patch("app.web.blueprints.settings.http_requests") as mock_requests:
             mock_config.PAPERLESS_API_URL = "http://test:8000"
             mock_config.PAPERLESS_API_TOKEN = "test-token"
+            # _get_effective_url reads from settings; return empty to fall through to Config
+            mock_container.settings.get.return_value = ""
 
             mock_resp = MagicMock()
             mock_resp.status_code = 200
@@ -374,9 +402,11 @@ class TestSettingsEndpoints:
 
     def test_test_anythingllm_connection(self, client):
         """Test AnythingLLM connection test endpoint."""
-        with patch("app.web.blueprints.settings.Config") as mock_config:
+        with patch("app.web.blueprints.settings.container") as mock_container, \
+             patch("app.web.blueprints.settings.Config") as mock_config:
             mock_config.ANYTHINGLLM_API_URL = "http://test:3001"
             mock_config.ANYTHINGLLM_API_KEY = "test-key"
+            mock_container.settings.get.return_value = ""
 
             mock_instance = MagicMock()
             mock_instance.test_connection.return_value = True
@@ -388,9 +418,12 @@ class TestSettingsEndpoints:
 
     def test_test_docling_serve_connection(self, client):
         """Test Docling-serve connection test endpoint."""
-        with patch("app.web.blueprints.settings.Config") as mock_config, \
+        with patch("app.web.blueprints.settings.container") as mock_container, \
+             patch("app.web.blueprints.settings.Config") as mock_config, \
              patch("app.web.blueprints.settings.http_requests") as mock_requests:
             mock_config.DOCLING_SERVE_URL = "http://test:4949"
+            # _get_effective_url reads from settings; return empty to fall through to Config
+            mock_container.settings.get.return_value = ""
 
             mock_resp = MagicMock()
             mock_resp.ok = True

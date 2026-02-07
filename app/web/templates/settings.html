@@ -353,181 +353,245 @@
         <div class="card-header">
             <h2>Pipeline Backends</h2>
         </div>
-        <div class="card-body">
-            <p class="text-muted mb-3">
-                Active backends configured via environment variables (.env). Changing backends requires editing .env and restarting.
-            </p>
-
-            <div class="setting-group">
-                <label>Parser</label>
-                <p class="setting-value">
-                    <span class="status-badge status-configured">{{ config.PARSER_BACKEND }}</span>
-                    {% if config.PARSER_BACKEND == 'docling_serve' and config.DOCLING_SERVE_URL %}
-                        <code class="ml-2">{{ config.DOCLING_SERVE_URL }}</code>
-                    {% elif config.PARSER_BACKEND == 'tika' and config.TIKA_SERVER_URL %}
-                        <code class="ml-2">{{ config.TIKA_SERVER_URL }}</code>
-                    {% endif %}
+        <form hx-post="{{ url_for('settings.save_backend_settings') }}"
+              hx-target="#backends-message"
+              hx-swap="innerHTML">
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Select active backends. Choose "Default" to use the .env value. Changes take effect on the next pipeline operation.
                 </p>
-            </div>
 
-            <div class="setting-group">
-                <label>Archive</label>
-                <p class="setting-value">
-                    <span class="status-badge status-configured">{{ config.ARCHIVE_BACKEND }}</span>
-                    {% if config.ARCHIVE_BACKEND == 'paperless' and config.PAPERLESS_API_URL %}
-                        <code class="ml-2">{{ config.PAPERLESS_API_URL }}</code>
-                    {% endif %}
-                </p>
-            </div>
+                <div class="setting-group">
+                    <label for="parser-backend">Parser</label>
+                    <select id="parser-backend" name="parser_backend" class="input-field">
+                        <option value="" {% if not settings.pipeline.parser_backend %}selected{% endif %}>
+                            Default ({{ config.PARSER_BACKEND }})
+                        </option>
+                        {% for backend in config.VALID_PARSER_BACKENDS %}
+                        <option value="{{ backend }}"
+                                {% if settings.pipeline.parser_backend == backend %}selected{% endif %}>
+                            {{ backend }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-            <div class="setting-group">
-                <label>RAG</label>
-                <p class="setting-value">
-                    <span class="status-badge status-configured">{{ config.RAG_BACKEND }}</span>
-                    {% if config.RAG_BACKEND == 'ragflow' and config.RAGFLOW_API_URL %}
-                        <code class="ml-2">{{ config.RAGFLOW_API_URL }}</code>
-                    {% elif config.RAG_BACKEND == 'anythingllm' and config.ANYTHINGLLM_API_URL %}
-                        <code class="ml-2">{{ config.ANYTHINGLLM_API_URL }}</code>
-                    {% endif %}
-                </p>
-            </div>
+                <div class="setting-group">
+                    <label for="archive-backend">Archive</label>
+                    <select id="archive-backend" name="archive_backend" class="input-field">
+                        <option value="" {% if not settings.pipeline.archive_backend %}selected{% endif %}>
+                            Default ({{ config.ARCHIVE_BACKEND }})
+                        </option>
+                        {% for backend in config.VALID_ARCHIVE_BACKENDS %}
+                        <option value="{{ backend }}"
+                                {% if settings.pipeline.archive_backend == backend %}selected{% endif %}>
+                            {{ backend }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-            {% if config.GOTENBERG_URL %}
-            <div class="setting-group">
-                <label>Conversion</label>
-                <p class="setting-value">
-                    <span class="status-badge status-configured">gotenberg</span>
-                    <code class="ml-2">{{ config.GOTENBERG_URL }}</code>
-                </p>
+                <div class="setting-group">
+                    <label for="rag-backend">RAG</label>
+                    <select id="rag-backend" name="rag_backend" class="input-field">
+                        <option value="" {% if not settings.pipeline.rag_backend %}selected{% endif %}>
+                            Default ({{ config.RAG_BACKEND }})
+                        </option>
+                        {% for backend in config.VALID_RAG_BACKENDS %}
+                        <option value="{{ backend }}"
+                                {% if settings.pipeline.rag_backend == backend %}selected{% endif %}>
+                            {{ backend }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {% if eff_gotenberg_url %}
+                <div class="setting-group">
+                    <label>Conversion</label>
+                    <p class="setting-value">
+                        <span class="status-badge status-configured">gotenberg</span>
+                        <code class="ml-2">{{ eff_gotenberg_url }}</code>
+                    </p>
+                </div>
+                {% endif %}
+
+                <div id="backends-message"></div>
             </div>
-            {% endif %}
-        </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save Backend Settings</button>
+            </div>
+        </form>
     </div>
 </section>
 
 <section class="section">
     <div class="card">
         <div class="card-header">
-            <h2>Service Health</h2>
+            <h2>Service Configuration</h2>
         </div>
-        <div class="card-body">
-            <p class="text-muted mb-3">
-                Test connectivity to configured services. Timeouts are configured via environment variables (.env).
-            </p>
+        <form hx-post="{{ url_for('settings.save_service_settings') }}"
+              hx-target="#services-message"
+              hx-swap="innerHTML">
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Configure service URLs and timeouts. Leave blank to use .env defaults. Changes take effect immediately.
+                </p>
 
-            {% if config.GOTENBERG_URL %}
-            <div class="setting-group">
-                <div class="setting-row">
-                    <div>
-                        <label>Gotenberg</label>
-                        <p class="setting-value">
-                            <code>{{ config.GOTENBERG_URL }}</code>
-                            <span class="text-muted text-small ml-2">timeout: {{ config.GOTENBERG_TIMEOUT }}s</span>
-                        </p>
+                <div class="setting-group">
+                    <label>Gotenberg</label>
+                    <div class="setting-row">
+                        <div style="flex: 3">
+                            <input type="text" name="gotenberg_url" class="input-field"
+                                   value="{{ settings.services.gotenberg_url or '' }}"
+                                   placeholder="{{ config.GOTENBERG_URL or 'http://localhost:3000' }}">
+                        </div>
+                        <div style="flex: 1">
+                            <input type="number" name="gotenberg_timeout" class="input-field input-small"
+                                   value="{{ settings.services.gotenberg_timeout or 0 }}"
+                                   min="0" max="600" placeholder="{{ config.GOTENBERG_TIMEOUT }}">
+                            <span class="text-muted text-small">timeout (s)</span>
+                        </div>
+                        <div id="gotenberg-status">
+                            <span class="status-badge status-{{ gotenberg_status }}">{{ gotenberg_status | replace('_', ' ') }}</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                hx-post="{{ url_for('settings.test_gotenberg') }}"
+                                hx-target="#gotenberg-status"
+                                hx-swap="innerHTML">
+                            Test
+                        </button>
                     </div>
-                    <div id="gotenberg-status">
-                        <span class="status-badge status-{{ gotenberg_status }}">{{ gotenberg_status | replace('_', ' ') }}</span>
-                    </div>
-                    <button type="button" class="btn btn-secondary btn-sm"
-                            hx-post="{{ url_for('settings.test_gotenberg') }}"
-                            hx-target="#gotenberg-status"
-                            hx-swap="innerHTML">
-                        Test
-                    </button>
                 </div>
-            </div>
-            {% endif %}
 
-            {% if config.TIKA_SERVER_URL %}
-            <div class="setting-group">
-                <div class="setting-row">
-                    <div>
-                        <label>Tika</label>
-                        <p class="setting-value">
-                            <code>{{ config.TIKA_SERVER_URL }}</code>
-                            <span class="text-muted text-small ml-2">timeout: {{ config.TIKA_TIMEOUT }}s</span>
-                        </p>
+                <div class="setting-group">
+                    <label>Tika</label>
+                    <div class="setting-row">
+                        <div style="flex: 3">
+                            <input type="text" name="tika_url" class="input-field"
+                                   value="{{ settings.services.tika_url or '' }}"
+                                   placeholder="{{ config.TIKA_SERVER_URL or 'http://localhost:9998' }}">
+                        </div>
+                        <div style="flex: 1">
+                            <input type="number" name="tika_timeout" class="input-field input-small"
+                                   value="{{ settings.services.tika_timeout or 0 }}"
+                                   min="0" max="600" placeholder="{{ config.TIKA_TIMEOUT }}">
+                            <span class="text-muted text-small">timeout (s)</span>
+                        </div>
+                        <div id="tika-status">
+                            <span class="status-badge status-{{ tika_status }}">{{ tika_status | replace('_', ' ') }}</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                hx-post="{{ url_for('settings.test_tika') }}"
+                                hx-target="#tika-status"
+                                hx-swap="innerHTML">
+                            Test
+                        </button>
                     </div>
-                    <div id="tika-status">
-                        <span class="status-badge status-{{ tika_status }}">{{ tika_status | replace('_', ' ') }}</span>
-                    </div>
-                    <button type="button" class="btn btn-secondary btn-sm"
-                            hx-post="{{ url_for('settings.test_tika') }}"
-                            hx-target="#tika-status"
-                            hx-swap="innerHTML">
-                        Test
-                    </button>
                 </div>
-            </div>
-            {% endif %}
 
-            {% if config.PAPERLESS_API_URL and config.PAPERLESS_API_TOKEN %}
-            <div class="setting-group">
-                <div class="setting-row">
-                    <div>
-                        <label>Paperless-ngx</label>
-                        <p class="setting-value">
-                            <code>{{ config.PAPERLESS_API_URL }}</code>
-                        </p>
+                <div class="setting-group">
+                    <label>Docling-serve</label>
+                    <div class="setting-row">
+                        <div style="flex: 3">
+                            <input type="text" name="docling_serve_url" class="input-field"
+                                   value="{{ settings.services.docling_serve_url or '' }}"
+                                   placeholder="{{ config.DOCLING_SERVE_URL or 'http://localhost:4949' }}">
+                        </div>
+                        <div style="flex: 1">
+                            <input type="number" name="docling_serve_timeout" class="input-field input-small"
+                                   value="{{ settings.services.docling_serve_timeout or 0 }}"
+                                   min="0" max="600" placeholder="{{ config.DOCLING_SERVE_TIMEOUT }}">
+                            <span class="text-muted text-small">timeout (s)</span>
+                        </div>
+                        <div id="docling-serve-status">
+                            <span class="status-badge status-{{ docling_serve_status }}">{{ docling_serve_status | replace('_', ' ') }}</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                hx-post="{{ url_for('settings.test_docling_serve') }}"
+                                hx-target="#docling-serve-status"
+                                hx-swap="innerHTML">
+                            Test
+                        </button>
                     </div>
-                    <div id="paperless-status">
-                        <span class="status-badge status-{{ paperless_status }}">{{ paperless_status | replace('_', ' ') }}</span>
-                    </div>
-                    <button type="button" class="btn btn-secondary btn-sm"
-                            hx-post="{{ url_for('settings.test_paperless') }}"
-                            hx-target="#paperless-status"
-                            hx-swap="innerHTML">
-                        Test
-                    </button>
                 </div>
-            </div>
-            {% endif %}
 
-            {% if config.DOCLING_SERVE_URL %}
-            <div class="setting-group">
-                <div class="setting-row">
-                    <div>
-                        <label>Docling-serve</label>
-                        <p class="setting-value">
-                            <code>{{ config.DOCLING_SERVE_URL }}</code>
-                            <span class="text-muted text-small ml-2">timeout: {{ config.DOCLING_SERVE_TIMEOUT }}s</span>
-                        </p>
+                <div class="setting-group">
+                    <label>Paperless-ngx</label>
+                    <div class="setting-row">
+                        <div style="flex: 3">
+                            <input type="text" name="paperless_url" class="input-field"
+                                   value="{{ settings.services.paperless_url or '' }}"
+                                   placeholder="{{ config.PAPERLESS_API_URL or 'http://localhost:8000' }}">
+                        </div>
+                        <div style="flex: 1"></div>
+                        <div id="paperless-status">
+                            <span class="status-badge status-{{ paperless_status }}">{{ paperless_status | replace('_', ' ') }}</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                hx-post="{{ url_for('settings.test_paperless') }}"
+                                hx-target="#paperless-status"
+                                hx-swap="innerHTML">
+                            Test
+                        </button>
                     </div>
-                    <div id="docling-serve-status">
-                        <span class="status-badge status-{{ docling_serve_status }}">{{ docling_serve_status | replace('_', ' ') }}</span>
-                    </div>
-                    <button type="button" class="btn btn-secondary btn-sm"
-                            hx-post="{{ url_for('settings.test_docling_serve') }}"
-                            hx-target="#docling-serve-status"
-                            hx-swap="innerHTML">
-                        Test
-                    </button>
+                    <p class="text-muted text-small">API token remains in .env (PAPERLESS_API_TOKEN)</p>
                 </div>
-            </div>
-            {% endif %}
 
-            {% if config.ANYTHINGLLM_API_URL and config.ANYTHINGLLM_API_KEY %}
-            <div class="setting-group">
-                <div class="setting-row">
-                    <div>
-                        <label>AnythingLLM</label>
-                        <p class="setting-value">
-                            <code>{{ config.ANYTHINGLLM_API_URL }}</code>
-                        </p>
+                <div class="setting-group">
+                    <label>RAGFlow</label>
+                    <div class="setting-row">
+                        <div style="flex: 3">
+                            <input type="text" name="ragflow_url" class="input-field"
+                                   value="{{ settings.services.ragflow_url or '' }}"
+                                   placeholder="{{ config.RAGFLOW_API_URL or 'http://localhost:9380' }}">
+                        </div>
+                        <div style="flex: 1"></div>
+                        <div id="ragflow-url-status">
+                            <span class="status-badge status-{{ ragflow_status }}">{{ ragflow_status }}</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                hx-post="{{ url_for('settings.test_ragflow') }}"
+                                hx-target="#ragflow-url-status"
+                                hx-swap="innerHTML">
+                            Test
+                        </button>
                     </div>
-                    <div id="anythingllm-status">
-                        <span class="status-badge status-{{ anythingllm_status }}">{{ anythingllm_status | replace('_', ' ') }}</span>
-                    </div>
-                    <button type="button" class="btn btn-secondary btn-sm"
-                            hx-post="{{ url_for('settings.test_anythingllm') }}"
-                            hx-target="#anythingllm-status"
-                            hx-swap="innerHTML">
-                        Test
-                    </button>
+                    <p class="text-muted text-small">API key remains in .env (RAGFLOW_API_KEY)</p>
                 </div>
+
+                <div class="setting-group">
+                    <label>AnythingLLM</label>
+                    <div class="setting-row">
+                        <div style="flex: 3">
+                            <input type="text" name="anythingllm_url" class="input-field"
+                                   value="{{ settings.services.anythingllm_url or '' }}"
+                                   placeholder="{{ config.ANYTHINGLLM_API_URL or 'http://localhost:3001' }}">
+                        </div>
+                        <div style="flex: 1"></div>
+                        <div id="anythingllm-status">
+                            <span class="status-badge status-{{ anythingllm_status }}">{{ anythingllm_status | replace('_', ' ') }}</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                hx-post="{{ url_for('settings.test_anythingllm') }}"
+                                hx-target="#anythingllm-status"
+                                hx-swap="innerHTML">
+                            Test
+                        </button>
+                    </div>
+                    <p class="text-muted text-small">API key remains in .env (ANYTHINGLLM_API_KEY)</p>
+                </div>
+
+                <p class="text-muted text-small mt-3">
+                    Set timeout to 0 to use the .env default. Leave URL blank to use .env default.
+                </p>
+
+                <div id="services-message"></div>
             </div>
-            {% endif %}
-        </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save Service Configuration</button>
+            </div>
+        </form>
     </div>
 </section>
 

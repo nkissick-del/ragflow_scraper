@@ -3,18 +3,77 @@
 import pytest
 from bs4 import BeautifulSoup
 from unittest.mock import patch
+from app.config import Config
 from app.web import create_app
+
+
+def _make_mock_container():
+    """Create a mock container that won't trigger real HTTP calls."""
+    from unittest.mock import MagicMock
+    mock = MagicMock()
+    mock.ragflow_client.test_connection.return_value = False
+    mock.ragflow_client.list_embedding_models.return_value = []
+    mock.ragflow_client.list_chunk_methods.return_value = []
+    mock.flaresolverr_client.test_connection.return_value = False
+    mock.settings.get_all.return_value = {
+        "ragflow": {"default_dataset_id": "", "auto_upload": False, "auto_create_dataset": True,
+                     "default_embedding_model": "", "default_chunk_method": "paper",
+                     "wait_for_parsing": True, "parser_config": {"chunk_token_num": 128, "layout_recognize": "DeepDOC"}},
+        "flaresolverr": {"enabled": False, "timeout": 60, "max_timeout": 120},
+        "scraping": {"use_flaresolverr_by_default": False, "default_request_delay": 2.0,
+                      "default_timeout": 60, "default_retry_attempts": 3, "max_concurrent_downloads": 3},
+        "pipeline": {"metadata_merge_strategy": "", "filename_template": "",
+                      "parser_backend": "", "archive_backend": "", "rag_backend": ""},
+        "services": {"gotenberg_url": "", "gotenberg_timeout": 0, "tika_url": "", "tika_timeout": 0,
+                      "docling_serve_url": "", "docling_serve_timeout": 0,
+                      "paperless_url": "", "ragflow_url": "", "anythingllm_url": ""},
+        "application": {"name": "PDF Scraper", "version": "0.1.0"},
+        "scrapers": {},
+        "scheduler": {"enabled": False, "run_on_startup": False},
+    }
+    mock.flaresolverr_enabled = False
+    # settings.get needs to return values from _all_settings to support _get_effective_* helpers
+    _all = mock.settings.get_all.return_value
+    def _mock_get(key, default=None):
+        keys = key.split(".")
+        value = _all
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        return value
+    mock.settings.get.side_effect = _mock_get
+    return mock
 
 
 @pytest.fixture
 def app():
     """Create test Flask app."""
-    # Patch runtime dependencies before importing blueprints
-    with patch("app.web.runtime.container"), patch("app.web.runtime.job_queue"):
+    mock_container = _make_mock_container()
+    patches = [
+        patch("app.web.blueprints.settings.container", mock_container),
+        patch("app.web.blueprints.settings.http_requests"),
+        patch("app.web.blueprints.scrapers.container", mock_container),
+        patch("app.web.blueprints.metrics_logs.container", mock_container),
+        patch("app.web.helpers.container", mock_container),
+        patch("app.web.blueprints.scrapers.job_queue"),
+        patch("app.web.blueprints.api_scrapers.job_queue"),
+        patch("app.web.helpers.job_queue"),
+        patch.object(Config, "BASIC_AUTH_ENABLED", False),
+    ]
+    started = []
+    try:
+        for p in patches:
+            p.start()
+            started.append(p)
         app = create_app()
         app.config["TESTING"] = True
         app.config["WTF_CSRF_ENABLED"] = False
         yield app
+    finally:
+        for p in reversed(started):
+            p.stop()
 
 
 @pytest.fixture

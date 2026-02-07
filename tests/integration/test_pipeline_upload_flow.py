@@ -1,83 +1,82 @@
-from pathlib import Path
+"""Test Pipeline archive flow."""
 
-from app.config import Config
+from pathlib import Path
+from unittest.mock import Mock
+
+from app.backends.archives.base import ArchiveResult
+from app.backends.parsers.base import ParserResult
 from app.orchestrator.pipeline import Pipeline, PipelineResult
 from app.scrapers import ScraperRegistry
 
 
-class DummyScraperResult:
-    def __init__(self):
-        self.scraped_count = 1
-        self.downloaded_count = 1
-        self.errors = []
-        self.status = "completed"
-
-
-class DummyScraper:
-    def run(self):
-        return DummyScraperResult()
-
-
-class DummyUploadResult:
-    def __init__(self, success: bool):
-        self.success = success
-
-
-class DummyRagflowClient:
-    def __init__(self):
-        self.upload_calls = []
-
-    def upload_documents(self, dataset_id: str, files: list[Path]):
-        self.upload_calls.append((dataset_id, [f.name for f in files]))
-        return [DummyUploadResult(True) for _ in files]
-
-
-class DummyContainer:
-    def __init__(self, ragflow_client: DummyRagflowClient):
-        self.ragflow_client = ragflow_client
-
-    @property
-    def settings(self):
-        raise RuntimeError("not needed in this test")
-
-    def state_tracker(self, scraper_name: str):
-        raise RuntimeError("not needed in this test")
-
-
 def test_pipeline_uploads_and_marks_parsed(monkeypatch, tmp_path):
-    # Arrange: create a dummy downloaded PDF in a temp download dir
-    download_dir = tmp_path / "dummy"
-    download_dir.mkdir()
-    (download_dir / "doc.pdf").write_bytes(b"pdf-bytes")
+    """Pipeline archives document and marks it as parsed/archived."""
+    # Create real files on disk
+    pdf_file = tmp_path / "test_doc_1.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4\nTest PDF content")
+    md_file = tmp_path / "test_doc_1.md"
+    md_file.write_text("# Test\n\nContent.")
 
-    # Redirect Config.DOWNLOAD_DIR to the temp path
-    monkeypatch.setattr(Config, "DOWNLOAD_DIR", tmp_path)
+    class DummyScraperResult:
+        def __init__(self):
+            self.scraped_count = 1
+            self.downloaded_count = 1
+            self.errors = []
+            self.status = "completed"
+            self.documents = [
+                {
+                    "title": "Test Doc",
+                    "url": "http://example.com/doc1",
+                    "filename": "test_doc_1.pdf",
+                    "pdf_path": str(pdf_file),
+                }
+            ]
 
-    # Scraper returns completed result with a download
-    monkeypatch.setattr(ScraperRegistry, "get_scraper", lambda *_, **__: DummyScraper())
+    class DummyScraper:
+        def run(self):
+            return DummyScraperResult()
 
-    ragflow_client = DummyRagflowClient()
-    container = DummyContainer(ragflow_client)
+    monkeypatch.setattr(
+        ScraperRegistry, "get_scraper", lambda *_, **__: DummyScraper()
+    )
 
-    # Keep upload logic intact but bypass parsing wait
-    monkeypatch.setattr(Pipeline, "_trigger_parsing", lambda self: True)
-    monkeypatch.setattr(Pipeline, "_wait_for_parsing", lambda self: True)
+    container = Mock()
+    container.settings.get.return_value = ""
+
+    # Parser succeeds
+    container.parser_backend.parse_document.return_value = ParserResult(
+        success=True,
+        markdown_path=md_file,
+        metadata={"title": "Test Doc"},
+        parser_name="docling",
+    )
+
+    # Archive succeeds
+    container.archive_backend.archive_document.return_value = ArchiveResult(
+        success=True,
+        document_id="doc-123",
+        archive_name="paperless",
+    )
+    container.archive_backend.verify_document.return_value = True
 
     pipeline = Pipeline(
         scraper_name="dummy",
         dataset_id="ds-123",
-        upload_to_ragflow=True,
-        wait_for_parsing=True,
+        upload_to_ragflow=False,
+        upload_to_paperless=True,
+        verify_document_timeout=5,
         container=container,
     )
 
-    # Act
     result = pipeline.run()
 
-    # Assert
     assert isinstance(result, PipelineResult)
     assert result.status == "completed"
-    assert result.uploaded_count == 1
     assert result.parsed_count == 1
+    assert result.archived_count == 1
+    assert result.verified_count == 1
     assert result.failed_count == 0
-    assert ragflow_client.upload_calls == [("ds-123", ["doc.pdf"])]
+
+    # Verify archive was called
+    container.archive_backend.archive_document.assert_called_once()
+    container.archive_backend.verify_document.assert_called_once_with("doc-123", timeout=5)

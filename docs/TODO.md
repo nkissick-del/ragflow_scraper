@@ -18,9 +18,9 @@ The Phase 4.4 config audit found only 40% of user-facing settings are exposed in
 - [x] Filename template editor with live preview
 - [x] Connection test buttons for Gotenberg, Tika, Paperless, AnythingLLM, Docling-serve
 - [x] Persist pipeline settings (settings.json `pipeline` section, overrides Config fallback)
-- [ ] Backend selection dropdowns (currently read-only; changing requires .env edit + restart)
-- [ ] Service URL configuration (currently read-only; changing requires .env edit + restart)
-- [ ] Timeout configuration (currently read-only; changing requires .env edit + restart)
+- [x] Backend selection dropdowns (editable, persisted to settings.json, reset_services() on save)
+- [x] Service URL configuration (editable, persisted to settings.json, reset_services() on save)
+- [x] Timeout configuration (editable, persisted to settings.json, reset_services() on save)
 
 **Reference:** config_audit.md (from Phase 4.4)
 
@@ -58,9 +58,9 @@ Tika is implemented as a standalone parser backend, but the [tika_integration.md
 **Use case:** Docling extracts semantic metadata (title, headings, structure) but misses physical file metadata (creation date, author from PDF properties, page count, language). Tika fills those gaps.
 
 **Tasks:**
-- [ ] Wire Tika enrichment step in `pipeline.py` — after Docling parse, optionally run Tika metadata extraction
-- [ ] Merge Tika metadata into existing metadata using fill-missing strategy (don't override Docling/scraper data)
-- [ ] Gate behind `TIKA_ENRICHMENT_ENABLED` flag (default: false)
+- [x] Wire Tika enrichment step in `pipeline.py` — after Docling parse, optionally run Tika metadata extraction
+- [x] Merge Tika metadata into existing metadata using fill-missing strategy (don't override Docling/scraper data)
+- [x] Gate behind `TIKA_ENRICHMENT_ENABLED` flag (default: false)
 - [ ] Unit tests for enrichment merge logic
 - [ ] Add to Settings UI (toggle + Tika URL)
 
@@ -108,8 +108,9 @@ Deferred from Phase 4.5. Basic auth exists but production security hasn't been v
 **Tasks:**
 - [ ] TLS termination via reverse proxy (Caddy/Traefik config template)
 - [ ] Verify basic auth works end-to-end with HTMX
-- [ ] CSRF protection audit (Flask-WTF or manual tokens)
-- [ ] Security headers (CSP, X-Frame-Options, etc.)
+- [x] CSRF protection audit (Flask-WTF tokens, meta tag, HTMX header; API blueprint exempted)
+- [x] Security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
+- [x] SSRF mitigation for user-configurable service URLs (blocks link-local/cloud metadata)
 - [ ] Secrets rotation documentation
 
 ---
@@ -188,16 +189,35 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 </details>
 
+<details>
+<summary>Settings UI (2026-02-07) — Close Configuration Gaps</summary>
+
+- Pipeline Backends section (read-only badges for parser/archive/RAG/conversion)
+- Service Health section with connection test buttons (Gotenberg, Tika, Paperless, Docling-serve, AnythingLLM)
+- Pipeline Settings section (editable merge strategy dropdown + filename template editor with live preview)
+- Settings overrides persist to `settings.json` pipeline section, read at pipeline execution time
+- SandboxedEnvironment for Jinja2 templates (SSTI protection), markupsafe escaping (XSS protection)
+- Fixed pre-existing integration test infrastructure (27/27 blueprint route tests now pass)
+- Backend selection dropdowns (parser/archive/RAG) — editable with immediate `reset_services()` effect
+- Service URL + timeout configuration — editable for all 6 services, persisted to `settings.json`
+- `ServiceContainer` helper methods (`_get_effective_backend`, `_get_effective_url`, `_get_effective_timeout`)
+- API keys/tokens remain in `.env` only — never exposed in UI or settings.json
+- SSRF mitigation — blocks link-local/cloud metadata IPs in user-configurable service URLs
+- Fixed 8 outdated/broken integration tests (pipeline e2e, mocked, failure_flow, upload_flow, scheduler, accessibility, CSRF, web_integration)
+- Safe patch cleanup in all test fixtures (track started patches for reliable teardown)
+
+</details>
+
 ---
 
 ## Current State
 
-- **445+ tests** (unit + integration; stack tests excluded from default collection)
+- **427 tests passing** (431 collected, 4 pre-existing failures in test_paperless_client/test_pylance; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx | Stubs: S3, Local
 - **RAG:** AnythingLLM, RAGFlow
 - **Conversion:** Gotenberg (HTML/MD/Office→PDF)
 - **Scrapers:** 9 (AEMO, AEMC, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy)
-- **Settings UI:** ~70% coverage (backends, service health, merge strategy, filename template; backend selection/URLs/timeouts still read-only)
+- **Settings UI:** Full coverage (backend selection dropdowns, service URLs/timeouts, merge strategy, filename template — all editable with immediate effect)
 - **No current blockers** — system is deployable

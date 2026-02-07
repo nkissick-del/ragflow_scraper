@@ -4,19 +4,37 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+from app.config import Config
 from app.web import create_app
 
 
 @pytest.fixture
 def app():
     """Create test Flask app."""
-    # Patch runtime dependencies before importing blueprints
-    with patch("app.web.runtime.container"), \
-         patch("app.web.runtime.job_queue"):
+    mock_container = MagicMock()
+    mock_container.settings.get_all.return_value = {}
+    mock_container.state_tracker.return_value.get_all_status.return_value = {}
+    patches = [
+        patch("app.web.blueprints.scrapers.container", mock_container),
+        patch("app.web.blueprints.metrics_logs.container", mock_container),
+        patch("app.web.helpers.container", mock_container),
+        patch("app.web.blueprints.scrapers.job_queue"),
+        patch("app.web.blueprints.api_scrapers.job_queue"),
+        patch("app.web.helpers.job_queue"),
+        patch.object(Config, "BASIC_AUTH_ENABLED", False),
+    ]
+    started = []
+    try:
+        for p in patches:
+            p.start()
+            started.append(p)
         app = create_app()
         app.config["TESTING"] = True
         app.config["WTF_CSRF_ENABLED"] = False
         yield app
+    finally:
+        for p in reversed(started):
+            p.stop()
 
 
 @pytest.fixture

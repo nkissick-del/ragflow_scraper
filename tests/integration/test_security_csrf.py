@@ -3,22 +3,38 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from bs4 import BeautifulSoup
+from app.config import Config
 from app.web import create_app
 
 @pytest.fixture
 def app():
     """Create test Flask app with mocked dependencies and CSRF ENABLED."""
-    with patch("app.web.runtime.container") as mock_container, \
-         patch("app.web.runtime.job_queue") as mock_queue:
-
-        # Mock container services
-        mock_container.settings_manager.return_value.get_settings.return_value = {}
-        mock_container.state_tracker.return_value.get_all_status.return_value = {}
-
+    mock_container = MagicMock()
+    mock_container.settings.get_all.return_value = {}
+    mock_container.state_tracker.return_value.get_all_status.return_value = {}
+    mock_container.state_tracker.return_value.get_status.return_value = {
+        "scraper": "test", "status": "idle", "is_running": False
+    }
+    patches = [
+        patch("app.web.blueprints.scrapers.container", mock_container),
+        patch("app.web.blueprints.scrapers.job_queue"),
+        patch("app.web.blueprints.api_scrapers.job_queue"),
+        patch("app.web.helpers.container", mock_container),
+        patch("app.web.helpers.job_queue"),
+        patch.object(Config, "BASIC_AUTH_ENABLED", False),
+    ]
+    started = []
+    try:
+        for p in patches:
+            p.start()
+            started.append(p)
         app = create_app()
         app.config["TESTING"] = True
         app.config["WTF_CSRF_ENABLED"] = True  # Explicitly enable for these tests
         yield app
+    finally:
+        for p in reversed(started):
+            p.stop()
 
 @pytest.fixture
 def client(app):
