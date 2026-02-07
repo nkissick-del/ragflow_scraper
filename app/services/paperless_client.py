@@ -263,7 +263,7 @@ class PaperlessClient:
         endpoint = f"{self.url}/api/documents/post_document/"
 
         # Prepare metadata
-        data = {"title": title}
+        data: dict[str, Union[str, int, list[int]]] = {"title": title}
 
         if created:
             data["created"] = created.isoformat()
@@ -272,17 +272,18 @@ class PaperlessClient:
             # Resolve string name to integer ID if needed
             if isinstance(correspondent, int):
                 data["correspondent"] = correspondent
-            elif isinstance(correspondent, str) and correspondent.isdigit():
-                data["correspondent"] = int(correspondent)
-            else:
-                # Look up or create correspondent by name
-                corr_id = self.get_or_create_correspondent(correspondent)
-                if corr_id:
-                    data["correspondent"] = corr_id
+            elif isinstance(correspondent, str):
+                if correspondent.isdigit():
+                    data["correspondent"] = int(correspondent)
                 else:
-                    self.logger.warning(
-                        f"Could not resolve correspondent '{correspondent}', skipping"
-                    )
+                    # Look up or create correspondent by name
+                    corr_id = self.get_or_create_correspondent(correspondent)
+                    if corr_id:
+                        data["correspondent"] = corr_id
+                    else:
+                        self.logger.warning(
+                            f"Could not resolve correspondent '{correspondent}', skipping"
+                        )
 
         if tags:
             # Resolve string names to integer IDs
@@ -292,10 +293,11 @@ class PaperlessClient:
             for t in tags:
                 if isinstance(t, int):
                     tag_ids.append(t)
-                elif isinstance(t, str) and t.isdigit():
-                    tag_ids.append(int(t))
                 elif isinstance(t, str):
-                    string_tags.append(t)
+                    if t.isdigit():
+                        tag_ids.append(int(t))
+                    else:
+                        string_tags.append(t)
 
             # Look up or create string tags
             if string_tags:

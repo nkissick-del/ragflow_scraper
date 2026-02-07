@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast, Union
 
 from app.backends.archives.base import ArchiveBackend, ArchiveResult
 from app.services.paperless_client import PaperlessClient
@@ -78,12 +78,14 @@ class PaperlessArchiveBackend(ArchiveBackend):
                 self.logger.warning(f"Invalid date format '{created}': {e}")
 
         # Upload to Paperless
+        # Cast tags to compatible type for invariant list
+        casted_tags = cast(Optional[list[Union[str, int]]], tags)
         task_id = self.client.post_document(
             file_path=file_path,
             title=title,
             created=created_dt,
             correspondent=correspondent,
-            tags=tags,
+            tags=casted_tags,
         )
 
         if not task_id:

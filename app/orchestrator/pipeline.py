@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field, fields as dataclass_fields
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast, Literal
 
 from app.config import Config
 from app.container import get_container
@@ -433,7 +433,10 @@ class Pipeline:
         # -- Step 2: Merge metadata --
         merged_metadata = doc_metadata.merge_parser_metadata(
             parse_metadata,
-            strategy=Config.METADATA_MERGE_STRATEGY,
+            strategy=cast(
+                Literal["smart", "parser_wins", "scraper_wins"],
+                Config.METADATA_MERGE_STRATEGY
+            ),
         )
         self.logger.debug(
             f"Metadata merged using '{Config.METADATA_MERGE_STRATEGY}' strategy"
