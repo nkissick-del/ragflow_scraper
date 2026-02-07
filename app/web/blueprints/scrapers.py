@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for
 from markupsafe import escape
@@ -51,6 +52,14 @@ def scrapers_page():
 
 @bp.route("/scrapers/<name>/status")
 def scraper_status(name):
+    # Validate scraper name format
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return render_template(
+            "components/status-badge.html",
+            status="error",
+            status_text="Invalid Name",
+        )
+
     scraper_class = ScraperRegistry.get_scraper_class(name)
     if not scraper_class:
         log_event(logger, "warning", "scraper.status.unknown", scraper=name)
@@ -73,15 +82,29 @@ def scraper_status(name):
 
 @bp.route("/scrapers/<name>/run", methods=["POST"])
 def run_scraper(name):
+    # Validate scraper name format
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return jsonify({"error": "Invalid scraper name format"}), 400
+
     dry_run = request.form.get("dry_run") == "true"
     max_pages = request.form.get("max_pages", type=int)
 
-    scraper = ScraperRegistry.get_scraper(name, dry_run=dry_run, max_pages=max_pages or 1 if dry_run else None)
+    # Validate max_pages
+    if max_pages is not None and max_pages < 1:
+        return jsonify({"error": "max_pages must be positive"}), 400
+
+    # Fix precedence: if dry_run, use max_pages (default 1). If not dry_run, allow None (all pages)
+    # Original buggy code: max_pages or 1 if dry_run else None
+    effective_max_pages = max_pages
+    if dry_run and effective_max_pages is None:
+        effective_max_pages = 1
+
+    scraper = ScraperRegistry.get_scraper(name, dry_run=dry_run, max_pages=effective_max_pages)
     if not scraper:
         return jsonify({"error": f"Scraper not found: {name}"}), 404
 
     try:
-        job_queue.enqueue(name, scraper, dry_run=dry_run, max_pages=max_pages)
+        job_queue.enqueue(name, scraper, dry_run=dry_run, max_pages=effective_max_pages)
     except ValueError:
         scraper_class = ScraperRegistry.get_scraper_class(name)
         if not scraper_class:
@@ -136,7 +159,15 @@ def cancel_scraper(name):
 
 @bp.route("/scrapers/<name>/preview", methods=["POST"])
 def preview_scraper(name):
+    # Validate scraper name format
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return jsonify({"error": "Invalid scraper name format"}), 400
+
     max_pages = request.form.get("max_pages", 1, type=int)
+
+    # Validate max_pages
+    if max_pages < 1:
+        return jsonify({"error": "max_pages must be positive"}), 400
 
     scraper = ScraperRegistry.get_scraper(name, dry_run=True, max_pages=max_pages)
     if not scraper:
@@ -200,6 +231,14 @@ def scraper_card(name):
 
 @bp.route("/scrapers/<name>/ragflow", methods=["POST"])
 def save_scraper_ragflow_settings(name):
+    # Validate scraper name format
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return "Invalid scraper name", 400
+
+    # Verify scraper exists
+    if not ScraperRegistry.get_scraper_class(name):
+        return f"Scraper not found: {escape(name)}", 404
+
     settings_mgr = container.settings
     settings = {}
 
@@ -230,6 +269,22 @@ def save_scraper_ragflow_settings(name):
 @bp.route("/scrapers/<name>/cloudflare", methods=["POST"])
 def toggle_scraper_cloudflare(name):
     """Toggle FlareSolverr/Cloudflare bypass for a specific scraper."""
+    # Validate scraper name format
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return '''
+            <span class="toggle-status error">
+                Invalid name
+            </span>
+        ''', 400
+
+    # Verify scraper exists
+    if not ScraperRegistry.get_scraper_class(name):
+        return f'''
+            <span class="toggle-status error">
+                Not found
+            </span>
+        ''', 404
+
     settings_mgr = container.settings
 
     # Check if global FlareSolverr is configured and enabled

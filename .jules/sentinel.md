@@ -15,3 +15,15 @@
 **Vulnerability:** The Flask application was missing critical security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`), exposing it to clickjacking and MIME sniffing attacks.
 **Learning:** Security headers must be explicitly added via an `@app.after_request` hook in `app/web/__init__.py`, as Flask does not provide them by default.
 **Prevention:** Ensure `app/web/__init__.py` always includes the `add_security_headers` function and that integration tests verify their presence.
+
+## 2026-02-07 - Inconsistent Input Validation & Logic Bug in Scraper Blueprint
+**Vulnerability:** The `app/web/blueprints/scrapers.py` endpoints failed to validate `name` parameter format and `max_pages` values, unlike the API blueprint. This allowed:
+1.  Modifying settings for non-existent scrapers (polluting `settings.json`).
+2.  Passing negative `max_pages` values (which were ignored due to a precedence bug: `max_pages or 1 if dry_run else None`).
+**Learning:**
+1.  **Inconsistent Validation:** When duplicating logic between UI and API blueprints, ensure validation is applied consistently.
+2.  **Operator Precedence:** Python's `if else` has lower precedence than `or`. `x or y if c else z` parses as `x or (y if c else z)`, not `(x or y) if c else z`.
+**Prevention:**
+1.  Centralize validation logic where possible.
+2.  Use explicit parentheses in complex boolean expressions.
+3.  Verify inputs against the registry/database before performing actions (defense in depth).
