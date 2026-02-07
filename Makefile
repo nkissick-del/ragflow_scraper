@@ -3,7 +3,7 @@ COMPOSE ?= docker-compose.dev.yml
 SERVICE ?= scraper
 DC := docker compose -f $(COMPOSE)
 
-.PHONY: help dev-build dev-up dev-down dev-restart logs shell test test-unit test-int test-file fmt lint clean
+.PHONY: help dev-build dev-up dev-down dev-restart logs shell test test-unit test-int test-file test-stack fmt lint clean
 
 help:
 	@echo "Targets:"
@@ -17,6 +17,7 @@ help:
 	@echo "  test-unit     - Run unit tests"
 	@echo "  test-int      - Run integration tests"
 	@echo "  test-file     - Run a specific test FILE=..."
+	@echo "  test-stack    - Run stack tests against live Unraid services"
 	@echo "  fmt           - Format code (black + isort)"
 	@echo "  lint          - Lint (ruff)"
 	@echo "  clean         - Stop stack and prune (dangerous)"
@@ -62,6 +63,9 @@ endif
 
 test-file:
 	@$(TEST_FILE_CMD)
+
+test-stack:
+	DOTENV_PATH=.env.stack python -m pytest tests/stack -v --timeout=120
 
 # Dev tooling (optional, may require tools in container)
 fmt:

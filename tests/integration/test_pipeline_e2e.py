@@ -5,12 +5,10 @@ Tests the full workflow: scrape → parse → archive → RAG
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import Mock, patch
 
 from app.orchestrator.pipeline import Pipeline, PipelineResult
 from app.scrapers import ScraperRegistry
-from app.scrapers.models import DocumentMetadata
 from app.backends.parsers.base import ParserResult
 from app.services.archiver import ArchiveResult
 
@@ -27,11 +25,7 @@ class DummyScraperResult:
 
         # Create mock documents
         for i in range(doc_count):
-            # Use tmp_path if provided, otherwise fallback to /tmp for backward compatibility
-            if tmp_path:
-                pdf_path = f"{tmp_path.as_posix()}/test_doc_{i + 1}.pdf"
-            else:
-                pdf_path = f"/tmp/test_doc_{i + 1}.pdf"
+            pdf_path = f"{tmp_path.as_posix()}/test_doc_{i + 1}.pdf"
 
             self.documents.append(
                 {
@@ -49,6 +43,8 @@ class DummyScraper:
     """Mock scraper."""
 
     def __init__(self, doc_count=1, tmp_path=None):
+        if tmp_path is None:
+            raise ValueError("tmp_path is required for DummyScraper")
         self.doc_count = doc_count
         self.tmp_path = tmp_path
 
@@ -90,7 +86,7 @@ class TestE2EPipelineHappyPath:
         parser_result = ParserResult(
             success=True,
             markdown_path=markdown_file,
-            extracted_metadata={
+            metadata={
                 "title": "Test Document 1",
                 "author": "Test Author",
                 "page_count": 5,
@@ -103,7 +99,6 @@ class TestE2EPipelineHappyPath:
         archive_result = ArchiveResult(
             success=True,
             document_id="123",
-            task_id="task-456",
             archive_name="paperless",
         )
         mock_container.archive_backend.archive_document.return_value = archive_result
@@ -166,7 +161,7 @@ class TestE2EPipelineHappyPath:
             return ParserResult(
                 success=True,
                 markdown_path=markdown_path,
-                extracted_metadata={
+                metadata={
                     "title": f"Test Document {doc_num}",
                     "page_count": 5,
                 },
@@ -179,7 +174,6 @@ class TestE2EPipelineHappyPath:
         mock_container.archive_backend.archive_document.return_value = ArchiveResult(
             success=True,
             document_id="123",
-            task_id="task-456",
             archive_name="paperless",
         )
 
@@ -235,7 +229,7 @@ class TestE2EPipelineErrorHandling:
             return ParserResult(
                 success=True,
                 markdown_path=markdown_file,
-                extracted_metadata={"title": "Test Document 2"},
+                metadata={"title": "Test Document 2"},
                 parser_name="docling",
             )
 
@@ -279,7 +273,7 @@ class TestE2EPipelineErrorHandling:
         mock_container.parser_backend.parse_document.return_value = ParserResult(
             success=True,
             markdown_path=markdown_file,
-            extracted_metadata={"title": "Test"},
+            metadata={"title": "Test"},
             parser_name="docling",
         )
 
@@ -376,7 +370,7 @@ class TestE2EPipelineMetadata:
         parser_result = ParserResult(
             success=True,
             markdown_path=markdown_file,
-            extracted_metadata={
+            metadata={
                 "title": "Extracted Title",
                 "author": "Extracted Author",
                 "page_count": 10,

@@ -153,8 +153,17 @@ class Config:
     ANYTHINGLLM_API_KEY = os.getenv("ANYTHINGLLM_API_KEY", "")
     ANYTHINGLLM_WORKSPACE_ID = os.getenv("ANYTHINGLLM_WORKSPACE_ID", "")
 
+    # Docling-serve (HTTP parser backend)
+    DOCLING_SERVE_URL = os.getenv("DOCLING_SERVE_URL", "")
+    DOCLING_SERVE_TIMEOUT = _parse_timeout(
+        os.getenv("DOCLING_SERVE_TIMEOUT", "300"),
+        "DOCLING_SERVE_TIMEOUT",
+        min_val=1,
+        max_val=600,
+    )
+
     # Valid values for backends and strategies
-    VALID_PARSER_BACKENDS = ("docling", "mineru", "tika")
+    VALID_PARSER_BACKENDS = ("docling", "docling_serve", "mineru", "tika")
     VALID_ARCHIVE_BACKENDS = ("paperless", "s3", "local")
     VALID_RAG_BACKENDS = ("ragflow", "anythingllm")
     VALID_METADATA_MERGE_STRATEGIES = ("smart", "parser_wins", "scraper_wins")
@@ -244,6 +253,12 @@ class Config:
             if not cls.BASIC_AUTH_USERNAME or not cls.BASIC_AUTH_PASSWORD:
                 raise ValueError(
                     "Invalid Config: BASIC_AUTH_ENABLED=true requires both BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD"
+                )
+
+        if cls.PARSER_BACKEND == "docling_serve":
+            if not cls.DOCLING_SERVE_URL:
+                raise ValueError(
+                    "Invalid Config: PARSER_BACKEND='docling_serve' requires DOCLING_SERVE_URL"
                 )
 
         if cls.ARCHIVE_BACKEND == "paperless":

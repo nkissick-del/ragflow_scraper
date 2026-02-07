@@ -1,6 +1,7 @@
 # Environment
 .env
 .env.test
+.env.stack
 venv/
 .venv/
 env/

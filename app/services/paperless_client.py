@@ -401,15 +401,32 @@ class PaperlessClient:
             self.logger.warning(f"Invalid task_id format: {task_id}")
             return None
 
-        # Use direct task endpoint for better performance
-        endpoint = f"{self.url}/api/tasks/{task_id}/"
+        # Search the task list endpoint and filter by task_id.
+        # Paperless-ngx does not expose /api/tasks/{id}/ — only the list.
+        next_url: Optional[str] = f"{self.url}/api/tasks/"
         try:
-            response = self.session.get(endpoint, timeout=10)
-            if response.status_code == 404:
-                self.logger.warning(f"Task {task_id} not found at {endpoint}")
-                return None
-            response.raise_for_status()
-            return response.json()
+            while next_url:
+                response = self.session.get(next_url, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+
+                # Handle both flat list and paginated dict responses
+                if isinstance(data, list):
+                    tasks = data
+                    next_url = None
+                elif isinstance(data, dict):
+                    tasks = data.get("results", [])
+                    next_url = data.get("next")
+                else:
+                    self.logger.debug("Unexpected response format for tasks")
+                    return None
+
+                for task in tasks:
+                    if task.get("task_id") == task_id:
+                        return task
+
+            self.logger.debug(f"Task {task_id} not found in task list")
+            return None
 
         except Exception as e:
             self.logger.error(f"Failed to query task status: {e}")

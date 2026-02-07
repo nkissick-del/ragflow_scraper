@@ -165,6 +165,12 @@ class ServiceContainer:
                 from app.backends.parsers.docling_parser import DoclingParser
 
                 candidate = DoclingParser()
+            elif backend_name == "docling_serve":
+                from app.backends.parsers.docling_serve_parser import (
+                    DoclingServeParser,
+                )
+
+                candidate = DoclingServeParser()
             elif backend_name == "mineru":
                 raise ValueError(f"Parser backend '{backend_name}' not yet implemented")
             elif backend_name == "tika":

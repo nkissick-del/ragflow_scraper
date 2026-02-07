@@ -65,6 +65,18 @@ class RAGBackend(ABC):
         """
         raise NotImplementedError
 
+    def is_available(self) -> bool:
+        """
+        Check if RAG backend is available for use.
+
+        Default implementation delegates to is_configured().
+        Subclasses may override to add connectivity checks.
+
+        Returns:
+            True if backend is available
+        """
+        return self.is_configured()
+
     @abstractmethod
     def test_connection(self) -> bool:
         """

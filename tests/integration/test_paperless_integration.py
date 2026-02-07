@@ -3,6 +3,9 @@
 Tests document archiving, correspondent/tag management, and verification polling.
 """
 
+import re
+import threading
+
 import pytest
 import requests
 import responses
@@ -112,8 +115,6 @@ class TestPaperlessDocumentArchiving:
             # Check that correspondent field has value "42"
             assert 'name="correspondent"' in body_str
             # Find the correspondent value in the multipart data
-            import re
-
             correspondent_match = re.search(
                 r'name="correspondent"[^\r\n]*\r?\n\r?\n([^\r\n]+)', body_str
             )
@@ -372,8 +373,6 @@ class TestPaperlessDocumentArchiving:
         self, paperless_client, paperless_backend, test_pdf
     ):
         """Should handle concurrent archiving requests correctly."""
-        import threading
-
         # Mock correspondent fetch
         responses.add(
             responses.GET,
