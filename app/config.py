@@ -14,7 +14,7 @@ def load_env():
     """Load environment variables with safeguards."""
     node_env = os.getenv("NODE_ENV", "development").lower()
     flask_env = os.getenv("FLASK_ENV", "").lower()
-    is_test = node_env == "test" or flask_env == "testing"
+    is_test = node_env == "test" or flask_env == "testing" or "pytest" in sys.modules
 
     # Use a specific file if specified, otherwise load standard .env
     env_file = ".env"
