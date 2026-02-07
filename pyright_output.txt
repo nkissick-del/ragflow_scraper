@@ -1,0 +1,36 @@
+/app/app/backends/archives/paperless_adapter.py
+  /app/app/backends/archives/paperless_adapter.py:86:18 - error: Argument of type "list[str] | None" cannot be assigned to parameter "tags" of type "list[str | int] | None" in function "post_document"
+    Type "list[str] | None" is not assignable to type "list[str | int] | None"
+      Type "list[str]" is not assignable to type "list[str | int] | None"
+        "list[str]" is not assignable to "list[str | int]"
+          Type parameter "_T@list" is invariant, but "str" is not the same as "str | int"
+          Consider switching from "list" to "Sequence" which is covariant
+        "list[str]" is not assignable to "None" (reportArgumentType)
+/app/app/backends/parsers/docling_parser.py
+  /app/app/backends/parsers/docling_parser.py:32:20 - error: Import "docling" could not be resolved (reportMissingImports)
+  /app/app/backends/parsers/docling_parser.py:259:14 - error: Import "docling.document_converter" could not be resolved (reportMissingImports)
+/app/app/backends/rag/ragflow_adapter.py
+  /app/app/backends/rag/ragflow_adapter.py:104:29 - error: Argument missing for parameter "docs" (reportCallIssue)
+  /app/app/backends/rag/ragflow_adapter.py:106:17 - error: No parameter named "files_with_metadata" (reportCallIssue)
+/app/app/orchestrator/pipeline.py
+  /app/app/orchestrator/pipeline.py:436:22 - error: Argument of type "str" cannot be assigned to parameter "strategy" of type "Literal['smart', 'parser_wins', 'scraper_wins']" in function "merge_parser_metadata"
+    Type "str" is not assignable to type "Literal['smart', 'parser_wins', 'scraper_wins']"
+      "str" is not assignable to type "Literal['smart']"
+      "str" is not assignable to type "Literal['parser_wins']"
+      "str" is not assignable to type "Literal['scraper_wins']" (reportArgumentType)
+/app/app/scrapers/models.py
+  /app/app/scrapers/models.py:162:50 - error: Second argument to "isinstance" must be a class or tuple of classes
+    "Any" is not supported for instance and class checks (reportArgumentType)
+/app/app/services/anythingllm_client.py
+  /app/app/services/anythingllm_client.py:87:28 - error: Cannot assign to attribute "session" for class "AnythingLLMClient*"
+    "None" is not assignable to "Session" (reportAttributeAccessIssue)
+/app/app/services/paperless_client.py
+  /app/app/services/paperless_client.py:274:17 - error: Argument of type "int" cannot be assigned to parameter "value" of type "str" in function "__setitem__"
+    "int" is not assignable to "str" (reportArgumentType)
+  /app/app/services/paperless_client.py:276:17 - error: Argument of type "int" cannot be assigned to parameter "value" of type "str" in function "__setitem__"
+    "int" is not assignable to "str" (reportArgumentType)
+  /app/app/services/paperless_client.py:281:21 - error: Argument of type "int" cannot be assigned to parameter "value" of type "str" in function "__setitem__"
+    "int" is not assignable to "str" (reportArgumentType)
+  /app/app/services/paperless_client.py:306:17 - error: Argument of type "list[int]" cannot be assigned to parameter "value" of type "str" in function "__setitem__"
+    "list[int]" is not assignable to "str" (reportArgumentType)
+12 errors, 0 warnings, 0 informations

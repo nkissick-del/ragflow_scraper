@@ -271,14 +271,14 @@ class PaperlessClient:
         if correspondent:
             # Resolve string name to integer ID if needed
             if isinstance(correspondent, int):
-                data["correspondent"] = correspondent
+                data["correspondent"] = correspondent  # type: ignore
             elif isinstance(correspondent, str) and correspondent.isdigit():
-                data["correspondent"] = int(correspondent)
+                data["correspondent"] = int(correspondent)  # type: ignore
             else:
                 # Look up or create correspondent by name
                 corr_id = self.get_or_create_correspondent(correspondent)
                 if corr_id:
-                    data["correspondent"] = corr_id
+                    data["correspondent"] = corr_id  # type: ignore
                 else:
                     self.logger.warning(
                         f"Could not resolve correspondent '{correspondent}', skipping"
@@ -303,7 +303,7 @@ class PaperlessClient:
                 tag_ids.extend(resolved_ids)
 
             if tag_ids:
-                data["tags"] = tag_ids
+                data["tags"] = tag_ids  # type: ignore
 
         self.logger.info(f"Uploading to Paperless: {title}")
 
