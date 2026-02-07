@@ -154,11 +154,15 @@ def client(app):
 class TestScraperEndpoints:
     """Test scraper blueprint endpoints."""
     
-    def test_index_redirect(self, client):
-        """Test index redirects to scrapers page."""
-        response = client.get("/")
-        assert response.status_code == 302
-        assert "/scrapers" in response.location
+    def test_index_dashboard(self, client):
+        """Test index renders dashboard."""
+        with patch.object(ScraperRegistry, "list_scrapers") as mock_list, \
+             patch("app.web.blueprints.scrapers.load_scraper_configs") as mock_load:
+            mock_list.return_value = [{"name": "test_scraper"}]
+
+            response = client.get("/")
+            assert response.status_code == 200
+            assert b"Dashboard" in response.data
     
     def test_scrapers_page_loads(self, client):
         """Test scrapers page renders."""
