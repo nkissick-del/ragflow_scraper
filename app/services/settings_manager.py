@@ -69,6 +69,7 @@ DEFAULT_SETTINGS = {
         "parser_backend": "",           # Empty = use Config.PARSER_BACKEND
         "archive_backend": "",          # Empty = use Config.ARCHIVE_BACKEND
         "rag_backend": "",              # Empty = use Config.RAG_BACKEND
+        "tika_enrichment_enabled": "",  # Empty = use Config.TIKA_ENRICHMENT_ENABLED
     },
     "services": {
         "gotenberg_url": "",            # Empty = use Config.GOTENBERG_URL
@@ -152,6 +153,7 @@ SETTINGS_SCHEMA = {
                 "parser_backend": {"type": "string"},
                 "archive_backend": {"type": "string"},
                 "rag_backend": {"type": "string"},
+                "tika_enrichment_enabled": {"type": "string"},
             },
             "additionalProperties": False,
         },

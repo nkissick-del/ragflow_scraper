@@ -204,6 +204,13 @@ def settings_page():
     current_merge_strategy = pipeline_settings.get("metadata_merge_strategy", "") or Config.METADATA_MERGE_STRATEGY
     current_filename_template = pipeline_settings.get("filename_template", "") or Config.FILENAME_TEMPLATE
 
+    # Tika enrichment toggle
+    tika_enrichment_override = pipeline_settings.get("tika_enrichment_enabled", "")
+    if tika_enrichment_override != "":
+        tika_enrichment_active = tika_enrichment_override == "true"
+    else:
+        tika_enrichment_active = Config.TIKA_ENRICHMENT_ENABLED
+
     log_event(
         logger,
         "info",
@@ -240,6 +247,7 @@ def settings_page():
         eff_paperless_url=eff_paperless_url,
         eff_ragflow_url=eff_ragflow_url,
         eff_anythingllm_url=eff_anythingllm_url,
+        tika_enrichment_active=tika_enrichment_active,
     )
 
 
@@ -587,6 +595,8 @@ def save_pipeline_settings():
 
     metadata_merge_strategy = request.form.get("metadata_merge_strategy", "")
     filename_template = request.form.get("filename_template", "")
+    tika_enrichment = request.form.get("tika_enrichment_enabled", "")
+    tika_enrichment_value = "true" if tika_enrichment else "false"
 
     # Validate merge strategy if provided
     if metadata_merge_strategy and metadata_merge_strategy not in Config.VALID_METADATA_MERGE_STRATEGIES:
@@ -613,9 +623,10 @@ def save_pipeline_settings():
     settings_mgr.update_section("pipeline", {
         "metadata_merge_strategy": metadata_merge_strategy,
         "filename_template": filename_template,
+        "tika_enrichment_enabled": tika_enrichment_value,
     })
 
-    logger.info(f"Pipeline settings updated: strategy={metadata_merge_strategy or '(default)'}, template={filename_template or '(default)'}")
+    logger.info(f"Pipeline settings updated: strategy={metadata_merge_strategy or '(default)'}, template={filename_template or '(default)'}, tika_enrichment={tika_enrichment_value}")
 
     return '''
         <div class="alert alert-success">

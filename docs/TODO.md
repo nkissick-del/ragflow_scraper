@@ -1,70 +1,24 @@
 # TODO — Prioritized Roadmap
 
-Last updated: 2026-02-07
+Last updated: 2026-02-08
 
 ---
 
-## 1. Settings UI — Close Configuration Gaps
+## ~~1. Settings UI — Close Configuration Gaps~~ DONE
 
-**Priority:** HIGH | **Effort:** 6-10h | **Type:** [Code]
-
-The Phase 4.4 config audit found only 40% of user-facing settings are exposed in the Web UI, with 12 specific gaps. Operators currently need to edit `.env` and restart to change backend selection, timeouts, or service URLs.
-
-**Tasks:**
-- [x] Backend selection display (read-only badges for PARSER_BACKEND, ARCHIVE_BACKEND, RAG_BACKEND)
-- [x] Service URL display (read-only, shown alongside service health)
-- [x] Timeout display (read-only, shown alongside their service)
-- [x] Metadata merge strategy selector (editable dropdown, persisted to settings.json)
-- [x] Filename template editor with live preview
-- [x] Connection test buttons for Gotenberg, Tika, Paperless, AnythingLLM, Docling-serve
-- [x] Persist pipeline settings (settings.json `pipeline` section, overrides Config fallback)
-- [x] Backend selection dropdowns (editable, persisted to settings.json, reset_services() on save)
-- [x] Service URL configuration (editable, persisted to settings.json, reset_services() on save)
-- [x] Timeout configuration (editable, persisted to settings.json, reset_services() on save)
-
-**Reference:** config_audit.md (from Phase 4.4)
+Completed 2026-02-07. See [Completed Work](#completed-work) for details.
 
 ---
 
-## 2. Paperless Custom Fields
+## ~~2. Paperless Custom Fields~~ DONE
 
-**Priority:** MEDIUM | **Effort:** 3-5h | **Type:** [Code]
-
-Basic correspondent/tag mapping is complete (Phase 4.2), but the [paperless_metadata.md](plans/paperless_metadata.md) plan includes structured custom fields that unlock rich search and filtering in Paperless.
-
-**What exists today:**
-- Correspondent and tag ID lookup with caching
-- `post_document()` resolves string names→integer IDs
-
-**What's missing (Phase 2-3 of paperless_metadata plan):**
-- [ ] Custom field mapping: Original URL, Scraped Date, Page Count, File Size, Source Scraper
-- [ ] `_get_custom_fields()` method to discover Paperless custom field IDs
-- [ ] Map `DocumentMetadata` fields to Paperless custom field values during upload
-- [ ] Unit tests for custom field resolution
-- [ ] Document required Paperless custom field setup
-
-**Value:** Enables filtering documents by source URL, scrape date, page count — directly useful for dedup auditing and provenance tracking.
-
-**Reference:** [docs/plans/paperless_metadata.md](plans/paperless_metadata.md) (Phases 2-3)
+Completed 2026-02-08. See [Completed Work](#completed-work) for details.
 
 ---
 
-## 3. Tika Metadata Enrichment Pipeline
+## ~~3. Tika Metadata Enrichment Pipeline~~ DONE
 
-**Priority:** MEDIUM | **Effort:** 3-4h | **Type:** [Code]
-
-Tika is implemented as a standalone parser backend, but the [tika_integration.md](plans/tika_integration.md) plan envisions it as a metadata *enrichment* layer that runs *alongside* Docling. The `TIKA_ENRICHMENT_ENABLED` config var already exists but the enrichment pipeline isn't wired.
-
-**Use case:** Docling extracts semantic metadata (title, headings, structure) but misses physical file metadata (creation date, author from PDF properties, page count, language). Tika fills those gaps.
-
-**Tasks:**
-- [x] Wire Tika enrichment step in `pipeline.py` — after Docling parse, optionally run Tika metadata extraction
-- [x] Merge Tika metadata into existing metadata using fill-missing strategy (don't override Docling/scraper data)
-- [x] Gate behind `TIKA_ENRICHMENT_ENABLED` flag (default: false)
-- [ ] Unit tests for enrichment merge logic
-- [ ] Add to Settings UI (toggle + Tika URL)
-
-**Reference:** [docs/plans/tika_integration.md](plans/tika_integration.md)
+Completed 2026-02-08. See [Completed Work](#completed-work) for details.
 
 ---
 
@@ -88,11 +42,12 @@ Backend selection in `container.py` uses hardcoded `if/elif` chains. A registry 
 
 **Priority:** MEDIUM | **Effort:** 4-6h | **Type:** [Code]
 
-No automated testing or build pipeline exists. With 438+ tests, this is low-hanging fruit for preventing regressions.
+A basic GitHub Actions workflow exists (`.github/workflows/test.yml`) running unit tests on PR/push.
 
 **Tasks:**
-- [ ] GitHub Actions workflow: lint + unit tests on PR
+- [x] GitHub Actions workflow: unit tests on PR (with FLASK_ENV=testing, BASIC_AUTH_ENABLED=false)
 - [ ] Integration test job (mocked services, no external deps)
+- [ ] Linting step (ruff or flake8)
 - [ ] Security scanning (`pip-audit` or `safety`)
 - [ ] Docker image build + push on merge to main
 - [ ] Badge in README for build status
@@ -111,6 +66,8 @@ Deferred from Phase 4.5. Basic auth exists but production security hasn't been v
 - [x] CSRF protection audit (Flask-WTF tokens, meta tag, HTMX header; API blueprint exempted)
 - [x] Security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
 - [x] SSRF mitigation for user-configurable service URLs (blocks link-local/cloud metadata)
+- [x] Scraper blueprint input validation — regex name format, max_pages positivity, existence checks
+- [x] Fix `max_pages` operator precedence bug (`x or y if c else z` → explicit parenthesization)
 - [ ] Secrets rotation documentation
 
 ---
@@ -208,16 +165,54 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 </details>
 
+<details>
+<summary>Paperless Custom Fields (2026-02-08)</summary>
+
+- `CUSTOM_FIELD_MAPPING` in `paperless_client.py` — maps metadata keys (url, scraped_at, page_count, file_size, source_page) to Paperless custom field names and data types
+- `_fetch_custom_fields()`, `get_or_create_custom_field()`, `set_custom_fields()` — cache-first pattern with auto-creation (same as correspondents/tags)
+- Metadata stored per-task in `PaperlessArchiveBackend._pending_metadata` (keyed by task_id, bounded at 100 entries), applied via `PATCH /api/documents/{id}/` after verification
+- Non-fatal: custom field failure doesn't prevent document verification
+- 18 unit tests (fetch, get/create, set) + 6 integration tests (cache, auto-create, PATCH, full flow, non-fatal failure)
+- Fixed 6 pre-existing test failures: 3 in TestPaperlessVerification (wrong endpoint mock), 3 in TestPostDocumentWithLookups (missing mock headers)
+
+</details>
+
+<details>
+<summary>Jules PR Review & Input Validation (2026-02-08)</summary>
+
+- Reviewed 4 Jules PRs (#28, #30, #31, #32); closed 2 stale/duplicate, selectively merged 2
+- Scraper blueprint input validation: `re.match(r'^[a-zA-Z0-9_-]+$', name)` on all `<name>` endpoints
+- `max_pages` positivity validation and operator precedence bug fix
+- Existence checks before saving scraper RAGFlow/Cloudflare settings (prevents `settings.json` pollution)
+- ARIA labels on all scraper action buttons (Run, Cancel, Preview, Configure) for accessibility
+- CI workflow fix: added `BASIC_AUTH_ENABLED=false` env var to GitHub Actions
+- 6 new security validation integration tests
+
+</details>
+
+<details>
+<summary>Tika Enrichment — Tests + Settings UI Toggle (2026-02-08)</summary>
+
+- Extracted `_run_tika_enrichment()` helper in `pipeline.py` — encapsulates enrichment logic, reads settings override before Config fallback
+- Settings UI toggle for `TIKA_ENRICHMENT_ENABLED` — checkbox in Pipeline Settings section, persisted as `pipeline.tika_enrichment_enabled` in `settings.json`
+- `settings_manager.py` — added `tika_enrichment_enabled` to defaults + schema (string type: empty = env var, "true"/"false" = override)
+- 9 unit tests (`test_pipeline_enrichment.py`): fill missing keys, no overwrite, disabled config, no URL, office skip, failure non-fatal, empty response, settings override enable/disable
+- Fixed `test_web_integration.py` — patched `app.container.get_container` before runtime import (was crashing on `/app/data/logs/`), fixed wrong 302 assertion (root route serves 200)
+
+</details>
+
 ---
 
 ## Current State
 
-- **427 tests passing** (431 collected, 4 pre-existing failures in test_paperless_client/test_pylance; stack tests excluded from default collection)
+- **484 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
-- **Archives:** Paperless-ngx | Stubs: S3, Local
+- **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local
 - **RAG:** AnythingLLM, RAGFlow
 - **Conversion:** Gotenberg (HTML/MD/Office→PDF)
 - **Scrapers:** 9 (AEMO, AEMC, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy)
-- **Settings UI:** Full coverage (backend selection dropdowns, service URLs/timeouts, merge strategy, filename template — all editable with immediate effect)
+- **Settings UI:** Full coverage (backend selection dropdowns, service URLs/timeouts, merge strategy, filename template, Tika enrichment toggle — all editable with immediate effect)
+- **Security:** CSRF, security headers, SSRF mitigation, input validation on all scraper endpoints
+- **CI:** GitHub Actions runs unit tests on PR/push
 - **No current blockers** — system is deployable

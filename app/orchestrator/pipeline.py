@@ -413,22 +413,7 @@ class Pipeline:
             )
 
         # -- Step 1b: Tika enrichment (optional, after parse, before archive) --
-        if Config.TIKA_ENRICHMENT_ENABLED and Config.TIKA_SERVER_URL:
-            # Only enrich if we haven't already extracted metadata with Tika
-            if doc_type != "office":
-                try:
-                    tika_meta = self.container.tika_client.extract_metadata(
-                        file_path
-                    )
-                    # Fill gaps only — don't overwrite existing parse metadata
-                    for key, value in tika_meta.items():
-                        if key not in parse_metadata:
-                            parse_metadata[key] = value
-                    self.logger.debug("Tika enrichment applied")
-                except Exception as e:
-                    self.logger.warning(
-                        f"Tika enrichment failed (non-fatal): {e}"
-                    )
+        self._run_tika_enrichment(file_path, parse_metadata, doc_type)
 
         # -- Step 2: Merge metadata --
         # Check settings override before Config fallback
@@ -582,6 +567,28 @@ class Pipeline:
                 self.logger.warning(f"Failed to delete local files: {e}")
 
         return result
+
+    def _run_tika_enrichment(self, file_path: Path, parse_metadata: dict, doc_type: str):
+        """Run optional Tika metadata enrichment (fill-gaps strategy)."""
+        enrichment_enabled = Config.TIKA_ENRICHMENT_ENABLED
+        override = self.container.settings.get("pipeline.tika_enrichment_enabled", "")
+        if override != "":
+            enrichment_enabled = override == "true"
+
+        if enrichment_enabled and Config.TIKA_SERVER_URL:
+            if doc_type != "office":
+                try:
+                    tika_meta = self.container.tika_client.extract_metadata(
+                        file_path
+                    )
+                    for key, value in tika_meta.items():
+                        if key not in parse_metadata:
+                            parse_metadata[key] = value
+                    self.logger.debug("Tika enrichment applied")
+                except Exception as e:
+                    self.logger.warning(
+                        f"Tika enrichment failed (non-fatal): {e}"
+                    )
 
     @staticmethod
     def _text_to_markdown(text: str, title: str | None = None) -> str:

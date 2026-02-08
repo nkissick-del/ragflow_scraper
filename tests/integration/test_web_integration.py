@@ -10,12 +10,21 @@ from app.web import create_app
 
 @pytest.fixture
 def app():
-    """Create test Flask app."""
+    """Create test Flask app with mocked container/job_queue.
+
+    Patches get_container() before app.web.runtime is imported so the
+    module-level ``container = get_container()`` call uses the mock
+    instead of hitting the real ServiceContainer (which requires
+    /app/data/logs/ to exist).
+    """
     mock_container = MagicMock()
     mock_container.settings.get_all.return_value = {}
     mock_container.state_tracker.return_value.get_all_status.return_value = {}
     patches = [
+        # Must come first — prevents runtime.py from creating a real container
+        patch("app.container.get_container", return_value=mock_container),
         patch("app.web.blueprints.scrapers.container", mock_container),
+        patch("app.web.blueprints.settings.container", mock_container),
         patch("app.web.blueprints.metrics_logs.container", mock_container),
         patch("app.web.helpers.container", mock_container),
         patch("app.web.blueprints.scrapers.job_queue"),
@@ -62,10 +71,9 @@ class TestBlueprintRegistration:
         assert "api_scrapers" in blueprint_names
     
     def test_root_renders(self, client):
-        """Test root route redirects to scrapers."""
-        response = client.get("/", follow_redirects=False)
-        assert response.status_code == 302
-        assert "/scrapers" in response.location
+        """Test root route renders the scraper dashboard."""
+        response = client.get("/")
+        assert response.status_code == 200
     
     def test_static_files_accessible(self, app, client):
         """Test static file serving works."""

@@ -655,6 +655,21 @@
                     </div>
                 </div>
 
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="tika_enrichment_enabled"
+                               {% if tika_enrichment_active %}checked{% endif %}>
+                        Enable Tika metadata enrichment
+                    </label>
+                    <p class="text-muted text-small">
+                        When enabled, Tika extracts additional metadata (author, page count, creation date)
+                        after parsing and fills gaps not covered by the primary parser.
+                        Requires Tika URL to be configured. Office documents are automatically skipped (already parsed by Tika).
+                        <br>
+                        <span class="text-muted">Default from .env: <strong>{{ 'Enabled' if config.TIKA_ENRICHMENT_ENABLED else 'Disabled' }}</strong></span>
+                    </p>
+                </div>
+
                 <div id="pipeline-message"></div>
             </div>
             <div class="card-footer">
