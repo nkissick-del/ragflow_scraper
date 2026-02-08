@@ -212,7 +212,7 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 ## Current State
 
-- **485 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
+- **497 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local
