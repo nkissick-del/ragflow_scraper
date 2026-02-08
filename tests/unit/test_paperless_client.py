@@ -100,9 +100,12 @@ class TestFetchCorrespondents:
 
     def test_fetch_correspondents_not_configured(self):
         """Should return empty dict when not configured."""
-        client = PaperlessClient(url=None, token=None)
-        result = client._fetch_correspondents()
-        assert result == {}
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_API_URL = None
+            mock_config.PAPERLESS_API_TOKEN = None
+            client = PaperlessClient(url=None, token=None)
+            result = client._fetch_correspondents()
+            assert result == {}
 
 
 class TestGetOrCreateCorrespondent:

@@ -159,7 +159,9 @@ class DocumentMetadata:
                             )
 
                         if expected_type and expected_type is not Any:
-                            if isinstance(value, expected_type):
+                            # Handle generic types (e.g., list[str] -> list)
+                            check_type = get_origin(expected_type) or expected_type
+                            if isinstance(value, check_type):  # type: ignore[arg-type]
                                 merged[key] = value
                             else:
                                 # Safe coercion attempt

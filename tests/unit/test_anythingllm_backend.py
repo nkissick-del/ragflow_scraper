@@ -48,13 +48,21 @@ class TestIsConfigured:
 
     def test_is_configured_missing_url(self):
         """Should return False when URL is missing."""
-        backend = AnythingLLMBackend(api_url="", api_key="test-key")
-        assert backend.is_configured() is False
+        with patch("app.services.anythingllm_client.Config") as mock_config:
+            mock_config.ANYTHINGLLM_API_URL = ""
+            mock_config.ANYTHINGLLM_API_KEY = ""
+            mock_config.ANYTHINGLLM_WORKSPACE_ID = ""
+            backend = AnythingLLMBackend(api_url="", api_key="test-key")
+            assert backend.is_configured() is False
 
     def test_is_configured_missing_key(self):
         """Should return False when key is missing."""
-        backend = AnythingLLMBackend(api_url="http://localhost:3001", api_key="")
-        assert backend.is_configured() is False
+        with patch("app.services.anythingllm_client.Config") as mock_config:
+            mock_config.ANYTHINGLLM_API_URL = ""
+            mock_config.ANYTHINGLLM_API_KEY = ""
+            mock_config.ANYTHINGLLM_WORKSPACE_ID = ""
+            backend = AnythingLLMBackend(api_url="http://localhost:3001", api_key="")
+            assert backend.is_configured() is False
 
 
 class TestTestConnection:
@@ -74,9 +82,13 @@ class TestTestConnection:
 
     def test_connection_not_configured(self):
         """Should return False when not configured."""
-        backend = AnythingLLMBackend(api_url="", api_key="")
-        result = backend.test_connection()
-        assert result is False
+        with patch("app.services.anythingllm_client.Config") as mock_config:
+            mock_config.ANYTHINGLLM_API_URL = ""
+            mock_config.ANYTHINGLLM_API_KEY = ""
+            mock_config.ANYTHINGLLM_WORKSPACE_ID = ""
+            backend = AnythingLLMBackend(api_url="", api_key="")
+            result = backend.test_connection()
+            assert result is False
 
     def test_connection_exception(self, backend):
         """Should return False when exception occurs."""
@@ -139,14 +151,18 @@ class TestIngestDocument:
 
     def test_ingest_not_configured(self, tmp_path):
         """Should return error when not configured."""
-        backend = AnythingLLMBackend(api_url="", api_key="")
-        test_file = tmp_path / "test.md"
-        test_file.write_text("# Test")
+        with patch("app.services.anythingllm_client.Config") as mock_config:
+            mock_config.ANYTHINGLLM_API_URL = ""
+            mock_config.ANYTHINGLLM_API_KEY = ""
+            mock_config.ANYTHINGLLM_WORKSPACE_ID = ""
+            backend = AnythingLLMBackend(api_url="", api_key="")
+            test_file = tmp_path / "test.md"
+            test_file.write_text("# Test")
 
-        result = backend.ingest_document(test_file, {})
+            result = backend.ingest_document(test_file, {})
 
-        assert result.success is False
-        assert "not configured" in result.error.lower()
+            assert result.success is False
+            assert "not configured" in result.error.lower()
 
     def test_ingest_file_not_found(self, backend):
         """Should return error when file doesn't exist."""

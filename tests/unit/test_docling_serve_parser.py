@@ -61,8 +61,11 @@ class TestIsAvailable:
 
     def test_is_available_no_url(self):
         """Should return False when URL is not configured."""
-        parser = DoclingServeParser(url="")
-        assert parser.is_available() is False
+        with patch("app.backends.parsers.docling_serve_parser.Config") as mock_config:
+            mock_config.DOCLING_SERVE_URL = ""
+            mock_config.DOCLING_SERVE_TIMEOUT = 60
+            parser = DoclingServeParser(url="")
+            assert parser.is_available() is False
 
 
 class TestParseDocument:
@@ -151,14 +154,17 @@ class TestParseDocument:
 
     def test_parse_url_not_configured(self, dummy_metadata, tmp_path):
         """Should return failure when URL is empty."""
-        parser = DoclingServeParser(url="")
-        pdf_path = tmp_path / "test.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4 test")
+        with patch("app.backends.parsers.docling_serve_parser.Config") as mock_config:
+            mock_config.DOCLING_SERVE_URL = ""
+            mock_config.DOCLING_SERVE_TIMEOUT = 60
+            parser = DoclingServeParser(url="")
+            pdf_path = tmp_path / "test.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4 test")
 
-        result = parser.parse_document(pdf_path, dummy_metadata)
+            result = parser.parse_document(pdf_path, dummy_metadata)
 
-        assert result.success is False
-        assert "not configured" in result.error.lower()
+            assert result.success is False
+            assert "not configured" in result.error.lower()
 
 
 class TestExtractMetadata:

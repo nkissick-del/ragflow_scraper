@@ -22,19 +22,9 @@ Completed 2026-02-08. See [Completed Work](#completed-work) for details.
 
 ---
 
-## 4. Backend Registry Pattern
+## ~~4. Backend Registry Pattern~~ DONE
 
-**Priority:** MEDIUM | **Effort:** 2-3h | **Type:** [Code]
-
-Backend selection in `container.py` uses hardcoded `if/elif` chains. A registry pattern would make adding new backends a single-line registration instead of modifying container code.
-
-**Tasks:**
-- [ ] Create `BackendRegistry` with `register(name, factory_fn)` and `get(name)` methods
-- [ ] Register existing backends (docling, docling_serve, tika, paperless, ragflow, anythingllm)
-- [ ] Replace `if/elif` chains in `container.py` with registry lookups
-- [ ] Allow third-party backend registration via entry points or config (optional)
-
-**Value:** Clean architecture, easier to extend, removes container.py as a bottleneck for new backends.
+Completed 2026-02-08. See [Completed Work](#completed-work) for details.
 
 ---
 
@@ -201,11 +191,27 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 </details>
 
+<details>
+<summary>Backend Registry Pattern (2026-02-08)</summary>
+
+- Created `app/services/backend_registry.py` — `BackendRegistry` class with `(type, name) → factory` lookup table
+- 9 factory functions (docling, docling_serve, tika, mineru, paperless, s3, local, ragflow, anythingllm) — factories receive `ServiceContainer` instance, access Config only through container helpers
+- Added `_get_config_attr()` helper to `ServiceContainer`
+- Simplified `parser_backend`, `archive_backend`, `rag_backend` properties from ~35 lines each to ~12 lines each
+- 10 new unit tests (`test_backend_registry.py`)
+- Comprehensive test audit: fixed 35 pre-existing test failures
+  - 7 Config fallback failures — patched Config in test modules to prevent `.env` fallback
+  - 27 blueprint auth failures — added auth credential patches to `app` fixture
+  - 1 pyright failure — fixed `pyrightconfig.json` venv settings + 16 type errors across 9 files
+- **481 tests, 0 failures** (all green locally)
+
+</details>
+
 ---
 
 ## Current State
 
-- **484 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
+- **481 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local
@@ -215,4 +221,5 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 - **Settings UI:** Full coverage (backend selection dropdowns, service URLs/timeouts, merge strategy, filename template, Tika enrichment toggle — all editable with immediate effect)
 - **Security:** CSRF, security headers, SSRF mitigation, input validation on all scraper endpoints
 - **CI:** GitHub Actions runs unit tests on PR/push
+- **Architecture:** Backend Registry pattern — adding a new backend is a single-line factory registration
 - **No current blockers** — system is deployable

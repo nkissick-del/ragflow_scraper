@@ -83,8 +83,8 @@ class PaperlessArchiveBackend(ArchiveBackend):
             file_path=file_path,
             title=title,
             created=created_dt,
-            correspondent=correspondent,
-            tags=tags,
+            correspondent=correspondent,  # type: ignore[arg-type]
+            tags=tags,  # type: ignore[arg-type]
         )
 
         if not task_id:

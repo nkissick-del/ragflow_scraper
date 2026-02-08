@@ -175,6 +175,10 @@ class ServiceContainer:
             return override
         return getattr(Config, config_attr, 60)
 
+    def _get_config_attr(self, attr: str, default: str = "") -> str:
+        """Get a Config attribute value."""
+        return getattr(Config, attr, default)
+
     def reset_services(self):
         """
         Reset cached service/backend instances so they pick up new settings.
@@ -202,32 +206,10 @@ class ServiceContainer:
             ParserBackend instance
         """
         if self._parser_backend is None:
+            from app.services.backend_registry import get_backend_registry
+
             backend_name = self._get_effective_backend("parser")
-
-            if backend_name == "docling":
-                from app.backends.parsers.docling_parser import DoclingParser
-
-                candidate = DoclingParser()
-            elif backend_name == "docling_serve":
-                from app.backends.parsers.docling_serve_parser import (
-                    DoclingServeParser,
-                )
-
-                candidate = DoclingServeParser(
-                    url=self._get_effective_url("docling_serve", "DOCLING_SERVE_URL"),
-                    timeout=self._get_effective_timeout("docling_serve", "DOCLING_SERVE_TIMEOUT"),
-                )
-            elif backend_name == "mineru":
-                raise ValueError(f"Parser backend '{backend_name}' not yet implemented")
-            elif backend_name == "tika":
-                from app.backends.parsers.tika_parser import TikaParser
-
-                candidate = TikaParser(
-                    url=self._get_effective_url("tika", "TIKA_SERVER_URL"),
-                    timeout=self._get_effective_timeout("tika", "TIKA_TIMEOUT"),
-                )
-            else:
-                raise ValueError(f"Unknown parser backend: {backend_name}")
+            candidate = get_backend_registry().create("parser", backend_name, self)
 
             if not candidate.is_available():
                 raise ValueError(
@@ -237,6 +219,7 @@ class ServiceContainer:
 
             self._parser_backend = candidate
             self.logger.info(f"Initialized parser backend: {backend_name}")
+        assert self._parser_backend is not None
         return self._parser_backend
 
     @property
@@ -251,24 +234,10 @@ class ServiceContainer:
             ArchiveBackend instance
         """
         if self._archive_backend is None:
+            from app.services.backend_registry import get_backend_registry
+
             backend_name = self._get_effective_backend("archive")
-
-            if backend_name == "paperless":
-                from app.backends.archives.paperless_adapter import (
-                    PaperlessArchiveBackend,
-                )
-
-                candidate = PaperlessArchiveBackend()
-            elif backend_name == "s3":
-                raise ValueError(
-                    f"Archive backend '{backend_name}' not yet implemented"
-                )
-            elif backend_name == "local":
-                raise ValueError(
-                    f"Archive backend '{backend_name}' not yet implemented"
-                )
-            else:
-                raise ValueError(f"Unknown archive backend: {backend_name}")
+            candidate = get_backend_registry().create("archive", backend_name, self)
 
             if not candidate.is_available():
                 raise ValueError(
@@ -278,6 +247,7 @@ class ServiceContainer:
 
             self._archive_backend = candidate
             self.logger.info(f"Initialized archive backend: {backend_name}")
+        assert self._archive_backend is not None
         return self._archive_backend
 
     @property
@@ -292,36 +262,10 @@ class ServiceContainer:
             RAGBackend instance
         """
         if self._rag_backend is None:
+            from app.services.backend_registry import get_backend_registry
+
             backend_name = self._get_effective_backend("rag")
-
-            if backend_name == "ragflow":
-                ragflow_url = self._get_effective_url("ragflow", "RAGFLOW_API_URL")
-                if not ragflow_url or not Config.RAGFLOW_API_KEY:
-                    raise ValueError(
-                        "RAGFlow configuration missing: "
-                        "RAGFLOW_API_URL and RAGFLOW_API_KEY are required"
-                    )
-
-                from app.backends.rag.ragflow_adapter import RAGFlowBackend
-
-                candidate = RAGFlowBackend()
-            elif backend_name == "anythingllm":
-                anythingllm_url = self._get_effective_url("anythingllm", "ANYTHINGLLM_API_URL")
-                if not anythingllm_url or not Config.ANYTHINGLLM_API_KEY:
-                    raise ValueError(
-                        "AnythingLLM configuration missing: "
-                        "ANYTHINGLLM_API_URL and ANYTHINGLLM_API_KEY are required"
-                    )
-
-                from app.backends.rag.anythingllm_adapter import AnythingLLMBackend
-
-                candidate = AnythingLLMBackend(
-                    api_url=anythingllm_url,
-                    api_key=Config.ANYTHINGLLM_API_KEY,
-                    workspace_id=Config.ANYTHINGLLM_WORKSPACE_ID,
-                )
-            else:
-                raise ValueError(f"Unknown RAG backend: {backend_name}")
+            candidate = get_backend_registry().create("rag", backend_name, self)
 
             if not candidate.is_available():
                 raise ValueError(
@@ -331,6 +275,7 @@ class ServiceContainer:
 
             self._rag_backend = candidate
             self.logger.info(f"Initialized RAG backend: {backend_name}")
+        assert self._rag_backend is not None
         return self._rag_backend
 
     @property

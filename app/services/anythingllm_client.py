@@ -84,7 +84,7 @@ class AnythingLLMClient:
             return
         if hasattr(self, "session") and self.session:
             self.session.close()
-            self.session = None
+            self.session = None  # type: ignore[assignment]
         self._closed = True
 
     def __enter__(self) -> "AnythingLLMClient":

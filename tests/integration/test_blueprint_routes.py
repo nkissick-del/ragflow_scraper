@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from flask import Flask
 
+from app.config import Config
 from app.web import create_app
 from app.web.job_queue import ScraperJob
 from app.scrapers.models import ScraperResult
@@ -97,6 +98,10 @@ def app():
     mock_container = _make_mock_container()
 
     patches = [
+        # Ensure auth credentials are configured for tests
+        patch.object(Config, "BASIC_AUTH_ENABLED", True),
+        patch.object(Config, "BASIC_AUTH_USERNAME", "testuser"),
+        patch.object(Config, "BASIC_AUTH_PASSWORD", "testpass"),
         # Patch container in every module that imports it from runtime
         patch("app.web.blueprints.settings.container", mock_container),
         patch("app.web.blueprints.scrapers.container", mock_container),
@@ -458,6 +463,7 @@ class TestSettingsEndpoints:
             mock_settings.update_section.assert_called_once_with("pipeline", {
                 "metadata_merge_strategy": "smart",
                 "filename_template": "{{ title }}{{ extension }}",
+                "tika_enrichment_enabled": "false",
             })
 
     def test_preview_filename(self, client):

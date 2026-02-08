@@ -300,7 +300,7 @@ def generate_filename_from_template(
             template = override
         else:
             from app.config import Config
-            template = Config.FILENAME_TEMPLATE
+            template = Config.FILENAME_TEMPLATE or ""
 
     # Convert metadata to dict if needed
     if isinstance(metadata, MetadataProtocol):
@@ -340,7 +340,7 @@ def generate_filename_from_template(
     context["title"] = meta_dict.get("title") or context["original_name"]
 
     try:
-        tmpl = JINJA_ENV.from_string(template)
+        tmpl = JINJA_ENV.from_string(template or "")
         rendered = tmpl.render(**context)
     except Exception as e:
         logger.error(
