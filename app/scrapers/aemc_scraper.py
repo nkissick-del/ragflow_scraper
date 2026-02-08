@@ -105,7 +105,7 @@ class AEMCScraper(BaseScraper):
             
             if response is None:
                 raise ScraperError(
-                    f"Failed to fetch main page",
+                    "Failed to fetch main page",
                     scraper=self.name,
                     context={"url": self.base_url},
                 )
@@ -326,7 +326,7 @@ class AEMCScraper(BaseScraper):
             
             if response is None:
                 raise ScraperError(
-                    f"Failed to fetch review page",
+                    "Failed to fetch review page",
                     scraper=self.name,
                     context={"url": review_url},
                 )

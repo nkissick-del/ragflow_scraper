@@ -15,12 +15,11 @@ from datetime import datetime
 from typing import Optional
 from urllib.parse import urljoin
 
-import requests
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException
 
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ScraperResult, ExcludedDocument

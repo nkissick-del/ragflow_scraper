@@ -1,6 +1,6 @@
 """Test Scheduler run_now triggers scraper via pipeline."""
 
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
 from app.orchestrator.pipeline import PipelineResult
 from app.orchestrator.scheduler import Scheduler

@@ -1,0 +1,9 @@
+line-length = 150
+target-version = "py311"
+
+[lint]
+select = ["E", "F"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"app/scrapers/scraper_registry.py" = ["F821"]

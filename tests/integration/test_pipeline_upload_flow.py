@@ -1,6 +1,5 @@
 """Test Pipeline archive flow."""
 
-from pathlib import Path
 from unittest.mock import Mock
 
 from app.backends.archives.base import ArchiveResult

@@ -11,11 +11,10 @@ Tests the complete document ingestion flow with mocked RAGFlowClient to verify:
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock
 import pytest
 
 from app.services.ragflow_ingestion import RAGFlowIngestionWorkflow
-from app.services.ragflow_client import UploadResult
 
 
 @pytest.fixture

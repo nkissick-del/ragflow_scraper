@@ -45,15 +45,15 @@ def handle_ragflow_errors(f):
                     # Other client errors
                     status_code = exc.response.status_code
             return jsonify({"success": False, "error": "Operation failed"}), status_code
-        except ValidationError as exc:
+        except ValidationError:
             # Validation errors from our code
             logger.exception(f"Error in {f.__name__}")
             return jsonify({"success": False, "error": "Operation failed"}), 400
-        except ConfigurationError as exc:
+        except ConfigurationError:
             # Configuration errors (authentication issues, etc.)
             logger.exception(f"Error in {f.__name__}")
             return jsonify({"success": False, "error": "Operation failed"}), 401
-        except Exception as exc:
+        except Exception:
             # All other unexpected exceptions
             logger.exception(f"Error in {f.__name__}")
             return jsonify({"success": False, "error": "Operation failed"}), 500

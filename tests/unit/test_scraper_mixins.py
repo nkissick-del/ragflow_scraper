@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch
-from pathlib import Path
-from datetime import datetime
+from unittest.mock import Mock, patch
 
 from app.scrapers.base_scraper import BaseScraper
-from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
+from app.scrapers.models import ScraperResult
 from app.services.state_tracker import StateTracker
 
 

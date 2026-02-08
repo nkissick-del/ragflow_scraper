@@ -28,19 +28,9 @@ Completed 2026-02-08. See [Completed Work](#completed-work) for details.
 
 ---
 
-## 5. CI/CD Pipeline
+## ~~5. CI/CD Pipeline~~ DONE
 
-**Priority:** MEDIUM | **Effort:** 4-6h | **Type:** [Code]
-
-A basic GitHub Actions workflow exists (`.github/workflows/test.yml`) running unit tests on PR/push.
-
-**Tasks:**
-- [x] GitHub Actions workflow: unit tests on PR (with FLASK_ENV=testing, BASIC_AUTH_ENABLED=false)
-- [ ] Integration test job (mocked services, no external deps)
-- [ ] Linting step (ruff or flake8)
-- [ ] Security scanning (`pip-audit` or `safety`)
-- [ ] Docker image build + push on merge to main
-- [ ] Badge in README for build status
+Completed 2026-02-08. See [Completed Work](#completed-work) for details.
 
 ---
 
@@ -207,6 +197,18 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 </details>
 
+<details>
+<summary>CI/CD Pipeline (2026-02-08)</summary>
+
+- Replaced `.github/workflows/test.yml` with `.github/workflows/ci.yml` — 4 parallel jobs: lint (ruff), security (pip-audit), unit-tests (pytest + Codecov), integration-tests
+- Added ruff linter (`ruff.toml` with E+F rules), auto-fixed 70 violations + 6 manual fixes across app/ and tests/
+- Created `.github/workflows/docker-publish.yml` — builds `runtime` target, pushes to `ghcr.io/nkissick-del/ragflow_scraper` with `latest` + SHA tags on main merge
+- Fixed Dockerfile OCI source label
+- Added CI + Codecov badges to README.md
+- Upgraded actions/cache v3→v4, codecov-action v3→v4
+
+</details>
+
 ---
 
 ## Current State
@@ -220,6 +222,6 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 - **Scrapers:** 9 (AEMO, AEMC, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy)
 - **Settings UI:** Full coverage (backend selection dropdowns, service URLs/timeouts, merge strategy, filename template, Tika enrichment toggle — all editable with immediate effect)
 - **Security:** CSRF, security headers, SSRF mitigation, input validation on all scraper endpoints
-- **CI:** GitHub Actions runs unit tests on PR/push
+- **CI:** GitHub Actions — lint (ruff), security (pip-audit), unit tests, integration tests; Docker publish on main merge
 - **Architecture:** Backend Registry pattern — adding a new backend is a single-line factory registration
 - **No current blockers** — system is deployable

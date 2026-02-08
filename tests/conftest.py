@@ -3,7 +3,6 @@ import shutil
 import tempfile
 from pathlib import Path
 import sys
-import threading
 
 import pytest
 import logging
@@ -130,7 +129,6 @@ def pytest_sessionfinish(session, exitstatus):
     Forcefully exit pytest to prevent hanging from background threads or
     Docker containers waiting for stdin closure.
     """
-    import sys
     # Flush all output before exiting
     sys.stdout.flush()
     sys.stderr.flush()

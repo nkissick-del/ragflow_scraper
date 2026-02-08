@@ -1,6 +1,5 @@
 """Unit tests for TikaClient."""
 
-from pathlib import Path
 from unittest.mock import patch, Mock
 
 import pytest

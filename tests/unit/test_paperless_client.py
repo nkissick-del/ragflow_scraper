@@ -1,9 +1,9 @@
 """Tests for PaperlessClient."""
 
 import pytest
-from unittest.mock import Mock, patch, call
+from unittest.mock import Mock, patch
 
-from app.services.paperless_client import CUSTOM_FIELD_MAPPING, PaperlessClient
+from app.services.paperless_client import PaperlessClient
 
 
 @pytest.fixture

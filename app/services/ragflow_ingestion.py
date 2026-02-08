@@ -8,7 +8,7 @@ isolating ingestion logic for testability.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Optional, Any
+from typing import TYPE_CHECKING, Optional, Any
 
 from app.utils import get_logger
 

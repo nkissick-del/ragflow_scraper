@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from app.web.job_queue import JobQueue
 

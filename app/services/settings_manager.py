@@ -7,8 +7,6 @@ These settings can be modified via the web UI without restarting the application
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 from typing import Any, Optional, cast
 
 import jsonschema

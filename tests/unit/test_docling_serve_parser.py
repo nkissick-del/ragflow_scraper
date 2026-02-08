@@ -1,13 +1,11 @@
 """Unit tests for DoclingServeParser backend."""
 
-from pathlib import Path
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import patch, Mock
 
 import pytest
 import requests
 
 from app.backends.parsers.docling_serve_parser import DoclingServeParser
-from app.backends.parsers.base import ParserResult
 from app.scrapers.models import DocumentMetadata
 
 

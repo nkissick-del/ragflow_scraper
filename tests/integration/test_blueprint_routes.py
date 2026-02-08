@@ -4,12 +4,9 @@ import base64
 
 import pytest
 from unittest.mock import patch, MagicMock
-from flask import Flask
 
 from app.config import Config
 from app.web import create_app
-from app.web.job_queue import ScraperJob
-from app.scrapers.models import ScraperResult
 from app.scrapers.scraper_registry import ScraperRegistry
 
 
@@ -162,7 +159,7 @@ class TestScraperEndpoints:
     def test_index_dashboard(self, client):
         """Test index renders dashboard."""
         with patch.object(ScraperRegistry, "list_scrapers") as mock_list, \
-             patch("app.web.blueprints.scrapers.load_scraper_configs") as mock_load:
+             patch("app.web.blueprints.scrapers.load_scraper_configs"):
             mock_list.return_value = [{"name": "test_scraper"}]
 
             response = client.get("/")

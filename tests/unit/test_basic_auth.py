@@ -1,7 +1,6 @@
 import base64
 import importlib
 
-import pytest
 
 from app.config import Config
 from app.web import create_app

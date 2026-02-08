@@ -1,6 +1,5 @@
 """Stack tests for Apache Tika — require live service on Unraid."""
 
-import pytest
 
 from app.services.tika_client import TikaClient
 

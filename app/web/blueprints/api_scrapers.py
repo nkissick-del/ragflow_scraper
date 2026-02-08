@@ -59,7 +59,7 @@ def api_run_scraper(name):
     
     # Enqueue job for background execution
     try:
-        job = job_queue.enqueue(name, scraper, dry_run=dry_run, max_pages=max_pages)
+        job_queue.enqueue(name, scraper, dry_run=dry_run, max_pages=max_pages)
         logger.info(f"API: Enqueued scraper {name} (dry_run={dry_run}, max_pages={max_pages})")
         
         return jsonify({

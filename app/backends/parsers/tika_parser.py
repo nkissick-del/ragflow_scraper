@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional
 
 from app.backends.parsers.base import ParserBackend, ParserResult
-from app.config import Config
 from app.scrapers.models import DocumentMetadata
 from app.services.tika_client import TikaClient
 from app.utils import get_logger

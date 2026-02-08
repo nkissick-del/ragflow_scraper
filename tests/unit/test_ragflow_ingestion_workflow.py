@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
 from app.services.ragflow_ingestion import RAGFlowIngestionWorkflow
 from app.services.ragflow_client import UploadResult

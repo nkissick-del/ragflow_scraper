@@ -47,7 +47,7 @@ COPY --chown=scraper:scraper . .
 LABEL org.opencontainers.image.title="pdf-scraper" \
     org.opencontainers.image.description="PDF scraper with RAGFlow integration" \
     org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.source="https://example.com/pdf-scraper" \
+    org.opencontainers.image.source="https://github.com/nkissick-del/ragflow_scraper" \
     org.opencontainers.image.version="local"
 
 # Switch to non-root user

@@ -1,13 +1,11 @@
 """Unit tests for TikaParser backend."""
 
-from pathlib import Path
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import patch
 
 import pytest
 import requests
 
 from app.backends.parsers.tika_parser import TikaParser
-from app.backends.parsers.base import ParserResult
 from app.scrapers.models import DocumentMetadata
 
 

@@ -1,5 +1,4 @@
 from unittest.mock import Mock, patch
-from pathlib import Path
 from app.scrapers.models import DocumentMetadata
 from app.scrapers.mixins import (
     HttpDownloadMixin,

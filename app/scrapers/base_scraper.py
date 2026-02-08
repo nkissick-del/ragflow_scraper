@@ -7,7 +7,7 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 import requests
 
 from selenium.webdriver.remote.webdriver import WebDriver

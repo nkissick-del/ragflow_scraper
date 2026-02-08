@@ -1,3 +1,6 @@
+[![CI](https://github.com/nkissick-del/ragflow_scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/nkissick-del/ragflow_scraper/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/nkissick-del/ragflow_scraper/branch/main/graph/badge.svg)](https://codecov.io/gh/nkissick-del/ragflow_scraper)
+
 # Multi-Site PDF Scraper with RAGFlow Integration
 
 A modular web scraping system that downloads PDFs and articles from multiple Australian energy sector websites and integrates with RAGFlow for RAG ingestion.

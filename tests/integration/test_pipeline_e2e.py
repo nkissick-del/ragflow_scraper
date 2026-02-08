@@ -4,7 +4,6 @@ Tests the full workflow: scrape → parse → archive → RAG
 """
 
 import pytest
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 from app.orchestrator.pipeline import Pipeline, PipelineResult

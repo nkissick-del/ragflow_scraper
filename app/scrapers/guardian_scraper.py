@@ -11,7 +11,6 @@ Saves article content as Markdown for RAGFlow indexing.
 
 from __future__ import annotations
 
-import time
 from datetime import datetime
 from typing import Any, Optional
 
@@ -129,10 +128,11 @@ class GuardianScraper(BaseScraper):
         )
         
         if response is None:
+            safe_params = {k: v for k, v in request_params.items() if k != "api-key"}
             raise NetworkError(
-                f"Failed to fetch Guardian API response",
+                "Failed to fetch Guardian API response",
                 scraper=self.name,
-                context={"url": url, "endpoint": endpoint, "params": request_params},
+                context={"url": url, "endpoint": endpoint, "params": safe_params},
             )
         
         try:

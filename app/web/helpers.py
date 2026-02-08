@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from typing import Any
 
 from app.config import Config
 from app.scrapers import ScraperRegistry
-from app.utils.logging_config import log_event, log_exception
+from app.utils.logging_config import log_exception
 from app.web.runtime import container, job_queue
 
 

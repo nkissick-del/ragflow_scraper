@@ -2,7 +2,6 @@
 
 import os
 import time
-from pathlib import Path
 
 import pytest
 import requests
@@ -177,7 +176,7 @@ def test_pdf(tmp_path):
 
     xref_offset = len(buf)
     buf.extend(b"xref\n0 6\n")
-    buf.extend(f"0000000000 65535 f \n".encode("ascii"))
+    buf.extend("0000000000 65535 f \n".encode("ascii"))
     for obj_num in range(1, 6):
         buf.extend(f"{offsets[obj_num]:010d} 00000 n \n".encode("ascii"))
     buf.extend(f"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode("ascii"))

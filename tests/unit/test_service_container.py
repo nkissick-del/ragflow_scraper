@@ -3,7 +3,7 @@ Tests for the ServiceContainer dependency injection container.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 from app.services.container import ServiceContainer, get_container, reset_container
 from app.services.settings_manager import SettingsManager
@@ -57,12 +57,12 @@ class TestServiceContainer:
             mock_config.RAGFLOW_PASSWORD = ""
 
             with patch("app.services.container.RAGFlowClient") as mock_client:
-                client = container.ragflow_client
+                _ = container.ragflow_client
                 assert mock_client.called
                 mock_client.assert_called_once()
 
                 # Second access should return cached instance
-                client2 = container.ragflow_client
+                _ = container.ragflow_client
                 # Still only called once (cached)
                 assert mock_client.call_count == 1
 
@@ -100,11 +100,11 @@ class TestServiceContainer:
             mock_config.FLARESOLVERR_URL = "http://localhost:8191"
 
             with patch("app.services.container.FlareSolverrClient") as mock_client:
-                client = container.flaresolverr_client
+                _ = container.flaresolverr_client
                 assert mock_client.called
 
                 # Second access should return cached instance
-                client2 = container.flaresolverr_client
+                _ = container.flaresolverr_client
                 # Still only called once (cached)
                 assert mock_client.call_count == 1
 

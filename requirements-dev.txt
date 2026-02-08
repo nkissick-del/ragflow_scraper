@@ -5,5 +5,8 @@ pytest-cov
 pytest-mock
 pytest-asyncio
 
+# Linting
+ruff
+
 # Security/dependency scanning
 pip-audit

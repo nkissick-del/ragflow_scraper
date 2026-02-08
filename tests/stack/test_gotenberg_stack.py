@@ -1,6 +1,5 @@
 """Stack tests for Gotenberg — require live service on Unraid."""
 
-import pytest
 
 from app.services.gotenberg_client import GotenbergClient
 

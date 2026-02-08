@@ -1,6 +1,5 @@
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch, mock_open
+from unittest.mock import Mock, patch, mock_open
 from pathlib import Path
 from app.scrapers.mixins import HttpDownloadMixin
 from app.scrapers.models import DocumentMetadata

@@ -1,6 +1,5 @@
 import hashlib
 import tempfile
-import pytest
 from pathlib import Path
 from app.utils.file_utils import get_file_hash, get_content_hash
 

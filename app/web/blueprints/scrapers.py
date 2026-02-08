@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify
 from markupsafe import escape
 
 from app.config import Config
 from app.scrapers import ScraperRegistry
 from app.utils import get_logger
-from app.utils.logging_config import log_event, log_exception
+from app.utils.logging_config import log_event
 from app.web.helpers import (
     build_ragflow_options,
     build_scraper_metadata,
@@ -274,7 +273,7 @@ def toggle_scraper_cloudflare(name):
         ''', 400
 
     if not ScraperRegistry.get_scraper_class(name):
-        return f'''
+        return '''
             <span class="toggle-status error">
                 Not found
             </span>
