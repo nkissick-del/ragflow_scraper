@@ -226,7 +226,7 @@
                                aria-label="Enable FlareSolverr for {{ scraper.name }}">
                         <span class="toggle-slider"></span>
                     </label>
-                    <span class="toggle-label">FlareSolverr</span>
+                    <label class="toggle-label" for="cloudflare-toggle-{{ scraper.name }}" title="{% if not config.FLARESOLVERR_URL %}FlareSolverr not configured{% else %}Enable Cloudflare bypass for this scraper{% endif %}">FlareSolverr</label>
                     <span id="cloudflare-status-{{ scraper.name }}" class="toggle-status-container"></span>
                 </div>
 

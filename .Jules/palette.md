@@ -17,3 +17,7 @@
 ## 2026-02-07 - Unique Labels for Repetitive Actions
 **Learning:** When listing multiple items (like scrapers) with identical action buttons ("Run", "Cancel"), screen reader users cannot distinguish them without context.
 **Action:** Always append the specific item name to the `aria-label` (e.g., `aria-label="Run {{ scraper.name }} scraper"`).
+
+## 2026-02-12 - Clickable Text Labels for Toggles
+**Learning:** Users expect the text label next to a toggle switch to be clickable. Using a `span` prevents this interaction and forces precise clicking on the small switch area, leading to frustration.
+**Action:** Always use `<label>` with `for="toggle-id"` for the descriptive text next to custom toggle switches, and add `cursor: pointer` to indicate interactivity.
