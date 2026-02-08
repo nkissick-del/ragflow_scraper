@@ -196,6 +196,11 @@ function initializeLogAutoScroll() {
  */
 function handleHTMXErrors() {
     document.addEventListener('htmx:responseError', function(event) {
+        var status = event.detail.xhr ? event.detail.xhr.status : 0;
+        if (status === 401) {
+            window.location.reload();
+            return;
+        }
         console.error('HTMX Error:', event.detail);
         showNotification('An error occurred. Please try again.', 'error');
     });

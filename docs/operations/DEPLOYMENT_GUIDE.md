@@ -712,6 +712,7 @@ Before deploying to production:
 ## Next Steps
 
 - **Operations:** See [RUNBOOK_COMMON_OPERATIONS.md](RUNBOOK_COMMON_OPERATIONS.md)
+- **Secrets Rotation:** See [SECRETS_ROTATION.md](SECRETS_ROTATION.md)
 - **State Management:** See [MIGRATION_AND_STATE_REPAIR.md](MIGRATION_AND_STATE_REPAIR.md)
 - **Development:** See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)
 - **Architecture:** See [CONFIG_AND_SERVICES.md](CONFIG_AND_SERVICES.md)

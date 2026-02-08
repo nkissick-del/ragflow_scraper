@@ -1,6 +1,6 @@
 # TODO — Prioritized Roadmap
 
-Last updated: 2026-02-08
+Last updated: 2026-02-09
 
 ---
 
@@ -34,21 +34,9 @@ Completed 2026-02-08. See [Completed Work](#completed-work) for details.
 
 ---
 
-## 6. Security Hardening
+## ~~6. Security Hardening~~ DONE
 
-**Priority:** MEDIUM | **Effort:** 3-5h | **Type:** [Local/External]
-
-Deferred from Phase 4.5. Basic auth exists but production security hasn't been validated.
-
-**Tasks:**
-- [ ] TLS termination via reverse proxy (Caddy/Traefik config template)
-- [ ] Verify basic auth works end-to-end with HTMX
-- [x] CSRF protection audit (Flask-WTF tokens, meta tag, HTMX header; API blueprint exempted)
-- [x] Security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
-- [x] SSRF mitigation for user-configurable service URLs (blocks link-local/cloud metadata)
-- [x] Scraper blueprint input validation — regex name format, max_pages positivity, existence checks
-- [x] Fix `max_pages` operator precedence bug (`x or y if c else z` → explicit parenthesization)
-- [ ] Secrets rotation documentation
+Completed 2026-02-09. See [Completed Work](#completed-work) for details.
 
 ---
 
@@ -209,11 +197,22 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 </details>
 
+<details>
+<summary>Security Hardening (2026-02-09)</summary>
+
+- HTMX 401 handling — `handleHTMXErrors()` now detects 401 status and triggers `window.location.reload()` to invoke the browser's native Basic Auth dialog (previously showed generic error toast)
+- 4 HTMX auth integration tests: unauthenticated 401, valid credentials 200, bad credentials 401, auth-disabled 200
+- Secrets rotation guide (`docs/operations/SECRETS_ROTATION.md`) — per-credential instructions for all 11 secrets: generate, apply, impact, verify
+- Cross-linked from DEPLOYMENT_GUIDE.md and RUNBOOK_COMMON_OPERATIONS.md
+- Added `BASIC_AUTH_*` variables to `.env.example`
+
+</details>
+
 ---
 
 ## Current State
 
-- **481 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
+- **485 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local
@@ -221,7 +220,7 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 - **Conversion:** Gotenberg (HTML/MD/Office→PDF)
 - **Scrapers:** 9 (AEMO, AEMC, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy)
 - **Settings UI:** Full coverage (backend selection dropdowns, service URLs/timeouts, merge strategy, filename template, Tika enrichment toggle — all editable with immediate effect)
-- **Security:** CSRF, security headers, SSRF mitigation, input validation on all scraper endpoints
+- **Security:** CSRF, security headers, SSRF mitigation, input validation, Basic Auth HTMX support, secrets rotation docs
 - **CI:** GitHub Actions — lint (ruff), security (pip-audit), unit tests, integration tests; Docker publish on main merge
 - **Architecture:** Backend Registry pattern — adding a new backend is a single-line factory registration
 - **No current blockers** — system is deployable

@@ -833,6 +833,7 @@ tar -czf backup.tar.gz data/state/ data/metadata/ config/
 ## See Also
 
 - [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) - Initial setup and configuration
+- [SECRETS_ROTATION.md](SECRETS_ROTATION.md) - Credential rotation procedures
 - [MIGRATION_AND_STATE_REPAIR.md](MIGRATION_AND_STATE_REPAIR.md) - State management details
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) - Error types and handling
 - [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - Development and debugging
