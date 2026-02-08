@@ -27,3 +27,13 @@
 1.  Centralize validation logic where possible.
 2.  Use explicit parentheses in complex boolean expressions.
 3.  Verify inputs against the registry/database before performing actions (defense in depth).
+
+## 2026-02-08 - Unvalidated Configuration Injection in Scraper Settings
+**Vulnerability:** The `save_scraper_ragflow_settings` endpoint in `app/web/blueprints/scrapers.py` accepted arbitrary strings for configuration values (e.g., `chunk_method`, `pdf_parser`). This allowed persisting invalid or potentially malicious payloads (e.g., XSS vectors) into the settings file, which could be executed if rendered unsafe or used in sensitive contexts.
+**Learning:**
+1.  **Trust Boundary Violation:** Input from the web UI was trusted implicitly and saved directly to the backend configuration.
+2.  **Missing Schema Validation:** While `SettingsManager` uses JSON schema, the `scrapers` section was defined as `{"type": "object"}`, bypassing validation for dynamic keys.
+**Prevention:**
+1.  Validate all user input against allowlists (enums) where possible (e.g., `CHUNK_METHODS`).
+2.  Use strict regex for identifiers (e.g., `pipeline_id`, `dataset_id`).
+3.  Do not rely solely on frontend validation or generic schema validation for critical settings.

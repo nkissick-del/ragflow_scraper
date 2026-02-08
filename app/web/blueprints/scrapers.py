@@ -18,6 +18,7 @@ from app.web.helpers import (
     load_scraper_configs,
 )
 from app.web.runtime import container, job_queue
+from app.services.ragflow_client import CHUNK_METHODS, PDF_PARSERS
 
 bp = Blueprint("scrapers", __name__)
 logger = get_logger("web.scrapers")
@@ -241,18 +242,40 @@ def save_scraper_ragflow_settings(name):
 
     ingestion_mode = request.form.get(f"ingestion_mode_{name}")
     if ingestion_mode:
+        if ingestion_mode not in ["builtin", "custom"]:
+            return "Invalid ingestion mode", 400
         settings["ingestion_mode"] = ingestion_mode
 
     if request.form.get("chunk_method"):
-        settings["chunk_method"] = request.form.get("chunk_method")
+        chunk_method = request.form.get("chunk_method")
+        if chunk_method not in CHUNK_METHODS:
+            return "Invalid chunk method", 400
+        settings["chunk_method"] = chunk_method
+
     if request.form.get("pdf_parser"):
-        settings["pdf_parser"] = request.form.get("pdf_parser")
+        parser = request.form.get("pdf_parser")
+        if parser not in PDF_PARSERS:
+            return "Invalid PDF parser", 400
+        settings["pdf_parser"] = parser
+
     if "embedding_model" in request.form:
-        settings["embedding_model"] = request.form.get("embedding_model", "")
+        model = request.form.get("embedding_model", "")
+        # Basic validation for model@provider format (allow / and : for complex model IDs)
+        if model and not re.match(r'^[a-zA-Z0-9_\-\.\@\s\/:]+$', model):
+            return "Invalid embedding model format", 400
+        settings["embedding_model"] = model
+
     if "pipeline_id" in request.form:
-        settings["pipeline_id"] = request.form.get("pipeline_id", "")
+        pipeline_id = request.form.get("pipeline_id", "")
+        if pipeline_id and not re.match(r'^[a-zA-Z0-9_\-]+$', pipeline_id):
+            return "Invalid pipeline ID format", 400
+        settings["pipeline_id"] = pipeline_id
+
     if request.form.get("dataset_id"):
-        settings["dataset_id"] = request.form.get("dataset_id")
+        dataset_id = request.form.get("dataset_id")
+        if dataset_id and not re.match(r'^[a-zA-Z0-9_\-]+$', dataset_id):
+            return "Invalid dataset ID format", 400
+        settings["dataset_id"] = dataset_id
 
     if settings:
         settings_mgr.set_scraper_ragflow_settings(name, settings)
