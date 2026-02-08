@@ -1,0 +1,9 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-8.3.3, pluggy-1.6.0 -- /home/jules/.pyenv/versions/3.12.12/bin/python3
+cachedir: .pytest_cache
+rootdir: /app
+configfile: pytest.ini
+plugins: mock-3.14.0, asyncio-0.24.0, cov-5.0.0
+asyncio: mode=Mode.STRICT, default_loop_scope=function
+collecting ... collected 0 items / 2 errors
+!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!
