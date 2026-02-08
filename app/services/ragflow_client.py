@@ -353,6 +353,25 @@ class RAGFlowClient:
             poll_interval=poll_interval,
         )
 
+    def list_documents(self, dataset_id: str) -> list[dict]:
+        """
+        List all documents in a dataset.
+
+        Args:
+            dataset_id: RAGFlow dataset ID
+
+        Returns:
+            List of document dicts
+        """
+        try:
+            resp = self.http.request("GET", f"/api/v1/datasets/{dataset_id}/documents")
+            if resp.ok:
+                return resp.json().get("data", [])
+            return []
+        except Exception as exc:
+            log_exception(self.logger, exc, "ragflow.documents.list")
+            return []
+
     def trigger_parsing(self, dataset_id: str, document_ids: Optional[list[str]] = None) -> bool:
         payload: dict[str, Any] = {"document_ids": document_ids or []}
         resp = self.http.request("POST", f"/api/v1/datasets/{dataset_id}/documents/parse", json=payload)

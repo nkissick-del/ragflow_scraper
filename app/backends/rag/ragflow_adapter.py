@@ -1,7 +1,7 @@
 """RAGFlow RAG backend adapter."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from app.backends.rag.base import RAGBackend, RAGResult
 from app.services.ragflow_client import RAGFlowClient
@@ -43,6 +43,16 @@ class RAGFlowBackend(RAGBackend):
         except Exception as e:
             self.logger.error(f"RAGFlow connection test failed: {e}")
             return False
+
+    def list_documents(self, collection_id: Optional[str] = None) -> list[dict[str, Any]]:
+        """List documents in a RAGFlow dataset."""
+        if not self.is_configured() or not collection_id:
+            return []
+        try:
+            return self.client.list_documents(collection_id)
+        except Exception as e:
+            self.logger.error(f"Failed to list RAGFlow documents: {e}")
+            return []
 
     def ingest_document(
         self,

@@ -87,6 +87,20 @@ class RAGBackend(ABC):
         """
         raise NotImplementedError
 
+    def list_documents(self, collection_id: Optional[str] = None) -> list[dict[str, Any]]:
+        """
+        List documents in a RAG collection/dataset.
+
+        Not all backends support this. Default returns empty list.
+
+        Args:
+            collection_id: Optional collection/dataset ID
+
+        Returns:
+            List of document dicts with at least 'id' and optional 'name' keys
+        """
+        return []
+
     @property
     @abstractmethod
     def name(self) -> str:

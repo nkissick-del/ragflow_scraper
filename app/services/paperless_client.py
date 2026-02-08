@@ -23,6 +23,7 @@ CUSTOM_FIELD_MAPPING: dict[str, tuple[str, str]] = {
     "page_count": ("Page Count", "integer"),
     "file_size": ("File Size", "integer"),
     "source_page": ("Source Page", "url"),
+    "scraper_name": ("Scraper Name", "string"),
 }
 
 
@@ -655,3 +656,173 @@ class PaperlessClient:
             f"Document verification timed out after {timeout}s for task {task_id}"
         )
         return None
+
+    def get_documents(
+        self,
+        filters: Optional[dict[str, Any]] = None,
+        page_size: int = 100,
+    ) -> list[dict]:
+        """
+        Fetch documents from Paperless API with pagination.
+
+        Args:
+            filters: Optional query params (e.g. {"correspondent__id": 5})
+            page_size: Number of results per page
+
+        Returns:
+            List of document dicts (includes custom_fields array)
+        """
+        if not self.is_configured:
+            return []
+
+        documents: list[dict] = []
+        params: dict[str, Any] = {"page_size": page_size}
+        if filters:
+            params.update(filters)
+
+        next_url: Optional[str] = f"{self.url}/api/documents/"
+
+        try:
+            while next_url:
+                response = self.session.get(next_url, params=params, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+
+                for item in data.get("results", []):
+                    documents.append(item)
+
+                next_url = data.get("next")
+                # After first request, params are embedded in next_url
+                params = {}
+
+            return documents
+        except Exception as e:
+            self.logger.error(f"Failed to fetch documents: {e}")
+            return documents  # Return partial results
+
+    def download_document(self, document_id: int) -> Optional[bytes]:
+        """
+        Download the original file for a document.
+
+        Args:
+            document_id: Paperless document ID
+
+        Returns:
+            Raw file bytes, or None on failure
+        """
+        if not self.is_configured:
+            return None
+
+        try:
+            response = self.session.get(
+                f"{self.url}/api/documents/{document_id}/download/",
+                timeout=60,
+            )
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            self.logger.error(f"Failed to download document {document_id}: {e}")
+            return None
+
+    def get_scraper_document_urls(self, scraper_name: str) -> dict[str, int]:
+        """
+        Get URLs of all documents for a given scraper.
+
+        Strategy:
+        1. Pre-filter by correspondent name (reduces result set)
+        2. Filter client-side by Scraper Name custom field
+        3. Fall back to correspondent-only match for pre-existing docs
+
+        Args:
+            scraper_name: Scraper name to filter by
+
+        Returns:
+            Dict mapping source URLs to document IDs
+        """
+        if not self.is_configured:
+            return {}
+
+        url_map: dict[str, int] = {}
+
+        # Get correspondent ID for pre-filtering (thread-safe)
+        correspondent_id: Optional[int] = None
+        with self._correspondent_lock:
+            if not self._correspondent_cache_populated:
+                try:
+                    self._correspondent_cache = self._fetch_correspondents()
+                    self._correspondent_cache_populated = True
+                except Exception as e:
+                    self.logger.warning(f"Failed to fetch correspondents for filtering: {e}")
+
+            if self._correspondent_cache_populated:
+                for name, cid in self._correspondent_cache.items():
+                    if name.lower() == scraper_name.lower():
+                        correspondent_id = cid
+                        break
+
+        # Build filters
+        filters: dict[str, Any] = {}
+        if correspondent_id is not None:
+            filters["correspondent__id"] = correspondent_id
+
+        documents = self.get_documents(filters=filters)
+
+        # Resolve custom field names to IDs
+        scraper_name_field = "Scraper Name"
+        original_url_field = "Original URL"
+
+        for doc in documents:
+            doc_id = doc.get("id")
+            if not doc_id:
+                continue
+
+            custom_fields = doc.get("custom_fields", [])
+
+            # Extract field values
+            doc_scraper_name: Optional[str] = None
+            doc_url: Optional[str] = None
+
+            for cf in custom_fields:
+                field_id = cf.get("field")
+                value = cf.get("value")
+
+                # Resolve field ID to name via cache
+                field_name = self._resolve_custom_field_name(field_id)
+                if field_name == scraper_name_field:
+                    doc_scraper_name = value
+                elif field_name == original_url_field:
+                    doc_url = value
+
+            # Match: either scraper_name field matches, or it's absent
+            # (fallback for pre-existing docs filtered by correspondent)
+            if doc_url:
+                if doc_scraper_name and doc_scraper_name.lower() == scraper_name.lower():
+                    url_map[doc_url] = doc_id
+                elif doc_scraper_name is None and correspondent_id is not None:
+                    # Fallback: no scraper_name field, but matched by correspondent
+                    url_map[doc_url] = doc_id
+
+        self.logger.info(
+            f"Found {len(url_map)} document URLs for scraper '{scraper_name}'"
+        )
+        return url_map
+
+    def _resolve_custom_field_name(self, field_id: Optional[int]) -> Optional[str]:
+        """Resolve a custom field ID to its name using the cache."""
+        if field_id is None:
+            return None
+
+        with self._custom_field_lock:
+            # Ensure cache is populated
+            if not self._custom_field_cache_populated:
+                try:
+                    self._custom_field_cache = self._fetch_custom_fields()
+                    self._custom_field_cache_populated = True
+                except Exception:
+                    return None
+
+            # Reverse lookup: ID → name
+            for name, fid in self._custom_field_cache.items():
+                if fid == field_id:
+                    return name
+            return None

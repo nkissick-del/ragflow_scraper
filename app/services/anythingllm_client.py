@@ -177,6 +177,36 @@ class AnythingLLMClient:
             log_exception(self.logger, exc, "anythingllm.list_workspaces")
             return []
 
+    def list_documents(self) -> list[dict]:
+        """
+        List all documents stored in AnythingLLM.
+
+        Returns:
+            List of document dicts
+        """
+        self._ensure_not_closed()
+        try:
+            resp = self._request("GET", "/api/v1/documents")
+            if resp.ok:
+                data = resp.json()
+                if isinstance(data, dict):
+                    # Normalize: flatten localFiles items
+                    local_files = data.get("localFiles", {})
+                    items = local_files.get("items", [])
+                    docs: list[dict] = []
+                    for folder in items:
+                        if isinstance(folder, dict):
+                            for doc in folder.get("items", []):
+                                if isinstance(doc, dict):
+                                    docs.append(doc)
+                    return docs
+                elif isinstance(data, list):
+                    return data
+            return []
+        except Exception as exc:
+            log_exception(self.logger, exc, "anythingllm.list_documents")
+            return []
+
     def upload_document(
         self,
         filepath: Path,

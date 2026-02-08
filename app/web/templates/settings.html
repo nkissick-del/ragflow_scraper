@@ -679,6 +679,53 @@
     </div>
 </section>
 
+{% if scraper_names is defined and scraper_names %}
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>State Reconciliation</h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                Reconcile scraper state files with Paperless-ngx and RAG backends.
+                Use <strong>Report</strong> to check discrepancies, <strong>Rebuild State</strong> to
+                recover lost state from Paperless, or <strong>Sync RAG</strong> to re-ingest missing documents.
+            </p>
+
+            {% for name in scraper_names %}
+            {% set safe_id = name | replace(' ', '-') | replace('/', '-') | replace('.', '-') %}
+            <div class="setting-group">
+                <label>{{ name }}</label>
+                <div class="setting-row">
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            hx-post="{{ url_for('settings.reconciliation_report', name=name) }}"
+                            hx-target="#recon-result-{{ safe_id }}"
+                            hx-swap="innerHTML">
+                        Report
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            hx-post="{{ url_for('settings.reconciliation_rebuild', name=name) }}"
+                            hx-target="#recon-result-{{ safe_id }}"
+                            hx-swap="innerHTML"
+                            hx-confirm="Rebuild state for {{ name }} from Paperless? This adds missing URLs to state.">
+                        Rebuild State
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            hx-post="{{ url_for('settings.reconciliation_sync_rag', name=name) }}"
+                            hx-target="#recon-result-{{ safe_id }}"
+                            hx-swap="innerHTML"
+                            hx-confirm="Sync RAG for {{ name }}? This downloads and re-ingests documents missing from RAG.">
+                        Sync RAG
+                    </button>
+                </div>
+                <div id="recon-result-{{ safe_id }}" class="mt-2"></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
 <section class="section">
     <div class="card">
         <div class="card-header">

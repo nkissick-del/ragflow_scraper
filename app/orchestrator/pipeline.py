@@ -124,6 +124,22 @@ class Pipeline:
         )
 
         try:
+            # Pre-flight reconciliation (self-healing state from Paperless)
+            if self.upload_to_paperless:
+                try:
+                    from app.services.reconciliation import ReconciliationService
+
+                    recon = ReconciliationService(container=self.container)
+                    added = recon.preflight_sync(self.scraper_name)
+                    if added > 0:
+                        self.logger.info(
+                            f"Pre-flight: added {added} URLs to state from Paperless"
+                        )
+                except Exception as e:
+                    self.logger.warning(
+                        f"Pre-flight reconciliation failed (non-fatal): {e}"
+                    )
+
             # Step 1: Run scraper
             log_event(
                 self.logger, "info", "pipeline.scrape.start", scraper=self.scraper_name
@@ -465,13 +481,17 @@ class Pipeline:
             self.logger.info(f"Archiving to Paperless: {canonical_name}")
             archive = self.container.archive_backend
 
+            # Inject scraper_name into metadata for Paperless custom field
+            metadata_dict = merged_metadata.to_dict()
+            metadata_dict["scraper_name"] = self.scraper_name
+
             archive_result = archive.archive_document(
                 file_path=archive_file_path,
                 title=merged_metadata.title,
                 created=merged_metadata.publication_date,
                 correspondent=merged_metadata.organization,
                 tags=merged_metadata.tags,
-                metadata=merged_metadata.to_dict(),
+                metadata=metadata_dict,
             )
 
             if not archive_result.success:

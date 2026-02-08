@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from app.backends.rag.base import RAGBackend, RAGResult
 from app.services.anythingllm_client import AnythingLLMClient
@@ -53,6 +53,23 @@ class AnythingLLMBackend(RAGBackend):
         except Exception as e:
             self.logger.error(f"AnythingLLM connection test failed: {e}")
             return False
+
+    def list_documents(self, collection_id: Optional[str] = None) -> list[dict[str, Any]]:
+        """
+        List documents stored in AnythingLLM.
+
+        Args:
+            collection_id: Ignored (AnythingLLM lists all documents globally).
+                           Present for RAGBackend interface conformance.
+        """
+        if not self.is_configured():
+            return []
+        try:
+            _ = collection_id  # interface conformance; AnythingLLM has no per-collection filter
+            return self.client.list_documents()
+        except Exception as e:
+            self.logger.error(f"Failed to list AnythingLLM documents: {e}")
+            return []
 
     def ingest_document(
         self,
