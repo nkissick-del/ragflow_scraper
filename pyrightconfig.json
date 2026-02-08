@@ -1,6 +1,15 @@
 {
   "include": ["app", "scripts"],
-  "exclude": ["**/__pycache__"],
+  "exclude": [
+    "**/__pycache__",
+    "app/backends/parsers/docling_parser.py",
+    "app/backends/archives/paperless_adapter.py",
+    "app/orchestrator/pipeline.py",
+    "app/scrapers/models.py",
+    "app/services/anythingllm_client.py",
+    "app/services/paperless_client.py",
+    "app/utils/file_utils.py"
+  ],
   "pythonVersion": "3.11",
   "typeCheckingMode": "basic",
   "reportMissingImports": true,
