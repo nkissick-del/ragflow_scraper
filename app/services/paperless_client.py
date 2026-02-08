@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, Any
 
 import requests
 import threading
@@ -429,7 +429,7 @@ class PaperlessClient:
         endpoint = f"{self.url}/api/documents/post_document/"
 
         # Prepare metadata
-        data = {"title": title}
+        data: dict[str, Any] = {"title": title}
 
         if created:
             data["created"] = created.isoformat()

@@ -69,7 +69,7 @@ class AnythingLLMClient:
         self.timeout = timeout
         # Ensure at least one attempt is made
         self.max_attempts = max(1, max_attempts)
-        self.session: Session = requests.Session()
+        self.session: Optional[Session] = requests.Session()
         self.logger = get_logger("anythingllm.client")
         self._closed = False
 
@@ -112,6 +112,9 @@ class AnythingLLMClient:
             RuntimeError: If client is closed
         """
         self._ensure_not_closed()
+        if not self.session:
+            raise RuntimeError("Client session is not initialized")
+
         headers = kwargs.pop("headers", {})
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

@@ -159,7 +159,7 @@ class DocumentMetadata:
                             )
 
                         if expected_type and expected_type is not Any:
-                            if isinstance(value, expected_type):
+                            if isinstance(value, expected_type):  # type: ignore
                                 merged[key] = value
                             else:
                                 # Safe coercion attempt

@@ -439,7 +439,7 @@ class Pipeline:
 
         merged_metadata = doc_metadata.merge_parser_metadata(
             parse_metadata,
-            strategy=merge_strategy,
+            strategy=merge_strategy,  # type: ignore
         )
         self.logger.debug(
             f"Metadata merged using '{merge_strategy}' strategy"

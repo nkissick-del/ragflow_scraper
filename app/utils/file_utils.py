@@ -303,7 +303,10 @@ def generate_filename_from_template(
         else:
             from app.config import Config
 
-            template = Config.FILENAME_TEMPLATE
+            template = Config.FILENAME_TEMPLATE or ""
+
+    # Assert for type checkers
+    assert template is not None
 
     # Convert metadata to dict if needed
     if isinstance(metadata, MetadataProtocol):
