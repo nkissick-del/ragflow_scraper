@@ -939,6 +939,7 @@ code {
     font-size: 0.8rem;
     color: var(--text-muted);
     white-space: nowrap;
+    cursor: pointer;
 }
 
 .toggle-status-container {
