@@ -4,6 +4,7 @@
 # Web Framework
 flask
 Flask-WTF
+Flask-Limiter
 jinja2  # Used directly in file_utils.py for filename templates
 
 # Scraping

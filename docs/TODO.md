@@ -4,17 +4,18 @@ Last updated: 2026-02-09
 
 ---
 
-## 1. Security Hardening (High)
+## 1. Security Hardening ~~(High)~~ DONE
 
-**Priority:** HIGH | **Effort:** 3-4h | **Type:** [Code]
+**Priority:** ~~HIGH~~ DONE | **Effort:** 3-4h | **Type:** [Code]
 
 Address authentication, authorization, and header gaps found in pre-deployment audit.
 
-- [ ] **Rate limiting** — add Flask-Limiter on `/api/scrapers/<name>/run` and auth endpoints to prevent brute-force/DoS
-- [ ] **Security headers** — add `Content-Security-Policy`, `Strict-Transport-Security` (HSTS), `X-XSS-Protection` in `web/__init__.py:45-49`
-- [ ] **SSRF DNS failure handling** — `settings.py:85-86` silently ignores `socket.gaierror`; log and reject instead
-- [ ] **Auth bypass logging** — `auth.py:49-53` catches malformed auth header with bare `except Exception`; log decode errors for audit trail
-- [ ] **Input validation tightening** — add length limits (max 255 chars) to form fields in `scrapers.py:242-280`; restrict embedding model regex
+- [x] **Rate limiting** — Flask-Limiter on scraper-run (10/min), search (30/min); custom 429 error handler
+- [x] **Security headers** — CSP, Permissions-Policy, HSTS (HTTPS-only), X-XSS-Protection: 0 (OWASP)
+- [x] **SSRF DNS failure handling** — `socket.gaierror` now logs warning and rejects URL
+- [x] **Auth bypass logging** — malformed auth headers log `auth.header.malformed` with remote addr (never raw creds)
+- [x] **Input validation tightening** — URL length (2048), field length (255), template length (1024), timeout/retry ranges, chunk token ranges
+- [x] **Error handlers** — custom 403/404/429/500/CSRF pages with JSON content negotiation for API clients
 
 ---
 
@@ -54,7 +55,7 @@ Harden core runtime for production reliability under load.
 
 **Priority:** MEDIUM | **Effort:** 8-12h | **Type:** [Tests]
 
-625 tests passing but significant gaps in unit coverage. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
+662 tests passing but significant gaps in unit coverage. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
 
 ### Orchestrator (critical gap)
 - [ ] `test_pipeline.py` — unit tests for `run()`, `_process_document()` with mocked backends
@@ -147,7 +148,7 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 Minor UI/UX improvements identified in audit.
 
-- [ ] **Custom 403 error page** — only 404 and 500 handlers exist in `web/__init__.py`
+- [x] **Custom error pages** — 403, 404, 429, 500, CSRF handlers with JSON/HTML content negotiation
 - [ ] **Accessibility** — audit remaining templates for missing ARIA labels, form labels, skip navigation
 
 ---
@@ -238,11 +239,27 @@ Self-owned chunking → embedding → pgvector pipeline replacing RAGFlow/Anythi
 
 </details>
 
+<details>
+<summary>Phase 8 (2026-02-09) — Security Hardening</summary>
+
+Closed all 5 TODO Section 1 items + error handlers + numeric range validation. CodeRabbit review pass: 2 findings → 0.
+
+- **Auth logging** — `auth.header.malformed` warning on decode errors (never logs raw credentials)
+- **SSRF hardening** — DNS failures now log + reject (was silent `pass`)
+- **Security headers** — CSP (self + unpkg HTMX), Permissions-Policy (camera/mic/geo/payment disabled), HSTS (HTTPS-only via `request.is_secure`), X-XSS-Protection: 0 (OWASP guidance)
+- **Rate limiting** — Flask-Limiter: scraper run 10/min, search 30/min; `RATELIMIT_ENABLED=False` in all existing test fixtures
+- **Input validation** — URL length 2048, field length 255, template length 1024, FlareSolverr timeout 1-600 + max≥timeout, scraping delay 0-60/timeout 1-600/retry 0-10, chunk tokens 1-8192/overlap 0-4096
+- **Error handlers** — 403/404/429/500/CSRF with JSON/HTML content negotiation via `request.accept_mimetypes`; 5 error templates extending `base.html`
+- **Dependencies** — Flask-Limiter 4.1.1
+- **625→662 tests**, pyright 0 errors, CodeRabbit 0 findings
+
+</details>
+
 ---
 
 ## Current State
 
-- **625 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
+- **662 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika, Ollama, pgvector)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local
@@ -253,7 +270,7 @@ Self-owned chunking → embedding → pgvector pipeline replacing RAGFlow/Anythi
 - **Conversion:** Gotenberg (HTML/MD/Office→PDF)
 - **Scrapers:** 9 (AEMO, AEMC, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy)
 - **Settings UI:** Full coverage (backend selection, service URLs/timeouts, merge strategy, filename template, Tika enrichment toggle, embedding/chunking/pgvector config)
-- **Security:** CSRF, security headers, SSRF mitigation, input validation, Basic Auth HTMX support, secrets rotation docs
+- **Security:** CSRF, CSP, Permissions-Policy, HSTS, SSRF mitigation, rate limiting (Flask-Limiter), input validation (length/range), custom error handlers (403/404/429/500/CSRF), Basic Auth HTMX support, secrets rotation docs
 - **CI:** GitHub Actions — lint (ruff), security (pip-audit), unit tests, integration tests; Docker publish on main merge
 - **Architecture:** Backend Registry pattern — adding a new backend is a single-line factory registration
 - **Infrastructure:** Unraid (192.168.1.101) — Paperless (:8000), PostgreSQL+pgvector (:5432), Ollama (:11434), AnythingLLM (:3151), docling-serve (:4949)

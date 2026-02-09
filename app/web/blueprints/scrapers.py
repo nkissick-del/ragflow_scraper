@@ -11,6 +11,7 @@ from app.scrapers import ScraperRegistry
 from app.services.ragflow_client import CHUNK_METHODS, PDF_PARSERS
 from app.utils import get_logger
 from app.utils.logging_config import log_event
+from app.web.limiter import limiter
 from app.web.helpers import (
     build_ragflow_options,
     build_scraper_metadata,
@@ -84,6 +85,7 @@ def scraper_status(name):
 
 
 @bp.route("/scrapers/<name>/run", methods=["POST"])
+@limiter.limit("10/minute")
 def run_scraper(name):
     if not re.match(r'^[a-zA-Z0-9_-]+$', name):
         return jsonify({"error": "Invalid scraper name format"}), 400
@@ -259,18 +261,24 @@ def save_scraper_ragflow_settings(name):
 
     if "embedding_model" in request.form:
         model = request.form.get("embedding_model", "")
+        if model and len(model) > 255:
+            return "Embedding model name exceeds maximum length of 255 characters", 400
         if model and not re.match(r'^[a-zA-Z0-9_\-\.@\s/:]+$', model):
             return "Invalid embedding model format", 400
         settings["embedding_model"] = model
 
     if "pipeline_id" in request.form:
         pipeline_id = request.form.get("pipeline_id", "")
+        if pipeline_id and len(pipeline_id) > 255:
+            return "Pipeline ID exceeds maximum length of 255 characters", 400
         if pipeline_id and not re.match(r'^[a-zA-Z0-9_\-]+$', pipeline_id):
             return "Invalid pipeline ID format", 400
         settings["pipeline_id"] = pipeline_id
 
     if request.form.get("dataset_id"):
         dataset_id = request.form.get("dataset_id")
+        if dataset_id and len(dataset_id) > 255:
+            return "Dataset ID exceeds maximum length of 255 characters", 400
         if dataset_id and not re.match(r'^[a-zA-Z0-9_\-]+$', dataset_id):
             return "Invalid dataset ID format", 400
         settings["dataset_id"] = dataset_id

@@ -121,6 +121,7 @@ def app():
         flask_app = create_app()
         flask_app.config["TESTING"] = True
         flask_app.config["WTF_CSRF_ENABLED"] = False
+        flask_app.config["RATELIMIT_ENABLED"] = False
 
         yield flask_app
     finally:

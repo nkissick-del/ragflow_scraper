@@ -22,6 +22,11 @@ from app.web.runtime import container
 bp = Blueprint("settings", __name__)
 logger = get_logger("web.settings")
 
+# Input validation limits
+_MAX_URL_LENGTH = 2048
+_MAX_FIELD_LENGTH = 255
+_MAX_TEMPLATE_LENGTH = 1024
+
 
 def _check_service_status(check_fn, service_name: str) -> str:
     """Run a health check function and return status string."""
@@ -83,8 +88,9 @@ def _validate_url_ssrf(url: str) -> str | None:
                 if addr in net:
                     return f"URL resolves to a blocked address range ({net})"
     except socket.gaierror:
-        # DNS resolution failed — allow it; the health-check will surface the real error
-        pass
+        log_event(logger, "warning", "ssrf.dns_resolution_failed",
+                  hostname=hostname, url=url)
+        return f"URL hostname '{hostname}' could not be resolved (DNS failure)"
     except Exception:
         return "URL could not be validated"
     return None
@@ -317,6 +323,25 @@ def save_flaresolverr_settings():
     timeout = request.form.get("timeout", 60, type=int)
     max_timeout = request.form.get("max_timeout", 120, type=int)
 
+    if not (1 <= timeout <= 600):
+        return '''
+            <div class="alert alert-danger">
+                Timeout must be between 1 and 600 seconds.
+            </div>
+        '''
+    if not (1 <= max_timeout <= 600):
+        return '''
+            <div class="alert alert-danger">
+                Max timeout must be between 1 and 600 seconds.
+            </div>
+        '''
+    if max_timeout < timeout:
+        return '''
+            <div class="alert alert-danger">
+                Max timeout must be greater than or equal to timeout.
+            </div>
+        '''
+
     settings_mgr.update_section("flaresolverr", {
         "enabled": enabled,
         "timeout": timeout,
@@ -341,6 +366,25 @@ def save_scraping_settings():
     timeout = request.form.get("default_timeout", 60, type=int)
     retry_attempts = request.form.get("default_retry_attempts", 3, type=int)
 
+    if not (0 <= request_delay <= 60):
+        return '''
+            <div class="alert alert-danger">
+                Request delay must be between 0 and 60 seconds.
+            </div>
+        '''
+    if not (1 <= timeout <= 600):
+        return '''
+            <div class="alert alert-danger">
+                Timeout must be between 1 and 600 seconds.
+            </div>
+        '''
+    if not (0 <= retry_attempts <= 10):
+        return '''
+            <div class="alert alert-danger">
+                Retry attempts must be between 0 and 10.
+            </div>
+        '''
+
     settings_mgr.update_section("scraping", {
         "use_flaresolverr_by_default": use_flaresolverr,
         "default_request_delay": request_delay,
@@ -362,6 +406,12 @@ def save_ragflow_settings():
     settings_mgr = container.settings
 
     default_embedding_model = request.form.get("default_embedding_model", "")
+    if default_embedding_model and len(default_embedding_model) > _MAX_FIELD_LENGTH:
+        return f'''
+            <div class="alert alert-danger">
+                Embedding model name exceeds maximum length of {_MAX_FIELD_LENGTH} characters.
+            </div>
+        '''
     default_chunk_method = request.form.get("default_chunk_method", "paper")
     auto_upload = request.form.get("auto_upload") == "on"
     auto_create_dataset = request.form.get("auto_create_dataset") == "on"
@@ -592,7 +642,13 @@ def save_service_settings():
     docling_serve_timeout = request.form.get("docling_serve_timeout", 0, type=int)
     embedding_timeout = request.form.get("embedding_timeout", 0, type=int)
 
-    # Validate pgvector database URL scheme + SSRF
+    # Validate pgvector database URL length, scheme, + SSRF
+    if pgvector_url and len(pgvector_url) > _MAX_URL_LENGTH:
+        return f'''
+            <div class="alert alert-danger">
+                pgvector URL exceeds maximum length of {_MAX_URL_LENGTH} characters.
+            </div>
+        '''
     if pgvector_url and not pgvector_url.startswith(("postgresql://", "postgres://")):
         return '''
             <div class="alert alert-danger">
@@ -608,7 +664,7 @@ def save_service_settings():
                 </div>
             '''
 
-    # Validate URLs (scheme + SSRF check)
+    # Validate URLs (length, scheme, SSRF check)
     for label, url in [
         ("Gotenberg", gotenberg_url),
         ("Tika", tika_url),
@@ -618,6 +674,12 @@ def save_service_settings():
         ("AnythingLLM", anythingllm_url),
         ("Embedding", embedding_url),
     ]:
+        if url and len(url) > _MAX_URL_LENGTH:
+            return f'''
+                <div class="alert alert-danger">
+                    {escape(label)} URL exceeds maximum length of {_MAX_URL_LENGTH} characters.
+                </div>
+            '''
         if url and not url.startswith(("http://", "https://")):
             return f'''
                 <div class="alert alert-danger">
@@ -688,6 +750,34 @@ def save_pipeline_settings():
     chunking_strategy = request.form.get("chunking_strategy", "")
     chunk_max_tokens = request.form.get("chunk_max_tokens", 0, type=int)
     chunk_overlap_tokens = request.form.get("chunk_overlap_tokens", 0, type=int)
+
+    # Length validation
+    if filename_template and len(filename_template) > _MAX_TEMPLATE_LENGTH:
+        return f'''
+            <div class="alert alert-danger">
+                Filename template exceeds maximum length of {_MAX_TEMPLATE_LENGTH} characters.
+            </div>
+        '''
+    if embedding_model and len(embedding_model) > _MAX_FIELD_LENGTH:
+        return f'''
+            <div class="alert alert-danger">
+                Embedding model name exceeds maximum length of {_MAX_FIELD_LENGTH} characters.
+            </div>
+        '''
+
+    # Range validation for chunk settings
+    if chunk_max_tokens != 0 and not (1 <= chunk_max_tokens <= 8192):
+        return '''
+            <div class="alert alert-danger">
+                Chunk max tokens must be 0 (use default) or between 1 and 8192.
+            </div>
+        '''
+    if chunk_overlap_tokens != 0 and not (0 <= chunk_overlap_tokens <= 4096):
+        return '''
+            <div class="alert alert-danger">
+                Chunk overlap tokens must be 0 (use default) or between 0 and 4096.
+            </div>
+        '''
 
     # Validate merge strategy if provided
     if metadata_merge_strategy and metadata_merge_strategy not in Config.VALID_METADATA_MERGE_STRATEGIES:

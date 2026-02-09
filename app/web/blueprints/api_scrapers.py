@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify, request
 from app.scrapers import ScraperRegistry
 from app.utils import get_logger
 from app.utils.errors import ScraperAlreadyRunningError
+from app.web.limiter import limiter
 from app.web.runtime import job_queue
 
 bp = Blueprint("api_scrapers", __name__)
@@ -21,6 +22,7 @@ def api_list_scrapers():
 
 
 @bp.route("/api/scrapers/<name>/run", methods=["POST"])
+@limiter.limit("10/minute")
 def api_run_scraper(name):
     """
     Run a scraper asynchronously via job queue.

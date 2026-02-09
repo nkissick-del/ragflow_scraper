@@ -8,6 +8,7 @@ from flask import Blueprint, render_template, request, jsonify
 
 from app.utils import get_logger
 from app.utils.logging_config import log_exception
+from app.web.limiter import limiter
 from app.web.runtime import container
 
 bp = Blueprint("search", __name__)
@@ -31,6 +32,7 @@ def search_page():
 
 
 @bp.route("/api/search", methods=["POST"])
+@limiter.limit("30/minute")
 def search():
     """Semantic search across document chunks.
 

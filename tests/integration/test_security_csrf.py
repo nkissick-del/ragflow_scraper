@@ -31,6 +31,7 @@ def app():
         app = create_app()
         app.config["TESTING"] = True
         app.config["WTF_CSRF_ENABLED"] = True  # Explicitly enable for these tests
+        app.config["RATELIMIT_ENABLED"] = False
         yield app
     finally:
         for p in reversed(started):
@@ -49,7 +50,7 @@ class TestCSRFProtection:
 
         # 400 Bad Request is the standard CSRF failure code
         assert response.status_code == 400
-        assert b"The CSRF token is missing" in response.data or b"Bad Request" in response.data
+        assert b"Request Rejected" in response.data or b"CSRF" in response.data or b"Bad Request" in response.data
 
     def test_post_with_token_succeeds(self, client):
         """Test that POST request with valid CSRF token succeeds."""

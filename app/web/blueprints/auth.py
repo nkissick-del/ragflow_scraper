@@ -50,6 +50,8 @@ def enforce_basic_auth():
         decoded = base64.b64decode(auth_header.split(" ", 1)[1]).decode("utf-8")
         username, password = decoded.split(":", 1)
     except Exception:
+        log_event(logger, "warning", "auth.header.malformed",
+                  remote_addr=request.remote_addr, endpoint=request.endpoint)
         return _auth_failed()
 
     # Use constant-time comparison to prevent timing attacks
