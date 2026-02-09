@@ -56,6 +56,34 @@ function formatDuration(seconds) {
 }
 
 /**
+ * Calculate relative time string (e.g., "5 minutes ago") from a date.
+ * @param {string|Date} dateParam - Date to format
+ * @returns {string} Relative time string
+ */
+function timeAgo(dateParam) {
+    if (!dateParam) return '';
+    const date = typeof dateParam === 'object' ? dateParam : new Date(dateParam);
+    if (isNaN(date.getTime())) return dateParam; // Return original if invalid
+
+    const today = new Date();
+    const seconds = Math.round((today - date) / 1000);
+    const minutes = Math.round(seconds / 60);
+    const hours = Math.round(minutes / 60);
+    const days = Math.round(hours / 24);
+    const months = Math.round(days / 30);
+    const years = Math.round(days / 365);
+
+    if (seconds < 5) return 'just now';
+    if (seconds < 60) return `${seconds} seconds ago`;
+    if (seconds < 90) return 'about a minute ago';
+    if (minutes < 60) return `${minutes} minutes ago`;
+    if (hours < 24) return `${hours} hours ago`;
+    if (days < 30) return `${days} days ago`;
+    if (months < 12) return `${months} months ago`;
+    return `${years} years ago`;
+}
+
+/**
  * Show a notification message.
  * @param {string} message - Message to display
  * @param {string} type - Type: 'success', 'error', 'warning', 'info'

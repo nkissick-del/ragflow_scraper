@@ -1,7 +1,5 @@
 """Stack tests for embedding client against real Ollama on Unraid."""
 
-import pytest
-
 from app.services.embedding_client import OllamaEmbeddingClient
 
 

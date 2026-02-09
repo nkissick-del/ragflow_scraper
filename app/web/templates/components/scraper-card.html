@@ -11,7 +11,7 @@
     <div class="scraper-stats">
         <span>Processed: {{ scraper.state.processed_count if scraper.state else 0 }}</span>
         {% if scraper.state and scraper.state.last_updated %}
-        <span>Last run: {{ scraper.state.last_updated[:10] }}</span>
+        <span title="{{ scraper.state.last_updated }}">Last run: <span class="relative-time" data-timestamp="{{ scraper.state.last_updated }}">{{ scraper.state.last_updated[:10] }}</span></span>
         {% endif %}
     </div>
     <div class="scraper-actions">

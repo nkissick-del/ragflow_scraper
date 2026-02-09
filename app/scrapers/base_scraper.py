@@ -279,11 +279,13 @@ class BaseScraper(
 
     def setup(self) -> None:
         """Prepare resources before scrape begins."""
+        # Always initialize session for efficient connection reuse
+        self._session = requests.Session()
+        self._session.headers.update(
+            {"User-Agent": f"{self.display_name.replace(' ', '')}Scraper/1.0"}
+        )
+
         if self.skip_webdriver:
-            self._session = requests.Session()
-            self._session.headers.update(
-                {"User-Agent": f"{self.display_name.replace(' ', '')}Scraper/1.0"}
-            )
             self.logger.debug("Using HTTP session (skip_webdriver=True)")
             return
 
@@ -292,10 +294,11 @@ class BaseScraper(
     def teardown(self) -> None:
         """Release resources after scrape ends."""
         try:
-            if self.skip_webdriver and self._session:
+            if self._session:
                 self._session.close()
                 self._session = None
-            elif self.driver:
+
+            if self.driver:
                 self._close_driver()  # type: ignore
         except Exception as exc:
             # Log driver cleanup errors but don't let them prevent state save

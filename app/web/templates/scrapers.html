@@ -49,7 +49,7 @@
             </div>
 
             {% if scraper.state.last_updated %}
-            <p class="last-updated">Last run: {{ scraper.state.last_updated }}</p>
+            <p class="last-updated">Last run: <span class="relative-time" data-timestamp="{{ scraper.state.last_updated }}" title="{{ scraper.state.last_updated }}">{{ scraper.state.last_updated }}</span></p>
             {% endif %}
         </div>
 

@@ -233,6 +233,22 @@ function initializeKeyboardShortcuts() {
     });
 }
 
+/**
+ * Update relative timestamps on the page.
+ */
+function updateRelativeTimes() {
+    const elements = document.querySelectorAll('.relative-time');
+    elements.forEach(function(el) {
+        const timestamp = el.dataset.timestamp;
+        if (timestamp) {
+            const relTime = timeAgo(timestamp);
+            if (relTime && relTime !== timestamp) {
+                el.textContent = relTime;
+            }
+        }
+    });
+}
+
 // Initialize all components when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     initializeCSRF();
@@ -242,6 +258,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeLogAutoScroll();
     handleHTMXErrors();
     initializeKeyboardShortcuts();
+    updateRelativeTimes();
 
     console.log('PDF Scraper components initialized');
 });
@@ -253,4 +270,7 @@ document.addEventListener('htmx:afterSettle', function(event) {
     if (logViewer) {
         formatLogEntries(logViewer);
     }
+
+    // Update relative times
+    updateRelativeTimes();
 });
