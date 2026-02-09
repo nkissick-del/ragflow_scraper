@@ -61,8 +61,13 @@ def test_list_scrapers_returns_metadata():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("scraper_name", ScraperRegistry.get_scraper_names())
-def test_scraper_instantiation(scraper_name):
-    scraper = ScraperRegistry.get_scraper(scraper_name, dry_run=True, max_pages=1)
-    assert scraper is not None
-    assert isinstance(scraper, BaseScraper)
+@pytest.mark.usefixtures("reset_registry")
+def test_scraper_instantiation():
+    ScraperRegistry.discover()
+    scraper_names = ScraperRegistry.get_scraper_names()
+    assert scraper_names, "No scrapers discovered - registry is empty"
+
+    for scraper_name in scraper_names:
+        scraper = ScraperRegistry.get_scraper(scraper_name, dry_run=True, max_pages=1)
+        assert scraper is not None, f"Failed to instantiate {scraper_name}"
+        assert isinstance(scraper, BaseScraper), f"{scraper_name} is not a BaseScraper"

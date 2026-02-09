@@ -1,0 +1,3 @@
+ignored:
+  - DL3008  # Pin versions in apt-get install (too noisy for slim images)
+  - DL3013  # Pin versions in pip install (handled by constraints.txt)

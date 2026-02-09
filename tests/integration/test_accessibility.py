@@ -61,6 +61,7 @@ def app():
         patch("app.web.blueprints.api_scrapers.job_queue"),
         patch("app.web.helpers.job_queue"),
         patch.object(Config, "BASIC_AUTH_ENABLED", False),
+        patch.object(Config, "SECRET_KEY", "test-secret-key-for-integration-tests"),
     ]
     started = []
     try:

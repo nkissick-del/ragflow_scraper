@@ -2,11 +2,13 @@
 COMPOSE ?= docker-compose.dev.yml
 SERVICE ?= scraper
 DC := docker compose -f $(COMPOSE)
+PROD_DC := docker compose -f docker-compose.yml
 
 .PHONY: help dev-build dev-up dev-down dev-restart logs shell test test-unit test-int test-file test-stack fmt lint clean
+.PHONY: prod-build prod-up prod-down validate health-check
 
 help:
-	@echo "Targets:"
+	@echo "Dev targets:"
 	@echo "  dev-build     - Build dev image (no cache) for $(SERVICE)"
 	@echo "  dev-up        - Start dev stack in background"
 	@echo "  dev-down      - Stop and remove dev stack"
@@ -21,6 +23,13 @@ help:
 	@echo "  fmt           - Format code (black + isort)"
 	@echo "  lint          - Lint (ruff)"
 	@echo "  clean         - Stop stack and prune (dangerous)"
+	@echo ""
+	@echo "Prod targets:"
+	@echo "  prod-build    - Build production image (no cache)"
+	@echo "  prod-up       - Start production stack"
+	@echo "  prod-down     - Stop production stack"
+	@echo "  validate      - Validate docker-compose.yml syntax"
+	@echo "  health-check  - Check app and selenium health endpoints"
 
 # Build & lifecycle
 
@@ -73,6 +82,26 @@ fmt:
 
 lint:
 	$(DC) exec $(SERVICE) bash -lc "ruff check app tests" || true
+
+# Production targets
+
+prod-build:
+	$(PROD_DC) build --no-cache
+
+prod-up:
+	$(PROD_DC) up -d
+
+prod-down:
+	$(PROD_DC) down
+
+validate:
+	$(PROD_DC) config --quiet
+
+health-check:
+	@echo "Checking app health..."
+	@curl -sf http://localhost:5000/ > /dev/null && echo "  App: OK" || echo "  App: FAILED"
+	@echo "Checking Selenium health..."
+	@curl -sf http://localhost:4444/wd/hub/status > /dev/null && echo "  Selenium: OK" || echo "  Selenium: FAILED"
 
 # Danger zone
 clean:

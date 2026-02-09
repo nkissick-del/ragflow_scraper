@@ -2,37 +2,37 @@
 -c constraints.txt
 
 # Web Framework
-flask
-Flask-WTF
-Flask-Limiter
-jinja2  # Used directly in file_utils.py for filename templates
+flask==3.0.3
+Flask-WTF==1.2.2
+Flask-Limiter==4.1.1
+jinja2==3.1.6  # Used directly in file_utils.py for filename templates
 
 # Scraping
-selenium
-beautifulsoup4
-lxml
-trafilatura
-feedparser
+selenium==4.25.0
+beautifulsoup4==4.12.3
+lxml==5.2.2
+trafilatura==1.12.2
+feedparser==6.0.11
 
 # HTTP
-requests
+requests==2.32.4
 
 # Cryptography (for RAGFlow RSA login)
-pycryptodome
+pycryptodome==3.20.0
 
 # Configuration
-python-dotenv
+python-dotenv==1.0.1
 
 # Validation
-jsonschema
+jsonschema==4.23.0
 
 # Scheduling
-schedule
+schedule==1.2.1
 
 # PostgreSQL + pgvector
-psycopg[binary]
-psycopg-pool
-pgvector
+psycopg[binary]==3.3.2
+psycopg-pool==3.3.0
+pgvector==0.4.2
 
 # Development
-webdriver-manager
+webdriver-manager==4.0.2

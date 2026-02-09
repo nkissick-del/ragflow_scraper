@@ -83,6 +83,8 @@ jobs:
         env:
           FLASK_ENV: testing
           BASIC_AUTH_ENABLED: "false"
+          LOG_TO_FILE: "false"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
         run: pytest tests/unit/ -m "not slow" -v --cov=app --cov-report=xml
 
       - name: Upload coverage
@@ -90,7 +92,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -118,4 +120,32 @@ jobs:
         env:
           FLASK_ENV: testing
           BASIC_AUTH_ENABLED: "false"
+          LOG_TO_FILE: "false"
+          SECRET_KEY: "ci-test-secret-key-not-for-production"
         run: pytest tests/integration/ -v
+
+  dockerfile-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+  container-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image for scanning
+        run: docker build --target runtime -t scraper:scan .
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: scraper:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH

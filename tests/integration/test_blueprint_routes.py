@@ -99,6 +99,7 @@ def app():
         patch.object(Config, "BASIC_AUTH_ENABLED", True),
         patch.object(Config, "BASIC_AUTH_USERNAME", "testuser"),
         patch.object(Config, "BASIC_AUTH_PASSWORD", "testpass"),
+        patch.object(Config, "SECRET_KEY", "test-secret-key-for-integration-tests"),
         # Patch container in every module that imports it from runtime
         patch("app.web.blueprints.settings.container", mock_container),
         patch("app.web.blueprints.scrapers.container", mock_container),

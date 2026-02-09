@@ -22,6 +22,7 @@ def app():
         patch.object(Config, "BASIC_AUTH_ENABLED", True),
         patch.object(Config, "BASIC_AUTH_USERNAME", "admin"),
         patch.object(Config, "BASIC_AUTH_PASSWORD", "secret"),
+        patch.object(Config, "SECRET_KEY", "test-secret-key-for-integration-tests"),
     ]
     started = []
     try:

@@ -33,6 +33,7 @@ def auth_app():
         patch.object(Config, "BASIC_AUTH_ENABLED", True),
         patch.object(Config, "BASIC_AUTH_USERNAME", "testuser"),
         patch.object(Config, "BASIC_AUTH_PASSWORD", "testpass"),
+        patch.object(Config, "SECRET_KEY", "test-secret-key-for-integration-tests"),
     ]
     started = []
     try:
@@ -65,6 +66,7 @@ def noauth_app():
         patch("app.web.helpers.container", mock_container),
         patch("app.web.helpers.job_queue"),
         patch.object(Config, "BASIC_AUTH_ENABLED", False),
+        patch.object(Config, "SECRET_KEY", "test-secret-key-for-integration-tests"),
     ]
     started = []
     try:
