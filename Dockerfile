@@ -24,18 +24,16 @@ FROM python:3.11-slim-bookworm as runtime
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies and upgrade bundled Python packages (CVE fixes)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Upgrade bundled Python packages to fix CVEs in base image
-RUN pip install --no-cache-dir --upgrade setuptools wheel
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade setuptools wheel
 
 # Create non-root user for security
-RUN useradd --create-home --shell /bin/bash scraper
-RUN mkdir -p /app/data /app/config /app/logs && \
-    chown -R scraper:scraper /app
+RUN useradd --create-home --shell /bin/bash scraper \
+    && mkdir -p /app/data /app/config /app/logs \
+    && chown -R scraper:scraper /app
 
 # Copy Python packages from base (prod-only deps)
 COPY --chown=scraper:scraper --from=base /root/.local /home/scraper/.local
