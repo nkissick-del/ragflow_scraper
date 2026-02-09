@@ -29,6 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Upgrade bundled Python packages to fix CVEs in base image
+RUN pip install --no-cache-dir --upgrade setuptools wheel
+
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash scraper
 RUN mkdir -p /app/data /app/config /app/logs && \
