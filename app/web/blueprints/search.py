@@ -52,7 +52,7 @@ def search():
             return jsonify({"error": "sources must be a list"}), 400
         for src in sources:
             if not isinstance(src, str) or not _SAFE_NAME_RE.match(src):
-                return jsonify({"error": f"Invalid source name"}), 400
+                return jsonify({"error": "Invalid source name"}), 400
     try:
         limit = int(data.get("limit", 10))
     except (TypeError, ValueError):

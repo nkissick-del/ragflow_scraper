@@ -2,7 +2,6 @@
 from unittest.mock import Mock, patch, mock_open
 from pathlib import Path
 from app.scrapers.mixins import HttpDownloadMixin
-from app.scrapers.models import DocumentMetadata
 
 class TestHttpDownloadMixinSession:
     def setup_method(self):

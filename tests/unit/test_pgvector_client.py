@@ -1,9 +1,7 @@
 """Tests for PgVectorClient."""
 
-import json
 
-import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 from app.services.pgvector_client import PgVectorClient
 

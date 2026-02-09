@@ -12,7 +12,7 @@ from __future__ import annotations
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from app.config import Config
 from app.scrapers.models import DocumentMetadata

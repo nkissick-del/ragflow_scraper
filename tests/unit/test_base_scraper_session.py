@@ -1,6 +1,5 @@
 
 from unittest.mock import Mock, patch
-import app.container # Register module
 from app.scrapers.base_scraper import BaseScraper
 import requests
 

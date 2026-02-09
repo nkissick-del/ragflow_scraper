@@ -7,8 +7,7 @@ Supports Ollama (native) and OpenAI-compatible (API) backends.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import requests
 
@@ -53,7 +52,7 @@ class EmbeddingClient(ABC):
         """
         result = self.embed([text])
         if not result.embeddings:
-            raise ValueError(f"Embedding service returned no results for input text")
+            raise ValueError("Embedding service returned no results for input text")
         return result.embeddings[0]
 
     @abstractmethod

@@ -1,8 +1,7 @@
 """Tests for ReconciliationService."""
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch, PropertyMock
-from dataclasses import dataclass
+from unittest.mock import Mock, patch
 
 from app.services.reconciliation import ReconciliationService, ReconciliationReport
 

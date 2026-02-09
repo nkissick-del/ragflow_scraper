@@ -1,7 +1,7 @@
 """Tests for PaperlessClient query methods (get_documents, download_document, get_scraper_document_urls)."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 from app.services.paperless_client import PaperlessClient
 
