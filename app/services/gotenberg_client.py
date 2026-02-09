@@ -17,6 +17,7 @@ import requests
 
 from app.config import Config
 from app.utils import get_logger
+from app.utils.file_utils import format_file_size
 
 
 # Markdown → HTML conversion (lightweight, no heavy deps)
@@ -77,6 +78,18 @@ class GotenbergClient:
         self.url = (url or Config.GOTENBERG_URL or "").rstrip("/")
         self.timeout = timeout or getattr(Config, "GOTENBERG_TIMEOUT", 60)
         self.logger = get_logger("gotenberg.client")
+
+    def _check_file_size(self, file_path: Path) -> None:
+        """Raise ValueError if file exceeds MAX_UPLOAD_FILE_SIZE (0 disables)."""
+        limit = getattr(Config, "MAX_UPLOAD_FILE_SIZE", 0)
+        if limit <= 0:
+            return
+        size = file_path.stat().st_size
+        if size > limit:
+            raise ValueError(
+                f"File {file_path.name} ({format_file_size(size)}) exceeds "
+                f"MAX_UPLOAD_FILE_SIZE ({format_file_size(limit)})"
+            )
 
     @property
     def is_configured(self) -> bool:
@@ -178,6 +191,7 @@ class GotenbergClient:
         Returns:
             PDF file bytes
         """
+        self._check_file_size(file_path)
         with open(file_path, "rb") as f:
             files = {
                 "files": (file_path.name, f, "application/octet-stream"),
@@ -200,6 +214,7 @@ class GotenbergClient:
         Returns:
             PDF file bytes
         """
+        self._check_file_size(file_path)
         suffix = file_path.suffix.lower()
 
         if suffix in (".html", ".htm"):

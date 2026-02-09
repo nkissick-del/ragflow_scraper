@@ -39,6 +39,9 @@ class FlareSolverrClient:
     along with cookies that can be used for subsequent requests.
     """
 
+    _CACHE_TTL_SECONDS: int = 3600
+    _CACHE_MAX_SIZE: int = 50
+
     def __init__(
         self,
         url: Optional[str] = None,
@@ -124,6 +127,8 @@ class FlareSolverrClient:
                 error="FlareSolverr URL not configured",
             )
 
+        self._evict_stale_sessions()
+
         # Always work with seconds internally, convert to ms for FlareSolverr
         effective_timeout_seconds = max_timeout or self.max_timeout
         payload = {
@@ -172,6 +177,7 @@ class FlareSolverrClient:
                     self._session_cache[session_id] = {
                         "cookies": result.cookies,
                         "user_agent": result.user_agent,
+                        "_cached_at": time.time(),
                     }
 
                 self.logger.info(f"FlareSolverr success: {len(result.html)} bytes")
@@ -390,6 +396,28 @@ class FlareSolverrClient:
             "total": total,
             "success_rate": success_rate,
         }
+
+    def _evict_stale_sessions(self) -> None:
+        """Remove expired cache entries and enforce max size (LRU)."""
+        now = time.time()
+
+        # 1. Remove entries older than TTL
+        expired = [
+            sid for sid, data in self._session_cache.items()
+            if now - data.get("_cached_at", 0) > self._CACHE_TTL_SECONDS
+        ]
+        for sid in expired:
+            del self._session_cache[sid]
+
+        # 2. If still over max size, remove oldest entries
+        if len(self._session_cache) > self._CACHE_MAX_SIZE:
+            sorted_entries = sorted(
+                self._session_cache.items(),
+                key=lambda item: item[1].get("_cached_at", 0),
+            )
+            to_remove = len(self._session_cache) - self._CACHE_MAX_SIZE
+            for sid, _data in sorted_entries[:to_remove]:
+                del self._session_cache[sid]
 
     def _compute_success_rate(self) -> float:
         total = self._success_count + self._failure_count + self._timeout_count

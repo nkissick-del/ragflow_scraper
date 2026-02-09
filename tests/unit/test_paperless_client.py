@@ -664,3 +664,25 @@ class TestSetCustomFields:
         # No fields to set, so returns True without PATCH
         assert result is True
         mock_patch.assert_not_called()
+
+
+class TestRetryAdapter:
+    """Test that PaperlessClient session has retry adapter configured."""
+
+    def test_session_has_retry_adapter(self, client):
+        """Session should have retry adapters with correct configuration."""
+        # Check both http and https adapters
+        for prefix in ("http://", "https://"):
+            adapter = client.session.get_adapter(prefix + "example.com")
+            retry = adapter.max_retries
+
+            assert retry.total == 3
+            assert 429 in retry.status_forcelist
+            assert 500 in retry.status_forcelist
+            assert 502 in retry.status_forcelist
+            assert 503 in retry.status_forcelist
+            assert 504 in retry.status_forcelist
+            # 409 should NOT be in forcelist (existing conflict handling)
+            assert 409 not in retry.status_forcelist
+            # Only GET is retried to avoid duplicate uploads on POST
+            assert set(retry.allowed_methods) == {"GET"}

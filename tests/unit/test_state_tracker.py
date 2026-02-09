@@ -1,4 +1,7 @@
 
+import json
+import threading
+
 import pytest
 
 from app.services.state_tracker import StateTracker
@@ -55,3 +58,58 @@ def test_last_run_info(tracker):
     info = tracker.get_last_run_info()
     assert info["processed_count"] == 1
     assert "statistics" in info
+
+
+def test_concurrent_mark_processed(tracker):
+    """10 threads each marking a unique URL should all succeed."""
+    errors: list[Exception] = []
+
+    def mark(url: str):
+        try:
+            tracker.mark_processed(url)
+        except Exception as e:
+            errors.append(e)
+
+    threads = [
+        threading.Thread(target=mark, args=(f"https://example.com/{i}.pdf",))
+        for i in range(10)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    urls = tracker.get_processed_urls()
+    assert len(urls) == 10
+    for i in range(10):
+        assert f"https://example.com/{i}.pdf" in urls
+
+
+def test_concurrent_save(tracker):
+    """5 threads each mark+save; state file should be valid JSON with all URLs."""
+    errors: list[Exception] = []
+
+    def mark_and_save(url: str):
+        try:
+            tracker.mark_processed(url)
+            tracker.save()
+        except Exception as e:
+            errors.append(e)
+
+    threads = [
+        threading.Thread(target=mark_and_save, args=(f"https://example.com/{i}.pdf",))
+        for i in range(5)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+
+    # Verify state file is valid JSON
+    with open(tracker.state_file, "r") as f:
+        state = json.load(f)
+
+    assert len(state["processed_urls"]) == 5

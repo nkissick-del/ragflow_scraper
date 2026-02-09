@@ -5,6 +5,7 @@ from unittest.mock import patch, Mock
 import pytest
 import requests
 
+from app.config import Config
 from app.services.gotenberg_client import GotenbergClient
 
 
@@ -159,3 +160,29 @@ class TestConvertToPdf:
         result = client.convert_to_pdf(docx_file)
         assert result == b"pdf"
         mock_office.assert_called_once()
+
+
+class TestFileSizeLimit:
+    def test_rejects_oversized_file(self, client, tmp_path):
+        """Should reject files exceeding MAX_UPLOAD_FILE_SIZE."""
+        test_file = tmp_path / "big.docx"
+        test_file.write_bytes(b"x" * 2048)
+
+        with patch.object(Config, "MAX_UPLOAD_FILE_SIZE", 1024):
+            with pytest.raises(ValueError, match="exceeds MAX_UPLOAD_FILE_SIZE"):
+                client.convert_office_to_pdf(test_file)
+
+    def test_allows_office_within_limit(self, client, tmp_path):
+        """Should allow office files within the size limit."""
+        test_file = tmp_path / "small.docx"
+        test_file.write_bytes(b"x" * 100)
+
+        with patch.object(Config, "MAX_UPLOAD_FILE_SIZE", 1024):
+            with patch("app.services.gotenberg_client.requests.post") as mock_post:
+                mock_resp = Mock()
+                mock_resp.raise_for_status = Mock()
+                mock_resp.content = b"%PDF-1.4"
+                mock_post.return_value = mock_resp
+
+                result = client.convert_office_to_pdf(test_file)
+                assert result == b"%PDF-1.4"

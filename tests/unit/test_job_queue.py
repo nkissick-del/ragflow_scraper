@@ -144,6 +144,28 @@ class TestJobQueue:
 
         assert job.error == "Test error"
 
+    def test_execute_captures_full_traceback(self):
+        """Failed job should capture full traceback, not just str(exc)."""
+        import time
+
+        def failing_run():
+            raise RuntimeError("something broke")
+
+        scraper = Mock()
+        scraper.name = "fail_scraper"
+        scraper.run = failing_run
+
+        job = self.queue.enqueue("fail_scraper", scraper)
+
+        # Wait for execution
+        time.sleep(1.0)
+
+        assert job.status == "failed"
+        assert job.error is not None
+        assert "Traceback" in job.error
+        assert "RuntimeError" in job.error
+        assert "something broke" in job.error
+
     def test_job_result_tracking(self):
         """Jobs should track results."""
         scraper = Mock()

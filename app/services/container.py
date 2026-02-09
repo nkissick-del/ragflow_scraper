@@ -7,6 +7,7 @@ Provides lazy-loading and singleton pattern for efficiency.
 
 from __future__ import annotations
 
+import threading
 from typing import Optional, TYPE_CHECKING
 
 from app.config import Config
@@ -39,6 +40,8 @@ class ServiceContainer:
     """
 
     _instance: Optional[ServiceContainer] = None
+    _instance_lock: threading.Lock = threading.Lock()
+    _trackers_lock: threading.Lock = threading.Lock()
 
     def __init__(self):
         """Initialize service container (singleton)."""
@@ -69,9 +72,11 @@ class ServiceContainer:
         self._state_trackers: dict[str, StateTracker] = {}
 
     def __new__(cls) -> ServiceContainer:
-        """Ensure singleton pattern (minimal implementation)."""
+        """Ensure singleton pattern with double-checked locking."""
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
         return cls._instance
 
     @property
@@ -151,11 +156,12 @@ class ServiceContainer:
         Returns:
             StateTracker instance (cached per scraper)
         """
-        if scraper_name not in self._state_trackers:
-            tracker = StateTracker(scraper_name)
-            self._state_trackers[scraper_name] = tracker
-            self.logger.debug(f"Initialized StateTracker for {scraper_name}")
-        return self._state_trackers[scraper_name]
+        with self._trackers_lock:
+            if scraper_name not in self._state_trackers:
+                tracker = StateTracker(scraper_name)
+                self._state_trackers[scraper_name] = tracker
+                self.logger.debug(f"Initialized StateTracker for {scraper_name}")
+            return self._state_trackers[scraper_name]
 
     def _get_effective_backend(self, backend_type: str) -> str:
         """Get effective backend name from settings override or Config fallback."""
@@ -379,10 +385,11 @@ class ServiceContainer:
 
         Useful for testing and debugging. Forces re-initialization on next access.
         """
+        with self._trackers_lock:
+            self._state_trackers = {}
         self._settings = None
         self._ragflow_client = None
         self._flaresolverr_client = None
-        self._state_trackers = {}
         self._scheduler = None
         self._parser_backend = None
         self._archive_backend = None
@@ -414,6 +421,8 @@ def get_container() -> ServiceContainer:
 def reset_container():
     """Reset the global service container (for testing)."""
     global _container
-    if _container:
-        _container.reset()
-    _container = None
+    with ServiceContainer._instance_lock:
+        if _container:
+            _container.reset()
+        _container = None
+        ServiceContainer._instance = None

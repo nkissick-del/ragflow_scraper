@@ -273,6 +273,12 @@ class Config:
     LOG_DIR = Path(os.getenv("LOG_DIR", DATA_DIR / "logs"))
     SCRAPERS_CONFIG_DIR = CONFIG_DIR / "scrapers"
 
+    # File size limits
+    MAX_UPLOAD_FILE_SIZE = _parse_int(
+        os.getenv("MAX_UPLOAD_FILE_SIZE", str(500 * 1024 * 1024)),
+        "MAX_UPLOAD_FILE_SIZE",
+    )
+
     # Scraper settings
     MAX_CONCURRENT_DOWNLOADS = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", 3))
     REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", 60))

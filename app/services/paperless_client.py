@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 import requests
+from requests.adapters import HTTPAdapter
 import threading
 import time
 import uuid
+from urllib3.util.retry import Retry
 
 from app.config import Config
 from app.utils import get_logger
@@ -53,6 +55,17 @@ class PaperlessClient:
         self.session = requests.Session()
         if self.token:
             self.session.headers.update({"Authorization": f"Token {self.token}"})
+
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"],
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
         # Caches for name-to-ID lookups (populated on first use)
         self._correspondent_cache: dict[str, int] = {}

@@ -16,6 +16,7 @@ import requests
 
 from app.config import Config
 from app.utils import get_logger
+from app.utils.file_utils import format_file_size
 
 
 # Dublin Core → standard key mapping
@@ -49,6 +50,18 @@ class TikaClient:
         self.timeout = timeout or getattr(Config, "TIKA_TIMEOUT", 120)
         self.logger = get_logger("tika.client")
 
+    def _check_file_size(self, file_path: Path) -> None:
+        """Raise ValueError if file exceeds MAX_UPLOAD_FILE_SIZE (0 disables)."""
+        limit = getattr(Config, "MAX_UPLOAD_FILE_SIZE", 0)
+        if limit <= 0:
+            return
+        size = file_path.stat().st_size
+        if size > limit:
+            raise ValueError(
+                f"File {file_path.name} ({format_file_size(size)}) exceeds "
+                f"MAX_UPLOAD_FILE_SIZE ({format_file_size(limit)})"
+            )
+
     @property
     def is_configured(self) -> bool:
         """Check if Tika server URL is set."""
@@ -77,9 +90,11 @@ class TikaClient:
             Extracted text content
 
         Raises:
+            ValueError: If file exceeds MAX_UPLOAD_FILE_SIZE
             requests.HTTPError: On non-2xx response
             requests.RequestException: On connection failure
         """
+        self._check_file_size(file_path)
         with open(file_path, "rb") as f:
             data = f.read()
 
@@ -105,6 +120,7 @@ class TikaClient:
         Returns:
             Normalized metadata dict
         """
+        self._check_file_size(file_path)
         with open(file_path, "rb") as f:
             data = f.read()
 
@@ -131,6 +147,7 @@ class TikaClient:
         Returns:
             MIME type string (e.g. "application/pdf")
         """
+        self._check_file_size(file_path)
         with open(file_path, "rb") as f:
             data = f.read()
 

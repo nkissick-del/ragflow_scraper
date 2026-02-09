@@ -68,9 +68,9 @@ class ScraperJob:
                     self.status = "cancelled"
                 else:
                     self.status = "completed"
-        except Exception as exc:  # pragma: no cover - exceptions recorded in error field
+        except Exception:
             with self._lock:
-                self.error = str(exc)
+                self.error = traceback.format_exc()
                 self.status = "failed"
         finally:
             with self._lock:

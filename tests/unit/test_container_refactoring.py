@@ -2,10 +2,12 @@
 New tests for ServiceContainer refactoring.
 """
 
+import threading
+
 import pytest
 from unittest.mock import patch
 
-from app.services.container import reset_container, get_container
+from app.services.container import ServiceContainer, reset_container, get_container
 
 
 class TestServiceContainerRefactoring:
@@ -80,3 +82,45 @@ class TestServiceContainerRefactoring:
                 backend = container.archive_backend
                 assert backend is mock_instance
                 mock_instance.is_available.assert_called_once()
+
+    def test_singleton_thread_safety(self):
+        """20 threads calling ServiceContainer() should all get the same instance."""
+        results: list[int] = []
+
+        def create():
+            c = ServiceContainer()
+            results.append(id(c))
+
+        threads = [threading.Thread(target=create) for _ in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(results) == 20
+        assert len(set(results)) == 1  # All same id
+
+    def test_state_tracker_concurrent_access(self):
+        """10 threads getting different trackers should all succeed."""
+        container = get_container()
+        results: dict[str, object] = {}
+        errors: list[Exception] = []
+
+        def get_tracker(name: str):
+            try:
+                tracker = container.state_tracker(name)
+                results[name] = tracker
+            except Exception as e:
+                errors.append(e)
+
+        threads = [
+            threading.Thread(target=get_tracker, args=(f"scraper_{i}",))
+            for i in range(10)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == []
+        assert len(results) == 10

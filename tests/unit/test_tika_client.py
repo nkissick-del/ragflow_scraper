@@ -5,6 +5,7 @@ from unittest.mock import patch, Mock
 import pytest
 import requests
 
+from app.config import Config
 from app.services.tika_client import TikaClient
 
 
@@ -184,3 +185,45 @@ class TestDetectMimeType:
         assert result == "application/pdf"
         call_args = mock_put.call_args
         assert "/detect/stream" in call_args[0][0]
+
+
+class TestFileSizeLimit:
+    def test_rejects_oversized_file(self, client, tmp_path):
+        """Should reject files exceeding MAX_UPLOAD_FILE_SIZE."""
+        test_file = tmp_path / "big.pdf"
+        # Write a file larger than 1KB limit
+        test_file.write_bytes(b"x" * 2048)
+
+        with patch.object(Config, "MAX_UPLOAD_FILE_SIZE", 1024):
+            with pytest.raises(ValueError, match="exceeds MAX_UPLOAD_FILE_SIZE"):
+                client.extract_text(test_file)
+
+    def test_allows_file_within_limit(self, client, tmp_path):
+        """Should allow files within the size limit."""
+        test_file = tmp_path / "small.pdf"
+        test_file.write_bytes(b"x" * 100)
+
+        with patch.object(Config, "MAX_UPLOAD_FILE_SIZE", 1024):
+            with patch("app.services.tika_client.requests.put") as mock_put:
+                mock_resp = Mock()
+                mock_resp.raise_for_status = Mock()
+                mock_resp.text = "extracted text"
+                mock_put.return_value = mock_resp
+
+                result = client.extract_text(test_file)
+                assert result == "extracted text"
+
+    def test_size_check_disabled_when_zero(self, client, tmp_path):
+        """Should skip size check when MAX_UPLOAD_FILE_SIZE is 0."""
+        test_file = tmp_path / "any.pdf"
+        test_file.write_bytes(b"x" * 999999)
+
+        with patch.object(Config, "MAX_UPLOAD_FILE_SIZE", 0):
+            with patch("app.services.tika_client.requests.put") as mock_put:
+                mock_resp = Mock()
+                mock_resp.raise_for_status = Mock()
+                mock_resp.text = "ok"
+                mock_put.return_value = mock_resp
+
+                result = client.extract_text(test_file)
+                assert result == "ok"

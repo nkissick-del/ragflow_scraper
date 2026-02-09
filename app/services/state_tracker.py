@@ -4,7 +4,9 @@ State tracking service for tracking processed URLs and preventing duplicates.
 
 from __future__ import annotations
 
+import copy
 import json
+import threading
 from datetime import datetime
 from typing import Any, Optional
 
@@ -30,6 +32,7 @@ class StateTracker:
         self.scraper_name = scraper_name
         self.logger = get_logger(f"state.{scraper_name}")
         self.state_file = Config.STATE_DIR / f"{scraper_name}_state.json"
+        self._lock = threading.RLock()
         self._state: dict[str, Any] = self._load_state()
 
     def _load_state(self) -> dict:
@@ -60,13 +63,14 @@ class StateTracker:
 
     def save(self):
         """Save current state to file."""
-        self._state["last_updated"] = datetime.now().isoformat()
-        try:
-            with open(self.state_file, "w") as f:
-                json.dump(self._state, f, indent=2)
-            self.logger.debug("State saved successfully")
-        except IOError as e:
-            self.logger.error(f"Failed to save state: {e}")
+        with self._lock:
+            self._state["last_updated"] = datetime.now().isoformat()
+            try:
+                with open(self.state_file, "w") as f:
+                    json.dump(self._state, f, indent=2)
+                self.logger.debug("State saved successfully")
+            except IOError as e:
+                self.logger.error(f"Failed to save state: {e}")
 
     def is_processed(self, url: str) -> bool:
         """
@@ -78,7 +82,8 @@ class StateTracker:
         Returns:
             True if URL has been processed before
         """
-        return url in self._state["processed_urls"]
+        with self._lock:
+            return url in self._state["processed_urls"]
 
     def mark_processed(
         self,
@@ -94,29 +99,32 @@ class StateTracker:
             metadata: Optional metadata about the processing
             status: Status of processing ("downloaded", "skipped", "failed")
         """
-        self._state["processed_urls"][url] = {
-            "processed_at": datetime.now().isoformat(),
-            "status": status,
-            "metadata": metadata or {},
-        }
+        with self._lock:
+            self._state["processed_urls"][url] = {
+                "processed_at": datetime.now().isoformat(),
+                "status": status,
+                "metadata": metadata or {},
+            }
 
-        # Update statistics
-        stats = self._state["statistics"]
-        stats["total_processed"] += 1
-        if status == "downloaded":
-            stats["total_downloaded"] += 1
-        elif status == "skipped":
-            stats["total_skipped"] += 1
-        elif status == "failed":
-            stats["total_failed"] += 1
+            # Update statistics
+            stats = self._state["statistics"]
+            stats["total_processed"] += 1
+            if status == "downloaded":
+                stats["total_downloaded"] += 1
+            elif status == "skipped":
+                stats["total_skipped"] += 1
+            elif status == "failed":
+                stats["total_failed"] += 1
 
     def get_processed_urls(self) -> list[str]:
         """Get list of all processed URLs."""
-        return list(self._state["processed_urls"].keys())
+        with self._lock:
+            return list(self._state["processed_urls"].keys())
 
     def get_statistics(self) -> dict:
         """Get processing statistics."""
-        return self._state["statistics"].copy()
+        with self._lock:
+            return copy.deepcopy(self._state["statistics"])
 
     def get_url_info(self, url: str) -> Optional[dict]:
         """
@@ -126,21 +134,24 @@ class StateTracker:
             url: URL to look up
 
         Returns:
-            Processing info dict or None if not processed
+            Processing info dict (deep copy) or None if not processed
         """
-        return self._state["processed_urls"].get(url)
+        with self._lock:
+            info = self._state["processed_urls"].get(url)
+            return copy.deepcopy(info) if info else None
 
     def clear(self):
         """Clear all state (use with caution)."""
-        self.logger.warning("Clearing all state")
-        self._state["processed_urls"] = {}
-        self._state["statistics"] = {
-            "total_processed": 0,
-            "total_downloaded": 0,
-            "total_skipped": 0,
-            "total_failed": 0,
-        }
-        self.save()
+        with self._lock:
+            self.logger.warning("Clearing all state")
+            self._state["processed_urls"] = {}
+            self._state["statistics"] = {
+                "total_processed": 0,
+                "total_downloaded": 0,
+                "total_skipped": 0,
+                "total_failed": 0,
+            }
+            self.save()
 
     def remove_url(self, url: str) -> bool:
         """
@@ -152,27 +163,30 @@ class StateTracker:
         Returns:
             True if URL was removed, False if it wasn't in state
         """
-        if url in self._state["processed_urls"]:
-            del self._state["processed_urls"][url]
-            return True
-        return False
+        with self._lock:
+            if url in self._state["processed_urls"]:
+                del self._state["processed_urls"][url]
+                return True
+            return False
 
     def get_last_run_info(self) -> Optional[dict]:
         """Get information about the last scraping run."""
-        return {
-            "last_updated": self._state.get("last_updated"),
-            "statistics": self.get_statistics(),
-            "processed_count": len(self._state["processed_urls"]),
-        }
+        with self._lock:
+            return {
+                "last_updated": self._state.get("last_updated"),
+                "statistics": copy.deepcopy(self._state["statistics"]),
+                "processed_count": len(self._state["processed_urls"]),
+            }
 
     def get_state(self) -> dict[str, Any]:
         """
         Get the full state dictionary.
 
         Returns:
-            Copy of the internal state dictionary
+            Deep copy of the internal state dictionary
         """
-        return self._state.copy()
+        with self._lock:
+            return copy.deepcopy(self._state)
 
     def set_value(self, key: str, value: Any) -> None:
         """
@@ -184,7 +198,8 @@ class StateTracker:
             key: Key to store value under
             value: Value to store
         """
-        self._state[key] = value
+        with self._lock:
+            self._state[key] = value
 
     def get_value(self, key: str, default: Any = None) -> Any:
         """
@@ -195,6 +210,8 @@ class StateTracker:
             default: Default value if key doesn't exist
 
         Returns:
-            Stored value or default
+            Deep copy of stored value or default
         """
-        return self._state.get(key, default)
+        with self._lock:
+            value = self._state.get(key, default)
+            return copy.deepcopy(value)

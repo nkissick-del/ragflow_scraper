@@ -235,7 +235,10 @@ class Scheduler:
     def _run_loop(self):
         """Main scheduler loop."""
         while self._running:
-            schedule.run_pending()
+            try:
+                schedule.run_pending()
+            except Exception as e:
+                log_exception(self.logger, e, "scheduler.run_pending.exception")
             time.sleep(1)
 
     def get_next_runs(self) -> dict[str, Optional[datetime]]:
