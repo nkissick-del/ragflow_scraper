@@ -245,7 +245,12 @@ class HttpDownloadMixin:
         def _attempt_download() -> Path:
             try:
                 self.logger.info(f"Downloading: {url}")
-                response = requests.get(
+
+                # Use session if available (from BaseScraper), otherwise fallback to requests
+                # This enables connection pooling and keep-alive for faster downloads
+                session = getattr(self, "_session", None) or requests
+
+                response = session.get(
                     url,
                     timeout=self.download_timeout,
                     stream=True,
