@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from app.backends import ParserBackend, ArchiveBackend, RAGBackend
     from app.services.gotenberg_client import GotenbergClient
     from app.services.tika_client import TikaClient
+    from app.services.embedding_client import EmbeddingClient
+    from app.services.pgvector_client import PgVectorClient
 
 
 class ServiceContainer:
@@ -60,6 +62,8 @@ class ServiceContainer:
         # Service client instances (lazy-loaded)
         self._gotenberg_client: Optional[GotenbergClient] = None
         self._tika_client: Optional[TikaClient] = None
+        self._embedding_client: Optional[EmbeddingClient] = None
+        self._pgvector_client: Optional[PgVectorClient] = None
 
         # State trackers (cached by scraper name)
         self._state_trackers: dict[str, StateTracker] = {}
@@ -179,6 +183,13 @@ class ServiceContainer:
         """Get a Config attribute value."""
         return getattr(Config, attr, default)
 
+    def _safe_int(self, value: str, default: int) -> int:
+        """Safely convert string to int with fallback."""
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return default
+
     def reset_services(self):
         """
         Reset cached service/backend instances so they pick up new settings.
@@ -192,6 +203,8 @@ class ServiceContainer:
         self._tika_client = None
         self._ragflow_client = None
         self._flaresolverr_client = None
+        self._embedding_client = None
+        self._pgvector_client = None
         self.logger.debug("Service/backend instances reset (settings preserved)")
 
     @property
@@ -314,6 +327,52 @@ class ServiceContainer:
             self.logger.debug("Initialized TikaClient")
         return self._tika_client
 
+    @property
+    def embedding_client(self) -> "EmbeddingClient":
+        """
+        Get embedding client (lazy-loaded singleton).
+
+        Returns:
+            EmbeddingClient instance
+        """
+        if self._embedding_client is None:
+            from app.services.embedding_client import create_embedding_client
+
+            self._embedding_client = create_embedding_client(
+                backend=self._get_config_attr("EMBEDDING_BACKEND", "ollama"),
+                model=self._get_config_attr("EMBEDDING_MODEL", "nomic-embed-text"),
+                url=self._get_effective_url("embedding", "EMBEDDING_URL"),
+                api_key=self._get_config_attr("EMBEDDING_API_KEY", ""),
+                dimensions=self._safe_int(self._get_config_attr("EMBEDDING_DIMENSIONS", "768"), 768),
+                timeout=self._get_effective_timeout("embedding", "EMBEDDING_TIMEOUT"),
+            )
+            self.logger.debug("Initialized EmbeddingClient")
+        return self._embedding_client
+
+    @property
+    def pgvector_client(self) -> "PgVectorClient":
+        """
+        Get pgvector client (lazy-loaded singleton).
+
+        Returns:
+            PgVectorClient instance
+        """
+        if self._pgvector_client is None:
+            from app.services.pgvector_client import PgVectorClient
+
+            db_url = self._get_effective_url("pgvector", "DATABASE_URL")
+            if not db_url:
+                raise ValueError(
+                    "PgVector configuration missing: DATABASE_URL is required"
+                )
+            dims = self._safe_int(self._get_config_attr("EMBEDDING_DIMENSIONS", "768"), 768)
+            self._pgvector_client = PgVectorClient(
+                database_url=db_url,
+                dimensions=dims,
+            )
+            self.logger.debug("Initialized PgVectorClient")
+        return self._pgvector_client
+
     def reset(self):
         """
         Reset all cached service instances.
@@ -330,6 +389,8 @@ class ServiceContainer:
         self._rag_backend = None
         self._gotenberg_client = None
         self._tika_client = None
+        self._embedding_client = None
+        self._pgvector_client = None
         self.logger.debug("Service container reset")
 
 

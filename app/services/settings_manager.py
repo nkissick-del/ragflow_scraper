@@ -68,6 +68,11 @@ DEFAULT_SETTINGS = {
         "archive_backend": "",          # Empty = use Config.ARCHIVE_BACKEND
         "rag_backend": "",              # Empty = use Config.RAG_BACKEND
         "tika_enrichment_enabled": "",  # Empty = use Config.TIKA_ENRICHMENT_ENABLED
+        "embedding_backend": "",        # Empty = use Config.EMBEDDING_BACKEND
+        "embedding_model": "",          # Empty = use Config.EMBEDDING_MODEL
+        "chunking_strategy": "",        # Empty = use Config.CHUNKING_STRATEGY
+        "chunk_max_tokens": 0,          # 0 = use Config.CHUNK_MAX_TOKENS
+        "chunk_overlap_tokens": 0,      # 0 = use Config.CHUNK_OVERLAP_TOKENS
     },
     "services": {
         "gotenberg_url": "",            # Empty = use Config.GOTENBERG_URL
@@ -79,6 +84,9 @@ DEFAULT_SETTINGS = {
         "paperless_url": "",
         "ragflow_url": "",
         "anythingllm_url": "",
+        "embedding_url": "",
+        "embedding_timeout": 0,
+        "pgvector_url": "",
     },
 }
 
@@ -152,6 +160,11 @@ SETTINGS_SCHEMA = {
                 "archive_backend": {"type": "string"},
                 "rag_backend": {"type": "string"},
                 "tika_enrichment_enabled": {"type": "string"},
+                "embedding_backend": {"type": "string"},
+                "embedding_model": {"type": "string"},
+                "chunking_strategy": {"type": "string"},
+                "chunk_max_tokens": {"type": "integer", "minimum": 0},
+                "chunk_overlap_tokens": {"type": "integer", "minimum": 0},
             },
             "additionalProperties": False,
         },
@@ -167,6 +180,9 @@ SETTINGS_SCHEMA = {
                 "paperless_url": {"type": "string"},
                 "ragflow_url": {"type": "string"},
                 "anythingllm_url": {"type": "string"},
+                "embedding_url": {"type": "string"},
+                "embedding_timeout": {"type": "integer", "minimum": 0, "maximum": 600},
+                "pgvector_url": {"type": "string"},
             },
             "additionalProperties": False,
         },

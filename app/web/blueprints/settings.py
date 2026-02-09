@@ -105,6 +105,9 @@ def settings_page():
     eff_paperless_url = _get_effective_url("paperless", "PAPERLESS_API_URL")
     eff_ragflow_url = _get_effective_url("ragflow", "RAGFLOW_API_URL")
     eff_anythingllm_url = _get_effective_url("anythingllm", "ANYTHINGLLM_API_URL")
+    eff_embedding_url = _get_effective_url("embedding", "EMBEDDING_URL")
+    eff_embedding_timeout = _get_effective_timeout("embedding", "EMBEDDING_TIMEOUT")
+    eff_pgvector_url = _get_effective_url("pgvector", "DATABASE_URL")
 
     # Effective backend selections
     eff_parser_backend = _get_effective_backend("parser")
@@ -186,6 +189,18 @@ def settings_page():
             return resp.ok
         docling_serve_status = _check_service_status(_check_docling, "docling_serve")
 
+    pgvector_status = "not_configured"
+    if eff_pgvector_url:
+        pgvector_status = _check_service_status(
+            lambda: container.pgvector_client.test_connection(), "pgvector"
+        )
+
+    embedding_status = "not_configured"
+    if eff_embedding_url:
+        embedding_status = _check_service_status(
+            lambda: container.embedding_client.test_connection(), "embedding"
+        )
+
     anythingllm_status = "not_configured"
     if eff_anythingllm_url and Config.ANYTHINGLLM_API_KEY:
         def _check_anythingllm():
@@ -232,6 +247,8 @@ def settings_page():
         paperless_status=paperless_status,
         docling_serve_status=docling_serve_status,
         anythingllm_status=anythingllm_status,
+        pgvector_status=pgvector_status,
+        embedding_status=embedding_status,
         current_merge_strategy=current_merge_strategy,
         current_filename_template=current_filename_template,
         config=Config,
@@ -248,6 +265,9 @@ def settings_page():
         eff_paperless_url=eff_paperless_url,
         eff_ragflow_url=eff_ragflow_url,
         eff_anythingllm_url=eff_anythingllm_url,
+        eff_embedding_url=eff_embedding_url,
+        eff_embedding_timeout=eff_embedding_timeout,
+        eff_pgvector_url=eff_pgvector_url,
         tika_enrichment_active=tika_enrichment_active,
         scraper_names=ScraperRegistry.get_scraper_names(),
     )
@@ -443,6 +463,44 @@ def test_anythingllm():
         return '<span class="status-badge status-error">Connection test failed</span>'
 
 
+@bp.route("/settings/test-pgvector", methods=["POST"])
+def test_pgvector():
+    eff_url = _get_effective_url("pgvector", "DATABASE_URL")
+    if not eff_url:
+        return '<span class="status-badge status-not_configured">Not Configured</span>'
+
+    try:
+        client = container.pgvector_client
+        if client.test_connection():
+            stats = client.get_stats()
+            return f'''
+                <span class="status-badge status-connected">Connected</span>
+                <p class="mt-2">{stats.get("total_chunks", 0)} chunks across {stats.get("total_sources", 0)} source(s)</p>
+            '''
+        else:
+            return '<span class="status-badge status-disconnected">Connection Failed</span>'
+    except Exception as exc:
+        log_exception(logger, exc, "pgvector.test.error")
+        return '<span class="status-badge status-error">Connection test failed</span>'
+
+
+@bp.route("/settings/test-embedding", methods=["POST"])
+def test_embedding():
+    eff_url = _get_effective_url("embedding", "EMBEDDING_URL")
+    if not eff_url:
+        return '<span class="status-badge status-not_configured">Not Configured</span>'
+
+    try:
+        client = container.embedding_client
+        if client.test_connection():
+            return '<span class="status-badge status-connected">Connected</span>'
+        else:
+            return '<span class="status-badge status-disconnected">Connection Failed</span>'
+    except Exception as exc:
+        log_exception(logger, exc, "embedding.test.error")
+        return '<span class="status-badge status-error">Connection test failed</span>'
+
+
 @bp.route("/settings/test-docling-serve", methods=["POST"])
 def test_docling_serve():
     eff_url = _get_effective_url("docling_serve", "DOCLING_SERVE_URL")
@@ -525,11 +583,30 @@ def save_service_settings():
     paperless_url = request.form.get("paperless_url", "").strip()
     ragflow_url = request.form.get("ragflow_url", "").strip()
     anythingllm_url = request.form.get("anythingllm_url", "").strip()
+    embedding_url = request.form.get("embedding_url", "").strip()
+    pgvector_url = request.form.get("pgvector_url", "").strip()
 
     # Extract timeouts
     gotenberg_timeout = request.form.get("gotenberg_timeout", 0, type=int)
     tika_timeout = request.form.get("tika_timeout", 0, type=int)
     docling_serve_timeout = request.form.get("docling_serve_timeout", 0, type=int)
+    embedding_timeout = request.form.get("embedding_timeout", 0, type=int)
+
+    # Validate pgvector database URL scheme + SSRF
+    if pgvector_url and not pgvector_url.startswith(("postgresql://", "postgres://")):
+        return '''
+            <div class="alert alert-danger">
+                pgvector URL must start with postgresql:// or postgres://
+            </div>
+        '''
+    if pgvector_url:
+        ssrf_err = _validate_url_ssrf(pgvector_url)
+        if ssrf_err:
+            return f'''
+                <div class="alert alert-danger">
+                    pgvector: {escape(ssrf_err)}
+                </div>
+            '''
 
     # Validate URLs (scheme + SSRF check)
     for label, url in [
@@ -539,6 +616,7 @@ def save_service_settings():
         ("Paperless", paperless_url),
         ("RAGFlow", ragflow_url),
         ("AnythingLLM", anythingllm_url),
+        ("Embedding", embedding_url),
     ]:
         if url and not url.startswith(("http://", "https://")):
             return f'''
@@ -560,6 +638,7 @@ def save_service_settings():
         ("Gotenberg", gotenberg_timeout),
         ("Tika", tika_timeout),
         ("Docling-serve", docling_serve_timeout),
+        ("Embedding", embedding_timeout),
     ]:
         if timeout != 0 and not (1 <= timeout <= 600):
             return f'''
@@ -578,6 +657,9 @@ def save_service_settings():
         "paperless_url": paperless_url,
         "ragflow_url": ragflow_url,
         "anythingllm_url": anythingllm_url,
+        "embedding_url": embedding_url,
+        "embedding_timeout": embedding_timeout,
+        "pgvector_url": pgvector_url,
     })
 
     container.reset_services()
@@ -599,6 +681,13 @@ def save_pipeline_settings():
     filename_template = request.form.get("filename_template", "")
     tika_enrichment = request.form.get("tika_enrichment_enabled", "")
     tika_enrichment_value = "true" if tika_enrichment else "false"
+
+    # Embedding / chunking pipeline settings
+    embedding_backend = request.form.get("embedding_backend", "")
+    embedding_model = request.form.get("embedding_model", "")
+    chunking_strategy = request.form.get("chunking_strategy", "")
+    chunk_max_tokens = request.form.get("chunk_max_tokens", 0, type=int)
+    chunk_overlap_tokens = request.form.get("chunk_overlap_tokens", 0, type=int)
 
     # Validate merge strategy if provided
     if metadata_merge_strategy and metadata_merge_strategy not in Config.VALID_METADATA_MERGE_STRATEGIES:
@@ -626,6 +715,11 @@ def save_pipeline_settings():
         "metadata_merge_strategy": metadata_merge_strategy,
         "filename_template": filename_template,
         "tika_enrichment_enabled": tika_enrichment_value,
+        "embedding_backend": embedding_backend,
+        "embedding_model": embedding_model,
+        "chunking_strategy": chunking_strategy,
+        "chunk_max_tokens": chunk_max_tokens,
+        "chunk_overlap_tokens": chunk_overlap_tokens,
     })
 
     logger.info(f"Pipeline settings updated: strategy={metadata_merge_strategy or '(default)'}, template={filename_template or '(default)'}, tika_enrichment={tika_enrichment_value}")

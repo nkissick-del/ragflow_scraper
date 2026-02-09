@@ -1,0 +1,14 @@
+# Pin via shared constraints for reproducibility
+-c ../constraints.txt
+
+# MCP server dependencies (separate from main app)
+fastapi
+uvicorn[standard]
+pydantic
+
+# Shared with main app (pinned via constraints.txt)
+python-dotenv
+psycopg[binary]
+psycopg-pool
+pgvector
+requests

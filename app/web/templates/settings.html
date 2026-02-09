@@ -582,6 +582,56 @@
                     <p class="text-muted text-small">API key remains in .env (ANYTHINGLLM_API_KEY)</p>
                 </div>
 
+                <div class="setting-group">
+                    <label>Embedding Service (Ollama / OpenAI-compatible)</label>
+                    <div class="setting-row">
+                        <div style="flex: 3">
+                            <input type="text" name="embedding_url" class="input-field"
+                                   value="{{ settings.services.embedding_url or '' }}"
+                                   placeholder="{{ config.EMBEDDING_URL or 'http://localhost:11434' }}">
+                        </div>
+                        <div style="flex: 1">
+                            <input type="number" name="embedding_timeout" class="input-field input-small"
+                                   value="{{ settings.services.embedding_timeout or 0 }}"
+                                   min="0" max="600" placeholder="{{ config.EMBEDDING_TIMEOUT }}">
+                            <span class="text-muted text-small">timeout (s)</span>
+                        </div>
+                        <div id="embedding-status">
+                            <span class="status-badge status-{{ embedding_status }}">{{ embedding_status | replace('_', ' ') }}</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                hx-post="{{ url_for('settings.test_embedding') }}"
+                                hx-target="#embedding-status"
+                                hx-swap="innerHTML">
+                            Test
+                        </button>
+                    </div>
+                    <p class="text-muted text-small">API key remains in .env (EMBEDDING_API_KEY)</p>
+                </div>
+
+                <div class="setting-group">
+                    <label>pgvector (PostgreSQL Database URL)</label>
+                    <div class="setting-row">
+                        <div style="flex: 3">
+                            <input type="password" name="pgvector_url" class="input-field"
+                                   value="{{ settings.services.pgvector_url or '' }}"
+                                   placeholder="{{ config.DATABASE_URL or 'postgresql://user:pass@host:5432/db' }}"
+                                   autocomplete="off">
+                        </div>
+                        <div style="flex: 1"></div>
+                        <div id="pgvector-status">
+                            <span class="status-badge status-{{ pgvector_status }}">{{ pgvector_status | replace('_', ' ') }}</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                hx-post="{{ url_for('settings.test_pgvector') }}"
+                                hx-target="#pgvector-status"
+                                hx-swap="innerHTML">
+                            Test
+                        </button>
+                    </div>
+                    <p class="text-muted text-small">Contains credentials. Override stored here takes precedence over .env DATABASE_URL. Leave blank to use .env value.</p>
+                </div>
+
                 <p class="text-muted text-small mt-3">
                     Set timeout to 0 to use the .env default. Leave URL blank to use .env default.
                 </p>
@@ -668,6 +718,61 @@
                         <br>
                         <span class="text-muted">Default from .env: <strong>{{ 'Enabled' if config.TIKA_ENRICHMENT_ENABLED else 'Disabled' }}</strong></span>
                     </p>
+                </div>
+
+                <div class="setting-group">
+                    <label for="embedding-backend">Embedding Backend</label>
+                    <select id="embedding-backend" name="embedding_backend" class="input-field">
+                        <option value="" {% if not settings.pipeline.embedding_backend %}selected{% endif %}>
+                            Default ({{ config.EMBEDDING_BACKEND }})
+                        </option>
+                        {% for backend in config.VALID_EMBEDDING_BACKENDS %}
+                        <option value="{{ backend }}"
+                                {% if settings.pipeline.embedding_backend == backend %}selected{% endif %}>
+                            {{ backend }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label for="pipeline-embedding-model">Embedding Model</label>
+                    <input type="text" id="pipeline-embedding-model" name="embedding_model" class="input-field"
+                           value="{{ settings.pipeline.embedding_model or '' }}"
+                           placeholder="{{ config.EMBEDDING_MODEL or 'nomic-embed-text' }}">
+                </div>
+
+                <div class="setting-group">
+                    <label for="chunking-strategy">Chunking Strategy</label>
+                    <select id="chunking-strategy" name="chunking_strategy" class="input-field">
+                        <option value="" {% if not settings.pipeline.chunking_strategy %}selected{% endif %}>
+                            Default ({{ config.CHUNKING_STRATEGY }})
+                        </option>
+                        {% for strategy in config.VALID_CHUNKING_STRATEGIES %}
+                        <option value="{{ strategy }}"
+                                {% if settings.pipeline.chunking_strategy == strategy %}selected{% endif %}>
+                            {{ strategy }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label>Chunk Size</label>
+                    <div class="setting-row">
+                        <div style="flex: 1">
+                            <input type="number" name="chunk_max_tokens" class="input-field input-small"
+                                   value="{{ settings.pipeline.chunk_max_tokens or 0 }}"
+                                   min="0" max="4096" placeholder="{{ config.CHUNK_MAX_TOKENS }}">
+                            <span class="text-muted text-small">max tokens (0 = default)</span>
+                        </div>
+                        <div style="flex: 1">
+                            <input type="number" name="chunk_overlap_tokens" class="input-field input-small"
+                                   value="{{ settings.pipeline.chunk_overlap_tokens or 0 }}"
+                                   min="0" max="1024" placeholder="{{ config.CHUNK_OVERLAP_TOKENS }}">
+                            <span class="text-muted text-small">overlap tokens (0 = default)</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="pipeline-message"></div>

@@ -9,6 +9,7 @@ class TestConfigValidation:
     def clean_config(self):
         """Mock out all validation-sensitive Config attributes to valid states."""
         with (
+            patch.object(Config, "SECRET_KEY", "test-secret-key-for-validation-tests"),
             patch.object(Config, "BASIC_AUTH_ENABLED", False),
             patch.object(Config, "ARCHIVE_BACKEND", "local"),
             patch.object(Config, "RAG_BACKEND", "ragflow"),
@@ -17,6 +18,11 @@ class TestConfigValidation:
             patch.object(Config, "PARSER_BACKEND", "docling"),
             patch.object(Config, "METADATA_MERGE_STRATEGY", "smart"),
             patch.object(Config, "FILENAME_TEMPLATE", ""),
+            patch.object(Config, "EMBEDDING_BACKEND", "ollama"),
+            patch.object(Config, "CHUNKING_STRATEGY", "fixed"),
+            patch.object(Config, "CHUNK_MAX_TOKENS", 512),
+            patch.object(Config, "CHUNK_OVERLAP_TOKENS", 64),
+            patch.object(Config, "EMBEDDING_DIMENSIONS", 768),
         ):
             yield
 

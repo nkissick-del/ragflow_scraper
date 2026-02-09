@@ -1,0 +1,160 @@
+"""pgvector RAG backend adapter.
+
+Chunks markdown, generates embeddings, and stores in PostgreSQL+pgvector.
+"""
+
+from pathlib import Path
+from typing import Any, Optional
+
+from app.backends.rag.base import RAGBackend, RAGResult
+from app.utils import get_logger
+
+
+class PgVectorRAGBackend(RAGBackend):
+    """RAG backend using pgvector for self-owned chunking/embedding/retrieval."""
+
+    def __init__(
+        self,
+        pgvector_client: Any,
+        embedding_client: Any,
+        chunking_strategy: str = "fixed",
+        chunk_max_tokens: int = 512,
+        chunk_overlap_tokens: int = 64,
+    ):
+        self._pgvector = pgvector_client
+        self._embedder = embedding_client
+
+        from app.services.chunking import create_chunker
+        self._chunker = create_chunker(
+            strategy=chunking_strategy,
+            max_tokens=chunk_max_tokens,
+            overlap_tokens=chunk_overlap_tokens,
+        )
+        self.logger = get_logger("backends.rag.pgvector")
+
+    @property
+    def name(self) -> str:
+        return "pgvector"
+
+    def is_configured(self) -> bool:
+        return self._pgvector.is_configured() and self._embedder.is_configured()
+
+    def is_available(self) -> bool:
+        """Override: test both connections, not just is_configured()."""
+        if not self.is_configured():
+            return False
+        try:
+            return self._pgvector.test_connection() and self._embedder.test_connection()
+        except Exception:
+            return False
+
+    def test_connection(self) -> bool:
+        if not self.is_configured():
+            return False
+        try:
+            pg_ok = self._pgvector.test_connection()
+            emb_ok = self._embedder.test_connection()
+            return pg_ok and emb_ok
+        except Exception as e:
+            self.logger.error(f"Connection test failed: {e}")
+            return False
+
+    def ingest_document(
+        self,
+        markdown_path: Path,
+        metadata: dict[str, Any],
+        collection_id: Optional[str] = None,
+    ) -> RAGResult:
+        if not self.is_configured():
+            return RAGResult(
+                success=False,
+                error="pgvector backend not configured (missing DATABASE_URL or EMBEDDING_URL)",
+                rag_name=self.name,
+            )
+
+        if not markdown_path.exists():
+            return RAGResult(
+                success=False,
+                error=f"Markdown file not found: {markdown_path}",
+                rag_name=self.name,
+            )
+
+        try:
+            # Determine source (partition key)
+            source = collection_id or metadata.get("source", "default")
+            filename = markdown_path.name
+
+            # Read markdown
+            text = markdown_path.read_text(encoding="utf-8")
+            if not text.strip():
+                return RAGResult(
+                    success=False,
+                    error=f"Markdown file is empty: {markdown_path}",
+                    rag_name=self.name,
+                )
+
+            # Chunk
+            chunks = self._chunker.chunk(text, metadata)
+            if not chunks:
+                return RAGResult(
+                    success=False,
+                    error=f"No chunks produced from: {markdown_path}",
+                    rag_name=self.name,
+                )
+
+            # Embed
+            texts = [c.content for c in chunks]
+            embedding_result = self._embedder.embed(texts)
+
+            if not embedding_result.embeddings:
+                return RAGResult(
+                    success=False,
+                    error=f"Embedding failed for: {markdown_path}",
+                    rag_name=self.name,
+                )
+            if len(embedding_result.embeddings) != len(chunks):
+                return RAGResult(
+                    success=False,
+                    error=(
+                        f"Embedding count mismatch: got {len(embedding_result.embeddings)}, "
+                        f"expected {len(chunks)}"
+                    ),
+                    rag_name=self.name,
+                )
+
+            # Prepare chunks for storage
+            storage_chunks = []
+            for chunk, embedding in zip(chunks, embedding_result.embeddings):
+                storage_chunks.append({
+                    "content": chunk.content,
+                    "embedding": embedding,
+                    "chunk_index": chunk.index,
+                    "metadata": chunk.metadata,
+                })
+
+            # Store
+            self._pgvector.ensure_schema()
+            document_id = metadata.get("document_id")
+            count = self._pgvector.store_chunks(
+                source=source,
+                filename=filename,
+                chunks=storage_chunks,
+                document_id=str(document_id) if document_id else None,
+            )
+
+            self.logger.info(
+                f"Ingested {count} chunks for {source}/{filename} "
+                f"(model={embedding_result.model}, dims={embedding_result.dimensions})"
+            )
+
+            return RAGResult(
+                success=True,
+                document_id=str(document_id) if document_id else filename,
+                collection_id=source,
+                rag_name=self.name,
+            )
+
+        except Exception as e:
+            error_msg = f"pgvector ingestion failed: {e}"
+            self.logger.error(error_msg)
+            return RAGResult(success=False, error=error_msg, rag_name=self.name)

@@ -461,6 +461,11 @@ class TestSettingsEndpoints:
                 "metadata_merge_strategy": "smart",
                 "filename_template": "{{ title }}{{ extension }}",
                 "tika_enrichment_enabled": "false",
+                "embedding_backend": "",
+                "embedding_model": "",
+                "chunking_strategy": "",
+                "chunk_max_tokens": 0,
+                "chunk_overlap_tokens": 0,
             })
 
     def test_preview_filename(self, client):

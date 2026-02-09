@@ -28,5 +28,10 @@ jsonschema
 # Scheduling
 schedule
 
+# PostgreSQL + pgvector
+psycopg[binary]
+psycopg-pool
+pgvector
+
 # Development
 webdriver-manager

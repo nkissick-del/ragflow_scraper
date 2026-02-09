@@ -64,6 +64,27 @@ DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
 CONFIG_DIR = Path(os.getenv("CONFIG_DIR", BASE_DIR / "config"))
 
 
+def _parse_int(raw: str, param_name: str) -> int:
+    """Validate an integer configuration parameter.
+
+    Args:
+        raw: Raw value from environment variable
+        param_name: Name of the parameter for error messages
+
+    Returns:
+        Validated integer value
+
+    Raises:
+        ValueError: If value is not a valid integer
+    """
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Invalid Config.{param_name}: must be an integer, got '{raw}'"
+        )
+
+
 def _parse_proxy_count(raw: str) -> int:
     """Validate TRUST_PROXY_COUNT as a bounded non-negative integer."""
     try:
@@ -181,10 +202,30 @@ class Config:
     )
     TIKA_ENRICHMENT_ENABLED = os.getenv("TIKA_ENRICHMENT_ENABLED", "false").lower() == "true"
 
+    # Embedding service
+    VALID_EMBEDDING_BACKENDS = ("ollama", "openai", "api")
+    EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "ollama").strip().lower()
+    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+    EMBEDDING_URL = os.getenv("EMBEDDING_URL", "")
+    EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
+    EMBEDDING_DIMENSIONS = _parse_int(os.getenv("EMBEDDING_DIMENSIONS", "768"), "EMBEDDING_DIMENSIONS")
+    EMBEDDING_TIMEOUT = _parse_timeout(
+        os.getenv("EMBEDDING_TIMEOUT", "60"), "EMBEDDING_TIMEOUT"
+    )
+
+    # Chunking
+    VALID_CHUNKING_STRATEGIES = ("fixed", "hybrid")
+    CHUNKING_STRATEGY = os.getenv("CHUNKING_STRATEGY", "fixed").strip().lower()
+    CHUNK_MAX_TOKENS = _parse_int(os.getenv("CHUNK_MAX_TOKENS", "512"), "CHUNK_MAX_TOKENS")
+    CHUNK_OVERLAP_TOKENS = _parse_int(os.getenv("CHUNK_OVERLAP_TOKENS", "64"), "CHUNK_OVERLAP_TOKENS")
+
+    # pgvector (PostgreSQL vector storage)
+    DATABASE_URL = os.getenv("DATABASE_URL", "")
+
     # Valid values for backends and strategies
     VALID_PARSER_BACKENDS = ("docling", "docling_serve", "mineru", "tika")
     VALID_ARCHIVE_BACKENDS = ("paperless", "s3", "local")
-    VALID_RAG_BACKENDS = ("ragflow", "anythingllm")
+    VALID_RAG_BACKENDS = ("ragflow", "anythingllm", "pgvector")
     VALID_METADATA_MERGE_STRATEGIES = ("smart", "parser_wins", "scraper_wins")
 
     # Backend Selection
@@ -196,7 +237,7 @@ class Config:
     )  # paperless, s3, local
     RAG_BACKEND = (
         os.getenv("RAG_BACKEND", "ragflow").strip().lower()
-    )  # ragflow, anythingllm
+    )  # ragflow, anythingllm, pgvector
     METADATA_MERGE_STRATEGY = (
         os.getenv("METADATA_MERGE_STRATEGY", "smart").strip().lower()
     )  # smart, parser_wins, scraper_wins
@@ -321,6 +362,21 @@ class Config:
                     "Invalid Config: RAG_BACKEND='anythingllm' requires ANYTHINGLLM_API_URL, ANYTHINGLLM_API_KEY, and ANYTHINGLLM_WORKSPACE_ID"
                 )
 
+        if cls.EMBEDDING_BACKEND in ("openai", "api") and not cls.EMBEDDING_URL:
+            raise ValueError(
+                f"Invalid Config: EMBEDDING_BACKEND='{cls.EMBEDDING_BACKEND}' requires EMBEDDING_URL"
+            )
+
+        if cls.RAG_BACKEND == "pgvector":
+            if not cls.DATABASE_URL:
+                raise ValueError(
+                    "Invalid Config: RAG_BACKEND='pgvector' requires DATABASE_URL"
+                )
+            if not cls.EMBEDDING_URL:
+                raise ValueError(
+                    "Invalid Config: RAG_BACKEND='pgvector' requires EMBEDDING_URL"
+                )
+
         if cls.FLARESOLVERR_MAX_TIMEOUT < cls.FLARESOLVERR_TIMEOUT:
             raise ValueError(
                 f"Invalid Config: FLARESOLVERR_MAX_TIMEOUT ({cls.FLARESOLVERR_MAX_TIMEOUT}) "
@@ -350,6 +406,40 @@ class Config:
             raise ValueError(
                 f"Invalid METADATA_MERGE_STRATEGY '{cls.METADATA_MERGE_STRATEGY}'. "
                 f"Must be one of: {', '.join(cls.VALID_METADATA_MERGE_STRATEGIES)}"
+            )
+
+        if cls.EMBEDDING_BACKEND not in cls.VALID_EMBEDDING_BACKENDS:
+            raise ValueError(
+                f"Invalid EMBEDDING_BACKEND '{cls.EMBEDDING_BACKEND}'. "
+                f"Must be one of: {', '.join(cls.VALID_EMBEDDING_BACKENDS)}"
+            )
+
+        if cls.CHUNKING_STRATEGY not in cls.VALID_CHUNKING_STRATEGIES:
+            raise ValueError(
+                f"Invalid CHUNKING_STRATEGY '{cls.CHUNKING_STRATEGY}'. "
+                f"Must be one of: {', '.join(cls.VALID_CHUNKING_STRATEGIES)}"
+            )
+
+        if cls.CHUNK_MAX_TOKENS < 1:
+            raise ValueError(
+                f"Invalid Config: CHUNK_MAX_TOKENS ({cls.CHUNK_MAX_TOKENS}) must be >= 1"
+            )
+
+        if cls.CHUNK_OVERLAP_TOKENS < 0:
+            raise ValueError(
+                f"Invalid Config: CHUNK_OVERLAP_TOKENS ({cls.CHUNK_OVERLAP_TOKENS}) must be >= 0"
+            )
+
+        if cls.CHUNK_OVERLAP_TOKENS >= cls.CHUNK_MAX_TOKENS:
+            raise ValueError(
+                f"Invalid Config: CHUNK_OVERLAP_TOKENS ({cls.CHUNK_OVERLAP_TOKENS}) "
+                f"must be less than CHUNK_MAX_TOKENS ({cls.CHUNK_MAX_TOKENS})"
+            )
+
+        if cls.EMBEDDING_DIMENSIONS < 1 or cls.EMBEDDING_DIMENSIONS > 8192:
+            raise ValueError(
+                f"Invalid Config: EMBEDDING_DIMENSIONS ({cls.EMBEDDING_DIMENSIONS}) "
+                "must be between 1 and 8192"
             )
 
         # Validate FILENAME_TEMPLATE (basic Jinja2 syntax check)

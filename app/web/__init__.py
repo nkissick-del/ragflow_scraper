@@ -37,9 +37,13 @@ def create_app() -> Flask:
     from app.web.blueprints import register_blueprints
     register_blueprints(app)
 
-    # Exempt API blueprint from CSRF protection (relies on Basic Auth)
+    # Exempt API blueprints from CSRF protection — all routes in these
+    # blueprints are protected by HTTP Basic Auth (non-cookie), enforced by
+    # the app-level before_request handler. No session cookies are used.
     from app.web.blueprints.api_scrapers import bp as api_bp
     csrf.exempt(api_bp)
+    from app.web.blueprints.search import bp as search_bp
+    csrf.exempt(search_bp)
 
     @app.after_request
     def add_security_headers(response):

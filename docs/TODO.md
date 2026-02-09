@@ -4,24 +4,7 @@ Last updated: 2026-02-09
 
 ---
 
-## 1. Production Config & Secrets (Critical)
-
-**Priority:** CRITICAL | **Effort:** 1h | **Type:** [Config]
-
-Configuration fixes required before production deployment. No code changes — all environment and compose file edits.
-
-- [ ] **Rotate all credentials** — RAGFlow, Paperless, AnythingLLM, Guardian API keys are in `.env` plaintext; regenerate after deployment
-- [ ] **Enforce `SECRET_KEY`** — remove insecure default (`"dev-secret-key"`) from `config.py:119` and `docker-compose.yml:24`; fail fast if unset
-- [ ] **Set `FLASK_DEBUG=0`** in production `.env` (currently `1` — enables interactive debugger)
-- [ ] **Docker log rotation** — add `logging: { driver: json-file, options: { max-size: 10m, max-file: "3" } }` to all services in `docker-compose.yml`
-- [ ] **Chrome resource limits** — add `mem_limit` and `cpus` to chrome service (scraper and gotenberg already have them)
-- [ ] **Disable VNC in production** — remove `SE_VNC_NO_PASSWORD=1`, don't expose port 7900, or set a real password
-- [ ] **Restrict service ports** — bind Selenium (4444) and Gotenberg (3156) to `127.0.0.1` or remove from production compose
-- [ ] **Remove orphaned named volumes** — `scraper-data`, `scraper-config`, `scraper-logs` declared in `docker-compose.yml:119-121` but never used
-
----
-
-## 2. Security Hardening (High)
+## 1. Security Hardening (High)
 
 **Priority:** HIGH | **Effort:** 3-4h | **Type:** [Code]
 
@@ -35,7 +18,7 @@ Address authentication, authorization, and header gaps found in pre-deployment a
 
 ---
 
-## 3. Resilience & Thread Safety (High)
+## 2. Resilience & Thread Safety (High)
 
 **Priority:** HIGH | **Effort:** 4-6h | **Type:** [Code]
 
@@ -52,7 +35,7 @@ Harden core runtime for production reliability under load.
 
 ---
 
-## 4. Pipeline Refactor (High)
+## 3. Pipeline Refactor (High)
 
 **Priority:** HIGH | **Effort:** 3-4h | **Type:** [Code]
 
@@ -67,11 +50,11 @@ Harden core runtime for production reliability under load.
 
 ---
 
-## 5. Test Coverage (Medium)
+## 4. Test Coverage (Medium)
 
 **Priority:** MEDIUM | **Effort:** 8-12h | **Type:** [Tests]
 
-527 tests passing but significant gaps in unit coverage. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
+626 tests passing but significant gaps in unit coverage. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
 
 ### Orchestrator (critical gap)
 - [ ] `test_pipeline.py` — unit tests for `run()`, `_process_document()` with mocked backends
@@ -94,7 +77,7 @@ Harden core runtime for production reliability under load.
 
 ---
 
-## 6. CI/CD Improvements (Medium)
+## 5. CI/CD Improvements (Medium)
 
 **Priority:** MEDIUM | **Effort:** 2-3h | **Type:** [Config]
 
@@ -109,7 +92,7 @@ Strengthen the CI pipeline with additional scanning and enforcement.
 
 ---
 
-## 7. Code Quality & Deduplication (Medium)
+## 6. Code Quality & Deduplication (Medium)
 
 **Priority:** MEDIUM | **Effort:** 4-6h | **Type:** [Code]
 
@@ -124,7 +107,7 @@ Address code smells and duplication identified in audit.
 
 ---
 
-## 8. New Scrapers
+## 7. New Scrapers
 
 **Priority:** LOW | **Effort:** 2-3h each | **Type:** [Code]
 
@@ -134,7 +117,7 @@ The scraper pattern is well-established (9 scrapers, documented walkthrough). Ad
 
 ---
 
-## 9. Additional Backends (As Needed)
+## 8. Additional Backends (As Needed)
 
 **Priority:** LOW | **Effort:** varies | **Type:** [Code]
 
@@ -146,7 +129,7 @@ Only implement when there's a concrete use case. Stubs exist in container.py for
 
 ---
 
-## 10. Backup & Restore Procedures
+## 9. Backup & Restore Procedures
 
 **Priority:** LOW | **Effort:** 2-3h | **Type:** [Local]
 
@@ -158,7 +141,7 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 ---
 
-## 11. UI Polish (Low)
+## 10. UI Polish (Low)
 
 **Priority:** LOW | **Effort:** 2-3h | **Type:** [Code]
 
@@ -166,6 +149,16 @@ Minor UI/UX improvements identified in audit.
 
 - [ ] **Custom 403 error page** — only 404 and 500 handlers exist in `web/__init__.py`
 - [ ] **Accessibility** — audit remaining templates for missing ARIA labels, form labels, skip navigation
+
+---
+
+## 11. Future Considerations
+
+**Priority:** WATCH | **Type:** [Research]
+
+Technology to monitor for potential future adoption. Not actionable yet.
+
+- [ ] **Docling DocTags format** — IBM's LLM-optimized document representation ([discussion](https://github.com/docling-project/docling/discussions/354), [announcement](https://www.ibm.com/new/announcements/granite-docling-end-to-end-document-conversion)). Uses XML-like tags with bounding box coordinates to preserve visual structure and element relationships (caption→figure linking, reading order). Currently designed for LLM fine-tuning and layout-aware tasks — overkill for text-based RAG chunking. However, as Granite-Docling matures, DocTags could enable richer chunk metadata (e.g., "this chunk contains a table from page 3, related to figure 2") which would improve retrieval precision for complex documents. Revisit when DocTags→chunk pipelines become standardized.
 
 ---
 
@@ -220,8 +213,27 @@ Minor UI/UX improvements identified in audit.
 - CI pipeline — 4 parallel jobs (lint, security, unit tests, integration tests), ruff linter, pip-audit
 - Docker publish workflow — builds runtime target, pushes to GHCR on main merge
 - Security hardening — HTMX 401 handling, secrets rotation guide, BASIC_AUTH in `.env.example`
+- Production config hardening — SECRET_KEY enforcement, Docker log rotation, Chrome resource limits, VNC/port removal
 - State reconciliation & disaster recovery from Paperless-ngx
 - **527 tests passing** (all green locally)
+
+</details>
+
+<details>
+<summary>Phase 7 (2026-02-09) — pgvector RAG Pipeline</summary>
+
+Self-owned chunking → embedding → pgvector pipeline replacing RAGFlow/AnythingLLM as required RAG infrastructure. RAG platforms become optional frontends; any LLM can query the corpus directly via REST API or MCP.
+
+- **1.1** Embedding client — `EmbeddingClient` ABC with `OllamaEmbeddingClient` (POST /api/embed) and `APIEmbeddingClient` (OpenAI-compatible /v1/embeddings), factory function, batch support (batch_size=32), 29 unit tests, stack test
+- **1.2** Chunking module — `ChunkingStrategy` ABC with `FixedChunker` (word-boundary splitting, overlap, heading context detection) and `HybridDoclingChunker` (falls back to Fixed), factory function, 24 unit tests
+- **1.3** pgvector storage client — `PgVectorClient` with psycopg connection pooling, partitioned `document_chunks` table (one partition per source), HNSW indexes, cosine similarity search with source/metadata filtering, 20 unit tests, stack test
+- **1.4** PgVector RAG backend — `PgVectorRAGBackend` implements `RAGBackend` ABC (chunk → embed → store), registered in backend registry, Settings UI fields for embedding/chunking/pgvector config, `.env.example` + `docker-compose.yml` updated, 19 unit tests
+- **1.5** Search API & UI — Flask blueprint with `POST /api/search`, `GET /api/sources`, `GET /api/search/document/<source>/<filename>`, HTMX search page with source checkboxes and similarity scores, CSRF-exempt, 6 unit tests
+- **1.6** Backfill script — `scripts/backfill_vectors.py` fetches from Paperless API, chunks, embeds, stores; supports `--source`, `--dry-run`, `--skip-existing`
+- **1.7** MCP server — `mcp_server/` FastAPI service with `search_documents`, `list_sources`, `get_document` tool endpoints; separate process sharing same pgvector + embedding modules
+- Config: `DATABASE_URL`, `EMBEDDING_BACKEND/MODEL/URL/API_KEY/DIMENSIONS/TIMEOUT`, `CHUNKING_STRATEGY`, `CHUNK_MAX_TOKENS/OVERLAP_TOKENS`
+- Dependencies: `psycopg[binary]`, `psycopg-pool`, `pgvector`
+- **527→626 tests**, pyright 0 errors
 
 </details>
 
@@ -229,15 +241,18 @@ Minor UI/UX improvements identified in audit.
 
 ## Current State
 
-- **527 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
-- **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika)
+- **626 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
+- **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika, Ollama, pgvector)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local
-- **RAG:** AnythingLLM, RAGFlow
+- **RAG:** pgvector (self-owned), AnythingLLM, RAGFlow
+- **Embedding:** Ollama, OpenAI-compatible API
+- **Chunking:** Fixed (word-boundary with overlap), Hybrid (Docling fallback)
+- **Search:** REST API (`/api/search`, `/api/sources`) + HTMX web UI + MCP server
 - **Conversion:** Gotenberg (HTML/MD/Office→PDF)
 - **Scrapers:** 9 (AEMO, AEMC, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy)
-- **Settings UI:** Full coverage (backend selection, service URLs/timeouts, merge strategy, filename template, Tika enrichment toggle)
+- **Settings UI:** Full coverage (backend selection, service URLs/timeouts, merge strategy, filename template, Tika enrichment toggle, embedding/chunking/pgvector config)
 - **Security:** CSRF, security headers, SSRF mitigation, input validation, Basic Auth HTMX support, secrets rotation docs
 - **CI:** GitHub Actions — lint (ruff), security (pip-audit), unit tests, integration tests; Docker publish on main merge
 - **Architecture:** Backend Registry pattern — adding a new backend is a single-line factory registration
-- **Pre-deployment audit completed** — findings tracked in items 1-7 above
+- **Infrastructure:** Unraid (192.168.1.101) — Paperless (:8000), PostgreSQL+pgvector (:5432), Ollama (:11434), AnythingLLM (:3151), docling-serve (:4949)

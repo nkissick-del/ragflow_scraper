@@ -62,7 +62,7 @@ class TestDefaultRegistry:
     def test_rag_names(self):
         registry = get_backend_registry()
         names = sorted(registry.names("rag"))
-        assert names == ["anythingllm", "ragflow"]
+        assert names == ["anythingllm", "pgvector", "ragflow"]
 
     def test_unimplemented_mineru_raises(self):
         registry = get_backend_registry()

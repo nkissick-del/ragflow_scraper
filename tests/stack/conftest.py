@@ -117,6 +117,42 @@ def gotenberg_alive(gotenberg_url):
 
 
 @pytest.fixture(scope="session")
+def pgvector_url():
+    return os.environ.get("DATABASE_URL", "postgresql://scraper:scraper@192.168.1.101:5432/scraper_vectors")
+
+
+@pytest.fixture(scope="session")
+def pgvector_alive(pgvector_url):
+    """Skip if PostgreSQL+pgvector is not reachable."""
+    try:
+        import psycopg
+        with psycopg.connect(pgvector_url, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                return True
+    except Exception:
+        pass
+    pytest.skip("PostgreSQL+pgvector not reachable")
+
+
+@pytest.fixture(scope="session")
+def ollama_url():
+    return os.environ.get("EMBEDDING_URL", "http://192.168.1.101:11434")
+
+
+@pytest.fixture(scope="session")
+def ollama_alive(ollama_url):
+    """Skip if Ollama is not reachable."""
+    try:
+        resp = requests.get(f"{ollama_url}/api/tags", timeout=10)
+        if resp.ok:
+            return True
+    except Exception:
+        pass
+    pytest.skip("Ollama not reachable")
+
+
+@pytest.fixture(scope="session")
 def tika_url():
     return os.environ.get("TIKA_SERVER_URL", "http://192.168.1.101:9998")
 

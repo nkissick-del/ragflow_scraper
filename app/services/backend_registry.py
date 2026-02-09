@@ -115,6 +115,28 @@ def _create_anythingllm_rag(container: ServiceContainer) -> Any:
     )
 
 
+def _create_pgvector_rag(container: "ServiceContainer") -> Any:
+    pgvector_client = container.pgvector_client
+    embedding_client = container.embedding_client
+    if not pgvector_client or not embedding_client:
+        raise ValueError(
+            "PgVector RAG requires both pgvector_client and embedding_client"
+        )
+    try:
+        chunk_max_tokens = int(container._get_config_attr("CHUNK_MAX_TOKENS", "512"))
+        chunk_overlap_tokens = int(container._get_config_attr("CHUNK_OVERLAP_TOKENS", "64"))
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Invalid chunking configuration: {e}") from e
+    from app.backends.rag.pgvector_adapter import PgVectorRAGBackend
+    return PgVectorRAGBackend(
+        pgvector_client=pgvector_client,
+        embedding_client=embedding_client,
+        chunking_strategy=container._get_config_attr("CHUNKING_STRATEGY", "fixed"),
+        chunk_max_tokens=chunk_max_tokens,
+        chunk_overlap_tokens=chunk_overlap_tokens,
+    )
+
+
 # --- Default registry ---
 
 _default_registry = BackendRegistry()
@@ -133,6 +155,7 @@ _default_registry.register("archive", "local", _create_local_archive)
 # RAG
 _default_registry.register("rag", "ragflow", _create_ragflow_rag)
 _default_registry.register("rag", "anythingllm", _create_anythingllm_rag)
+_default_registry.register("rag", "pgvector", _create_pgvector_rag)
 
 
 def get_backend_registry() -> BackendRegistry:
