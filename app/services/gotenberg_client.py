@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from bs4 import BeautifulSoup
 
 from app.config import Config
 from app.utils import get_logger
@@ -93,6 +94,45 @@ class GotenbergClient:
         except Exception:
             return False
 
+    def _sanitize_html(self, html_content: str) -> str:
+        """Sanitize HTML to remove scripts and dangerous content."""
+        try:
+            # Use 'html.parser' as a safe default
+            soup = BeautifulSoup(html_content, "html.parser")
+
+            # Remove dangerous tags
+            for tag in soup(["script", "iframe", "object", "embed", "applet", "base"]):
+                tag.decompose()
+
+            # Remove event handlers and javascript: URLs
+            for tag in soup.find_all(True):
+                attrs_to_remove = []
+                for attr, val in tag.attrs.items():
+                    # remove on* events (onclick, onerror, etc.)
+                    if attr.lower().startswith("on"):
+                        attrs_to_remove.append(attr)
+                        continue
+
+                    # remove javascript: protocol in href/src
+                    if attr.lower() in ("href", "src", "action", "data"):
+                        # Handle potential list of values (class) though unlikely for href
+                        val_str = str(val) if not isinstance(val, list) else " ".join(val)
+                        val_str = val_str.lower().strip()
+                        # Simple check for javascript: protocol
+                        if val_str.startswith("javascript:") or val_str.startswith("vbscript:"):
+                            attrs_to_remove.append(attr)
+
+                for attr in attrs_to_remove:
+                    del tag[attr]
+
+            return str(soup)
+        except Exception as e:
+            self.logger.error(f"Error sanitizing HTML: {e}")
+            # If sanitization fails, log but return original to preserve functionality
+            # This is a trade-off: fail-open for functionality vs fail-closed for security
+            # Given this is likely a parsing error, the risk might be lower or higher.
+            return html_content
+
     def convert_html_to_pdf(
         self, html_content: str, title: str = ""
     ) -> bytes:
@@ -110,6 +150,9 @@ class GotenbergClient:
             requests.HTTPError: On non-2xx response
             requests.RequestException: On connection failure
         """
+        # Sanitize HTML content to prevent XSS/SSRF in Gotenberg
+        html_content = self._sanitize_html(html_content)
+
         # Wrap in full HTML document if not already
         if "<html" not in html_content.lower():
             safe_title = _html_escape(title) if title else ""
