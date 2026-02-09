@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from app.orchestrator.scheduler import Scheduler
 
