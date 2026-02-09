@@ -54,7 +54,7 @@ Harden core runtime for production reliability under load.
 
 **Priority:** MEDIUM | **Effort:** 8-12h | **Type:** [Tests]
 
-626 tests passing but significant gaps in unit coverage. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
+625 tests passing but significant gaps in unit coverage. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
 
 ### Orchestrator (critical gap)
 - [ ] `test_pipeline.py` — unit tests for `run()`, `_process_document()` with mocked backends
@@ -233,7 +233,8 @@ Self-owned chunking → embedding → pgvector pipeline replacing RAGFlow/Anythi
 - **1.7** MCP server — `mcp_server/` FastAPI service with `search_documents`, `list_sources`, `get_document` tool endpoints; separate process sharing same pgvector + embedding modules
 - Config: `DATABASE_URL`, `EMBEDDING_BACKEND/MODEL/URL/API_KEY/DIMENSIONS/TIMEOUT`, `CHUNKING_STRATEGY`, `CHUNK_MAX_TOKENS/OVERLAP_TOKENS`
 - Dependencies: `psycopg[binary]`, `psycopg-pool`, `pgvector`
-- **527→626 tests**, pyright 0 errors
+- 9 CodeRabbit review passes (22→11→12→15→11→8→3→4→7 findings) — thread-safe lazy init, SQL savepoints, path traversal prevention, SSRF validation, input sanitization, defensive API handling, resource cleanup, partition atomicity
+- **527→625 tests**, pyright 0 errors
 
 </details>
 
@@ -241,7 +242,7 @@ Self-owned chunking → embedding → pgvector pipeline replacing RAGFlow/Anythi
 
 ## Current State
 
-- **626 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
+- **625 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika, Ollama, pgvector)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local
