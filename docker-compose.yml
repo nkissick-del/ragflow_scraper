@@ -21,7 +21,7 @@ services:
       # Flask Configuration
       - FLASK_ENV=${FLASK_ENV:-production}
       - FLASK_DEBUG=${FLASK_DEBUG:-0}
-      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in .env}
       - HOST=0.0.0.0
       - PORT=5000
       # RAGFlow Configuration
@@ -63,31 +63,41 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Browser for web scraping (not used for PDF generation — see gotenberg)
   chrome:
-    image: seleniarm/standalone-chromium:120.0
-    platform: linux/arm64
+    image: selenium/standalone-chromium:120.0
     container_name: pdf-scraper-chrome
     restart: unless-stopped
-    ports:
-      - "${SELENIUM_PORT:-4444}:4444"
-      - "${VNC_PORT:-7900}:7900"  # VNC for debugging (password: secret)
     shm_size: 2gb
     environment:
       - SE_NODE_MAX_SESSIONS=3
       - SE_NODE_SESSION_TIMEOUT=300
-      - SE_VNC_NO_PASSWORD=1
     networks:
       - scraper-net
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "1.0"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
       interval: 15s
       timeout: 10s
       retries: 3
       start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   gotenberg:
     image: gotenberg/gotenberg:8
@@ -95,8 +105,6 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    ports:
-      - "${GOTENBERG_PORT:-3156}:3000"
     networks:
       - scraper-net
     deploy:
@@ -110,12 +118,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   scraper-net:
     driver: bridge
 
-volumes:
-  scraper-data:
-  scraper-config:
-  scraper-logs:

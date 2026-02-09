@@ -116,7 +116,7 @@ class Config:
     """Application configuration."""
 
     # Flask
-    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
+    SECRET_KEY = os.getenv("SECRET_KEY", "")
     HOST = os.getenv("HOST", "0.0.0.0")
     PORT = int(os.getenv("PORT", 5000))
     DEBUG = os.getenv("FLASK_DEBUG", "0") == "1"
@@ -265,9 +265,22 @@ class Config:
         ]:
             dir_path.mkdir(parents=True, exist_ok=True)
 
+    # Known-weak SECRET_KEY values that must be rejected
+    INSECURE_SECRET_KEYS = frozenset({
+        "", "dev-secret-key-change-in-production", "dev-secret-key",
+        "dev_secret_key_change_in_production", "change-this-in-production",
+        "generate_random_secret_key",
+    })
+
     @classmethod
     def validate(cls):
         """Validate config invariants and fail fast on misconfiguration."""
+        if cls.SECRET_KEY in cls.INSECURE_SECRET_KEYS:
+            raise ValueError(
+                "Invalid Config: SECRET_KEY must be set to a strong random value. "
+                'Generate one with: python3 -c "import secrets; print(secrets.token_hex(32))"'
+            )
+
         if cls.BASIC_AUTH_ENABLED:
             if not cls.BASIC_AUTH_USERNAME or not cls.BASIC_AUTH_PASSWORD:
                 raise ValueError(
