@@ -37,3 +37,12 @@
 **Vulnerability:** The CI pipeline failed because `constraints.txt` contained `psycopg[binary]==3.3.2`. Newer versions of `pip` (v26+) reject constraints with extras (square brackets), throwing "Constraints cannot have extras".
 **Learning:** Constraints files should only contain package names and versions. Extras should be resolved to their underlying package names in the constraints file, while the requirements file can still specify the extras to trigger their installation.
 **Prevention:** Updated `constraints.txt` to list `psycopg==3.3.2` and `psycopg-binary==3.3.2` separately, removing the bracket syntax. This fixes the CI failure while maintaining version pinning.
+
+## 2026-03-01 - Unit Test Isolation & Collection Errors
+**Vulnerability:** The `tests/unit/test_search_blueprint.py` test failed because it relied on `app.config.Config` which didn't have a `SECRET_KEY` set for session generation in a test environment, causing a `RuntimeError`. Additionally, integration tests failed collection because of missing dev dependencies (`requests-toolbelt`, `responses`) required by `tests/integration/test_anythingllm_integration.py`.
+**Learning:**
+1. Unit tests mocking the app must ensure `SECRET_KEY` is set if `CSRFProtect` or session logic is active, even if CSRF is disabled in the test config.
+2. Integration tests often introduce new dependencies (like `responses` for API mocking). These must be added to `requirements-dev.txt` to ensure the CI environment can collect and run them.
+**Prevention:**
+1. Patched `Config.SECRET_KEY` in the test fixture.
+2. Added `requests-toolbelt` and `responses` to `requirements-dev.txt`.

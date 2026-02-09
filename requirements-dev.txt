@@ -10,3 +10,5 @@ ruff
 
 # Security/dependency scanning
 pip-audit
+requests-toolbelt
+responses
