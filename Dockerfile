@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for PDF Scraper
 
 # Stage 1: Base dependencies (production runtime deps only)
-FROM python:3.11.9-slim as base
+FROM python:3.11-slim-bookworm as base
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ COPY requirements-dev.txt constraints.txt ./
 RUN pip install --no-cache-dir --user -r requirements-dev.txt
 
 # Stage 2: Runtime (production)
-FROM python:3.11.9-slim as runtime
+FROM python:3.11-slim-bookworm as runtime
 
 WORKDIR /app
 

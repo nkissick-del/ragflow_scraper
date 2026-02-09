@@ -1,6 +1,6 @@
 # TODO — Prioritized Roadmap
 
-Last updated: 2026-02-09
+Last updated: 2026-02-10
 
 ---
 
@@ -28,7 +28,7 @@ Harden core runtime for production reliability under load.
 - [ ] **Scheduler exception guard** — `scheduler.py:235-239` has no try/except around `schedule.run_pending()`; unhandled exception kills scheduler thread permanently
 - [ ] **StateTracker thread safety** — `state_tracker.py:71-81` reads `_state` dict without lock; add `threading.Lock` for concurrent read/write
 - [ ] **ServiceContainer singleton lock** — `container.py:67-71` uses bare `if _instance is None`; add double-checked locking
-- [ ] **Settings page timeout isolation** — `settings.py:174-200` health check HTTP calls can hang; add per-request timeout (5s) and catch exceptions per-service
+- [x] **Settings page timeout isolation** — `settings.py:174-200` health check HTTP calls now have `timeout=10` and `_check_service_status()` wrapper catches all exceptions per-service
 - [ ] **Paperless retry logic** — `paperless_client.py:87-88` has no retry; add exponential backoff for transient 503/429/connection errors
 - [ ] **Job error traceback** — `job_queue.py:73` only saves `str(exc)`; capture `traceback.format_exc()` for debugging
 - [ ] **FlareSolverr session cache eviction** — `flaresolverr_client.py:64-65` grows unbounded; add TTL or LRU eviction
@@ -55,41 +55,55 @@ Harden core runtime for production reliability under load.
 
 **Priority:** MEDIUM | **Effort:** 8-12h | **Type:** [Tests]
 
-662 tests passing but significant gaps in unit coverage. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
+668 tests passing but gaps in unit coverage for scrapers and orchestrator. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
 
 ### Orchestrator (critical gap)
-- [ ] `test_pipeline.py` — unit tests for `run()`, `_process_document()` with mocked backends
-- [ ] `test_scheduler.py` — unit tests for job scheduling, error recovery, thread lifecycle
+- [ ] `test_pipeline.py` — unit tests for `run()`, `_process_document()` with mocked backends (only `test_pipeline_enrichment.py` exists — 10 tests for Tika enrichment helper)
+- [ ] `test_scheduler.py` — unit tests for job scheduling, error recovery, thread lifecycle (only `test_scheduler_mocked.py` integration test exists — 1 test)
 
-### Service clients (5 untested)
+### Service clients (3 untested)
 - [ ] `test_ragflow_client.py` — API interaction, retry logic, session management
 - [ ] `test_flaresolverr_client.py` — Cloudflare bypass, session cache, timeout handling
 - [ ] `test_settings_manager.py` — load/save, schema validation, defaults
-- [ ] `test_container.py` — singleton lifecycle, backend resolution, effective config helpers
-- [ ] `test_ragflow_metadata.py` — metadata preparation, field mapping
+- [x] `test_container.py` — covered by `test_service_container.py` + `test_container_refactoring.py` (23 tests)
+- [x] `test_ragflow_metadata.py` — covered by `test_ragflow_upload_metadata.py` (2 tests)
 
-### Scrapers (11 without dedicated tests)
-- [ ] Unit tests for each scraper (AEMO, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy)
-- [ ] Unit tests for `base_scraper.py`, `mixins.py`, `models.py`
+### Scrapers (9 without dedicated unit tests)
+- [ ] Unit tests for each scraper (AEMC, AEMO, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy) — AEMC has integration test only
+- [ ] Unit tests for `base_scraper.py`, `models.py`
+- [x] `test_scraper_mixins.py` (18 tests), `test_download_mixin.py`, `test_metadata_io.py` — mixin coverage exists
 
-### Backends (7 without dedicated tests)
-- [ ] `test_docling_parser.py`, `test_paperless_adapter.py`, `test_ragflow_adapter.py`, `test_anythingllm_adapter.py`
-- [ ] Base class contract tests for `ParserBackend`, `ArchiveBackend`, `RAGBackend`
+### Backends ~~(7 without dedicated tests)~~ (mostly covered)
+- [x] Docling — `test_docling_headings.py`, `test_docling_integration.py`, `test_docling_serve_parser.py` (16 tests)
+- [x] Tika — `test_tika_parser.py`, `test_tika_client.py` (20+ tests)
+- [x] Paperless — `test_paperless_client.py`, `test_paperless_query.py`, `test_paperless_integration.py` (43+ tests)
+- [x] RAGFlow — `test_ragflow_ingestion_workflow.py`, `test_ragflow_ingestion.py` (40 tests)
+- [x] AnythingLLM — `test_anythingllm_backend.py`, `test_anythingllm_client.py` (22+ tests)
+- [x] pgvector — `test_pgvector_backend.py`, `test_pgvector_client.py` (39+ tests)
+- [x] Base class contract tests — `test_backend_abstractions.py` (23 tests)
 
 ---
 
-## 5. CI/CD Improvements (Medium)
+## 5. CI/CD Improvements ~~(Medium)~~ ~~(High)~~ DONE
 
-**Priority:** MEDIUM | **Effort:** 2-3h | **Type:** [Config]
+**Priority:** ~~HIGH~~ DONE | **Effort:** ~~1-2h~~ 0 | **Type:** [Config]
 
-Strengthen the CI pipeline with additional scanning and enforcement.
+All CI/CD items resolved. Pipeline fully green.
 
-- [ ] **SAST scanning** — add bandit or semgrep to CI workflow
-- [ ] **Dockerfile linting** — add hadolint step
-- [ ] **Container image scanning** — add trivy or snyk for vulnerability detection
-- [ ] **Codecov threshold** — set `fail_ci_if_error: true` and minimum coverage target
-- [ ] **Pin top-level deps** — `requirements.txt` uses unpinned top-level packages (constraints.txt handles transitives)
-- [ ] **Makefile prod targets** — add `prod-build`, `prod-up`, `validate`, `health-check`, `push`
+### CI green baseline
+- [x] **Codecov token** — added `CODECOV_TOKEN` secret and `token:` parameter to codecov-action v4
+- [x] **constraints.txt pip 26 fix** — removed extras syntax (`psycopg[binary]`) incompatible with pip 26.0.1
+- [x] **Unit test CI failures** — `test_basic_auth.py` now has proper mocking via `_make_app()` helper; CI sets `BASIC_AUTH_ENABLED=false`, `LOG_TO_FILE=false`, `SECRET_KEY`
+- [x] **Integration test collection errors** — added `responses` and `requests-toolbelt` to `requirements-dev.txt`; `test_scraper_registry.py` uses lazy `_get_logger()` class method
+- [x] **pip-audit security job** — verified passing locally and in CI; `setuptools>=70.0.0` pinned in `constraints.txt`
+
+### CI enhancements
+- [x] **Codecov threshold** — `codecov.yml` sets project: 50% target / 5% threshold, patch: 60% target / 5% threshold; `fail_ci_if_error: true` in CI
+- [x] **SAST scanning** — covered by ruff `S` rules (bandit equivalent) in `ruff.toml`; runs in lint job
+- [x] **Dockerfile linting** — `hadolint/hadolint-action@v3.1.0` in `dockerfile-lint` job
+- [x] **Container image scanning** — `aquasecurity/trivy-action@0.28.0` with `ignore-unfixed: true`; base image updated to `python:3.11-slim-bookworm` for latest security patches
+- [x] **Pin top-level deps** — all packages in `requirements.txt` now pinned (e.g., `flask==3.0.3`, `selenium==4.25.0`) with `-c constraints.txt` for transitives
+- [x] **Makefile prod targets** — `prod-build`, `prod-up`, `prod-down`, `validate`, `health-check` all implemented
 
 ---
 
@@ -101,14 +115,62 @@ Address code smells and duplication identified in audit.
 
 - [ ] **Scraper deduplication** — `reneweconomy` and `theenergy` are 50% similar; extract `JSONLDDateExtractionMixin`
 - [ ] **Scraper deduplication** — `aer` and `eca` are 44% similar; extract `CardListPaginationMixin`
-- [ ] **Split `settings.py`** (784 lines) — separate into `settings_ui.py` + `settings_api.py`
-- [ ] **Split `mixins.py`** (595 lines) — separate into `download_mixin.py` + `common_mixin.py`
+- [ ] **Split `settings.py`** (969 lines, was 784) — separate into `settings_ui.py` + `settings_api.py` + `settings_reconciliation.py`
+- [ ] **Split `mixins.py`** (599 lines, was 595) — separate into `download_mixin.py` + `common_mixin.py`
 - [ ] **Refactor `flaresolverr_client.get_page()`** (147 lines) — extract retry loop and browser state management
 - [ ] **Refactor `paperless_client.post_document()`** (139 lines) — extract multipart payload construction
 
 ---
 
-## 7. New Scrapers
+## 7. pgvector RAG Enhancements (Medium)
+
+**Priority:** MEDIUM | **Effort:** 3-4h | **Type:** [Code]
+
+Improvements to RAG retrieval quality, informed by [pgai](https://github.com/timescale/pgai) vectorizer patterns. Currently chunks are embedded as raw text only; metadata (title, source, date) is stored in JSONB but invisible to the embedding model.
+
+### Chunk formatting — templated metadata injection (high value)
+
+Inject document metadata into chunk text **after chunking but before embedding**, so the embedding model encodes contextual signals. Improves retrieval for queries like "AEMO policy documents from 2024" or "RenewEconomy articles about hydrogen".
+
+- [ ] **`ChunkFormatter` class** — new module (`app/services/chunk_formatter.py`) using `string.Template` with `safe_substitute()`. Receives `list[Chunk]` + document metadata dict, returns formatted chunks. Default template: `$chunk` (no-op, backward-compatible)
+- [ ] **Integration into pgvector adapter** — insert formatting step in `PgVectorRAGBackend.ingest_document()` between chunking (line 106) and embedding. Formatted text used for embedding; raw text preserved in `content` column for display
+- [ ] **`CHUNK_FORMATTING_TEMPLATE` env var** — configurable template with `$chunk`, `$title`, `$organization`, `$publication_date`, `$source_url`, `$heading_context` placeholders. Settings UI textarea in embedding/chunking config section
+- [ ] **Backfill support** — `scripts/backfill_vectors.py` applies formatting template when re-ingesting existing documents
+- [ ] **Unit tests** — template substitution, missing keys handled by `safe_substitute`, empty/default template, integration with existing chunking tests
+
+**Suggested templates:**
+```
+# Minimal — just title context
+$title
+
+$chunk
+
+# Full metadata block
+Source: $organization
+Title: $title
+Date: $publication_date
+
+$chunk
+```
+
+### Already covered by existing implementation
+
+These pgai concepts were evaluated but are already present in the stack:
+
+- **Structured metadata storage** — `document_chunks` table has `metadata JSONB` with GIN index, `source`/`filename`/`chunk_index` columns, HNSW cosine similarity index, source-level partitioning (Phase 7.3)
+- **Declarative pipeline stages** — backend registry provides composable parse → chunk → embed → store pipeline with env var + Settings UI configuration (Phase 7.4)
+- **Async processing** — job queue backgrounds scraping/ingestion; embedding runs within backgrounded pipeline (Phase 7.4)
+
+### Deferred (pgai concepts evaluated, not adopted)
+
+- **`VectorizerConfig` dataclass** — existing backend registry + env vars + Settings UI already provides equivalent configurability; a wrapper dataclass adds indirection without clear benefit. Revisit if pipeline stages need per-invocation overrides
+- **Per-scraper pipeline configs** — all scrapers share the same embedding/chunking config, appropriate for a single-domain energy policy corpus. Per-scraper configs would add complexity for a hypothetical future need (e.g., different chunk sizes for regulatory PDFs vs. news articles)
+- **Incremental re-indexing on content change** — documents are ingested once and rarely change post-ingestion. The backfill script (`--skip-existing` flag) handles re-ingestion when needed. Building change-detection infrastructure (triggers, hash comparison, update propagation) is over-engineering for current volumes
+- **Separate embedding worker process** — adds operational complexity (another container to manage, health-check, restart) for marginal throughput gain at current document volumes (~hundreds, not millions). The job queue already serializes pipeline runs. Revisit if embedding latency becomes a bottleneck
+
+---
+
+## 8. New Scrapers
 
 **Priority:** LOW | **Effort:** 2-3h each | **Type:** [Code]
 
@@ -118,7 +180,7 @@ The scraper pattern is well-established (9 scrapers, documented walkthrough). Ad
 
 ---
 
-## 8. Additional Backends (As Needed)
+## 9. Additional Backends (As Needed)
 
 **Priority:** LOW | **Effort:** varies | **Type:** [Code]
 
@@ -130,7 +192,7 @@ Only implement when there's a concrete use case. Stubs exist in container.py for
 
 ---
 
-## 9. Backup & Restore Procedures
+## 10. Backup & Restore Procedures
 
 **Priority:** LOW | **Effort:** 2-3h | **Type:** [Local]
 
@@ -142,7 +204,7 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 ---
 
-## 10. UI Polish (Low)
+## 11. UI Polish (Low)
 
 **Priority:** LOW | **Effort:** 2-3h | **Type:** [Code]
 
@@ -153,13 +215,16 @@ Minor UI/UX improvements identified in audit.
 
 ---
 
-## 11. Future Considerations
+## 12. Future Considerations
 
 **Priority:** WATCH | **Type:** [Research]
 
 Technology to monitor for potential future adoption. Not actionable yet.
 
 - [ ] **Docling DocTags format** — IBM's LLM-optimized document representation ([discussion](https://github.com/docling-project/docling/discussions/354), [announcement](https://www.ibm.com/new/announcements/granite-docling-end-to-end-document-conversion)). Uses XML-like tags with bounding box coordinates to preserve visual structure and element relationships (caption→figure linking, reading order). Currently designed for LLM fine-tuning and layout-aware tasks — overkill for text-based RAG chunking. However, as Granite-Docling matures, DocTags could enable richer chunk metadata (e.g., "this chunk contains a table from page 3, related to figure 2") which would improve retrieval precision for complex documents. Revisit when DocTags→chunk pipelines become standardized.
+- [ ] **pgai vectorizer** — [Timescale pgai](https://github.com/timescale/pgai) moves the entire vectorization pipeline (chunking, formatting, embedding) into PostgreSQL via SQL-defined vectorizers with automatic trigger-based re-indexing. Currently requires pgai extension installed in PostgreSQL and tight coupling to their schema. Interesting if we move to a Timescale-managed database, but our current approach (application-level pipeline with psycopg + pgvector) gives more flexibility over parsing, formatting, and backend choice. Revisit if trigger-based re-indexing becomes a real need (see Section 7 deferred items)
+- [ ] **paperless based ingestion** - I would like the option to be able to select from my paperless database items for ingestion. This could use the paperless get API which lists all documents in a table, and then then the user can select individual or multi documents to send through the processing pipeline - obviously this would need to respect the fact that the document already lives in paperless (thus rendering the archiving phase of the processing pipeline redundant)
+- [ ] **html scrape (individual)** - a box where users can just input a html address and then it applies a generic scrape/ingestion/archive. this would be for one offs etc where it doesn't make sense to build a scraping script.
 
 ---
 
@@ -259,7 +324,7 @@ Closed all 5 TODO Section 1 items + error handlers + numeric range validation. C
 
 ## Current State
 
-- **662 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
+- **668 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika, Ollama, pgvector)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local

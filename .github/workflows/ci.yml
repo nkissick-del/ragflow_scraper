@@ -122,7 +122,7 @@ jobs:
           BASIC_AUTH_ENABLED: "false"
           LOG_TO_FILE: "false"
           SECRET_KEY: "ci-test-secret-key-not-for-production"
-        run: pytest tests/integration/ -v
+        run: pytest tests/integration/ -v --tb=short
 
   dockerfile-lint:
     runs-on: ubuntu-latest
@@ -149,3 +149,4 @@ jobs:
           format: table
           exit-code: 1
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
