@@ -32,3 +32,8 @@
 **Vulnerability:** The `GotenbergClient` accepted raw HTML input for PDF conversion without sanitization. This could allow malicious scrapers or inputs to inject scripts (`<script>`, `<iframe>`) that would be executed by Gotenberg's headless Chromium instance, leading to potential SSRF or local file access.
 **Learning:** External services like Gotenberg that render HTML/JS are potential SSRF vectors. Always sanitize HTML input before sending it to such services, even if the service is internal.
 **Prevention:** Implemented `_sanitize_html` in `GotenbergClient` using `BeautifulSoup` to strip dangerous tags and attributes before conversion. Added regression tests in `tests/unit/test_gotenberg_security.py`.
+
+## 2026-03-01 - Pip Constraints Syntax Error
+**Vulnerability:** The CI pipeline failed because `constraints.txt` contained `psycopg[binary]==3.3.2`. Newer versions of `pip` (v26+) reject constraints with extras (square brackets), throwing "Constraints cannot have extras".
+**Learning:** Constraints files should only contain package names and versions. Extras should be resolved to their underlying package names in the constraints file, while the requirements file can still specify the extras to trigger their installation.
+**Prevention:** Updated `constraints.txt` to list `psycopg==3.3.2` and `psycopg-binary==3.3.2` separately, removing the bracket syntax. This fixes the CI failure while maintaining version pinning.
