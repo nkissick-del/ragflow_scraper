@@ -2,10 +2,9 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from app.backends.rag.pgvector_adapter import PgVectorRAGBackend
-from app.backends.rag.base import RAGResult
 
 
 @pytest.fixture

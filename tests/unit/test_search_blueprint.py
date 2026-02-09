@@ -2,7 +2,7 @@
 
 import json
 import pytest
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -61,7 +61,8 @@ def app():
     try:
         from app.config import Config
         with patch.object(Config, "BASIC_AUTH_ENABLED", False), \
-             patch.object(Config, "LOG_TO_FILE", False):
+             patch.object(Config, "LOG_TO_FILE", False), \
+             patch.object(Config, "SECRET_KEY", "test-secret-key"):
             from app.web import create_app
             flask_app = create_app()
             flask_app.config["TESTING"] = True
