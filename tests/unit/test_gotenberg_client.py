@@ -186,3 +186,82 @@ class TestFileSizeLimit:
 
                 result = client.convert_office_to_pdf(test_file)
                 assert result == b"%PDF-1.4"
+
+class TestHtmlSanitization:
+    @pytest.fixture
+    def client(self):
+        return GotenbergClient(url="http://mock-gotenberg")
+
+    def test_sanitize_script_tags(self, client):
+        """Ensure <script> tags are removed."""
+        html_with_script = "<html><body><script>alert('xss')</script><p>Safe</p></body></html>"
+
+        with patch("app.services.gotenberg_client.requests.post") as mock_post:
+            mock_post.return_value.status_code = 200
+            mock_post.return_value.content = b"pdf_bytes"
+
+            client.convert_html_to_pdf(html_with_script)
+
+            kwargs = mock_post.call_args[1]
+            files = kwargs.get("files")
+            _, content, _ = files["files"]
+            content_str = content.decode("utf-8")
+
+            assert "<script>" not in content_str
+            assert "alert('xss')" not in content_str
+            assert "<p>Safe</p>" in content_str
+
+    def test_sanitize_event_handlers(self, client):
+        """Ensure event handlers (onclick, etc.) are removed."""
+        html_with_events = '<a href="#" onclick="alert(\'xss\')">Click me</a>'
+
+        with patch("app.services.gotenberg_client.requests.post") as mock_post:
+            mock_post.return_value.status_code = 200
+            mock_post.return_value.content = b"pdf_bytes"
+
+            client.convert_html_to_pdf(html_with_events)
+
+            kwargs = mock_post.call_args[1]
+            files = kwargs.get("files")
+            _, content, _ = files["files"]
+            content_str = content.decode("utf-8")
+
+            assert "onclick" not in content_str
+            assert "alert('xss')" not in content_str
+            assert '<a href="#">Click me</a>' in content_str
+
+    def test_sanitize_javascript_uri(self, client):
+        """Ensure javascript: URIs are removed."""
+        html_with_js = '<a href="javascript:alert(\'xss\')">Click me</a>'
+
+        with patch("app.services.gotenberg_client.requests.post") as mock_post:
+            mock_post.return_value.status_code = 200
+            mock_post.return_value.content = b"pdf_bytes"
+
+            client.convert_html_to_pdf(html_with_js)
+
+            kwargs = mock_post.call_args[1]
+            files = kwargs.get("files")
+            _, content, _ = files["files"]
+            content_str = content.decode("utf-8")
+
+            assert "javascript:" not in content_str
+            assert '<a href="">Click me</a>' in content_str or '<a>Click me</a>' in content_str
+
+    def test_sanitize_iframe(self, client):
+        """Ensure <iframe> tags are removed."""
+        html_with_iframe = '<iframe src="http://evil.com"></iframe>'
+
+        with patch("app.services.gotenberg_client.requests.post") as mock_post:
+            mock_post.return_value.status_code = 200
+            mock_post.return_value.content = b"pdf_bytes"
+
+            client.convert_html_to_pdf(html_with_iframe)
+
+            kwargs = mock_post.call_args[1]
+            files = kwargs.get("files")
+            _, content, _ = files["files"]
+            content_str = content.decode("utf-8")
+
+            assert "<iframe" not in content_str
+            assert "evil.com" not in content_str

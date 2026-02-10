@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from lxml.html.clean import Cleaner
 
 from app.config import Config
 from app.utils import get_logger
@@ -106,6 +107,40 @@ class GotenbergClient:
         except Exception:
             return False
 
+    def _sanitize_html(self, html_content: str) -> str:
+        """
+        Sanitize HTML to remove dangerous tags and attributes.
+
+        Removes:
+        - Scripts, iframes, objects, embeds, forms
+        - Event handlers (onclick, etc.)
+        - javascript: URIs
+        """
+        if not html_content:
+            return ""
+
+        try:
+            cleaner = Cleaner(
+                scripts=True,
+                javascript=True,
+                comments=True,
+                style=False,  # Allow styles for PDF rendering
+                links=False,  # Allow links (CSS, etc.)
+                meta=False,   # Allow meta tags
+                page_structure=False,
+                processing_instructions=True,
+                embedded=True,  # Removes object, embed, applet
+                frames=True,    # Removes frame, iframe
+                forms=True,     # Removes form
+                annoying_tags=False,
+                remove_unknown_tags=False,
+                safe_attrs_only=False,  # Allow id, class, style, etc.
+            )
+            return cleaner.clean_html(html_content)
+        except Exception as e:
+            self.logger.error(f"HTML sanitization failed: {e}")
+            raise ValueError(f"Failed to sanitize HTML: {e}") from e
+
     def convert_html_to_pdf(
         self, html_content: str, title: str = ""
     ) -> bytes:
@@ -123,6 +158,9 @@ class GotenbergClient:
             requests.HTTPError: On non-2xx response
             requests.RequestException: On connection failure
         """
+        # Sanitize HTML before processing
+        html_content = self._sanitize_html(html_content)
+
         # Wrap in full HTML document if not already
         if "<html" not in html_content.lower():
             safe_title = _html_escape(title) if title else ""

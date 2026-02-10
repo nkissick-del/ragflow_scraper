@@ -11,6 +11,7 @@ jinja2==3.1.6  # Used directly in file_utils.py for filename templates
 selenium==4.25.0
 beautifulsoup4==4.12.3
 lxml==5.2.2
+lxml-html-clean==0.4.3
 trafilatura==1.12.2
 feedparser==6.0.11
 
