@@ -8,7 +8,7 @@ Flask-Limiter==4.1.1
 jinja2==3.1.6  # Used directly in file_utils.py for filename templates
 
 # Scraping
-selenium==4.25.0
+selenium==4.25.0  # Optional: only needed if running scrapers with skip_webdriver=False
 beautifulsoup4==4.12.3
 lxml==5.2.2
 trafilatura==1.12.2
@@ -35,4 +35,4 @@ psycopg-pool==3.3.0
 pgvector==0.4.2
 
 # Development
-webdriver-manager==4.0.2
+webdriver-manager==4.0.2  # Optional: only needed with Selenium

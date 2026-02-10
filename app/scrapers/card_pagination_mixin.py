@@ -67,19 +67,36 @@ class CardListPaginationMixin:
         try:
             if self.logger:
                 self.logger.debug(f"Fetching detail page: {detail_url}")
-            if not self.driver:
-                raise ScraperError(
-                    "Driver not initialized",
-                    scraper=getattr(self, "name", "unknown"),
-                )
-            assert self.driver is not None
-            self.driver.get(detail_url)
 
-            _wait = getattr(self, "_wait_for_content", None)
-            if callable(_wait):
-                _wait(timeout=15)
+            # Use FlareSolverr when no Selenium driver, fall back to HTTP session
+            fetch_fn = getattr(self, "fetch_rendered_page", None)
+            if callable(fetch_fn) and not self.driver:
+                html: str = fetch_fn(detail_url)  # type: ignore[assignment]
+                if not html:
+                    if self.logger:
+                        self.logger.warning(f"FlareSolverr returned empty for {detail_url}")
+                    return []
+                soup = BeautifulSoup(html, "lxml")
+            elif self.driver:
+                self.driver.get(detail_url)
 
-            soup = BeautifulSoup(self.get_page_source(), "lxml")
+                _wait = getattr(self, "_wait_for_content", None)
+                if callable(_wait):
+                    _wait(timeout=15)
+
+                soup = BeautifulSoup(self.get_page_source(), "lxml")
+            else:
+                # Fall back to HTTP session if available
+                _session = getattr(self, "_session", None)
+                if _session:
+                    resp = _session.get(detail_url, timeout=30)
+                    resp.raise_for_status()
+                    soup = BeautifulSoup(resp.text, "lxml")
+                else:
+                    raise ScraperError(
+                        "No page fetch method available",
+                        scraper=getattr(self, "name", "unknown"),
+                    )
             document_urls: list[str] = []
 
             # Strategy 1: Find links by extension

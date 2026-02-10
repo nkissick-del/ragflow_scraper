@@ -38,6 +38,8 @@ class AEMCScraper(BaseScraper):
     description = "Scrapes PDFs from AEMC Market Reviews and Advice"
     base_url = "https://www.aemc.gov.au/our-work/market-reviews-and-advice"
 
+    skip_webdriver = True  # Pure HTTP scraper, no browser needed
+
     # AEMC-specific settings
     request_delay = 1.5  # Be polite to the server
 

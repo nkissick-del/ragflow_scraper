@@ -4,7 +4,7 @@ AER (Australian Energy Regulator) scraper for reports and publications.
 Scrapes PDFs from: https://www.aer.gov.au/publications/reports
 
 Uses base class exclusion filters (smart gas-only filtering).
-Uses Selenium to handle Akamai bot protection (JavaScript challenge).
+Uses FlareSolverr for rendered page fetching (handles Akamai bot protection).
 Traditional query parameter pagination (?page=N, 0-indexed).
 Each report links to a detail page where PDFs are found.
 """
@@ -17,24 +17,20 @@ from typing import Any, Optional
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.card_pagination_mixin import CardListPaginationMixin
+from app.scrapers.flaresolverr_mixin import FlareSolverrPageFetchMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
-from app.utils.errors import ScraperError
 
 
-class AERScraper(CardListPaginationMixin, BaseScraper):
+class AERScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScraper):
     """
     Scraper for AER Reports and Publications.
 
     Key features:
-    - Uses Selenium to bypass Akamai bot protection
+    - Uses FlareSolverr to bypass Akamai bot protection
     - Server-side rendered after JS challenge passes
     - Traditional pagination with ?page=N (0-indexed)
     - Local filtering:
@@ -47,6 +43,8 @@ class AERScraper(CardListPaginationMixin, BaseScraper):
     display_name = "Australian Energy Regulator"
     description = "Scrapes PDFs from AER Reports (Electricity sector, excluding Corporate)"
     base_url = "https://www.aer.gov.au/publications/reports"
+
+    skip_webdriver = True  # Use FlareSolverr instead of Selenium
 
     # AER-specific settings
     request_delay = 1.5  # Be polite to the server
@@ -61,30 +59,6 @@ class AERScraper(CardListPaginationMixin, BaseScraper):
         if page_num == 0:
             return self.base_url
         return f"{self.base_url}?page={page_num}"
-
-    def _wait_for_content(self, timeout: int = 30):
-        """Wait for the document cards to load after Akamai challenge."""
-        try:
-            # First wait for the Akamai challenge to complete
-            # Look for the main content area to appear
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-            assert self.driver is not None
-            WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, ".card__inner, .views-layout__items, .region-content")
-                )
-            )
-            # Additional wait for content to fully render
-            time.sleep(2)
-        except TimeoutException:
-            self.logger.warning("Timeout waiting for content to load")
-            # Debug: log page info if driver available
-            if self.driver:
-                self.logger.debug(f"Page title: {self.driver.title}")
-            page_source = self.get_page_source()[:500]
-            if "bm-verify" in page_source or "akamai" in page_source.lower():
-                self.logger.warning("Akamai challenge may still be active")
 
     def _detect_total_pages(self, html: str) -> int:
         """
@@ -126,7 +100,7 @@ class AERScraper(CardListPaginationMixin, BaseScraper):
         """
         Scrape AER Reports and Publications.
 
-        Uses Selenium to bypass Akamai bot protection, then parses
+        Uses FlareSolverr to bypass Akamai bot protection, then parses
         the rendered HTML for document listings.
 
         Returns:
@@ -138,20 +112,20 @@ class AERScraper(CardListPaginationMixin, BaseScraper):
         )
 
         try:
-            # Use base class method to handle initial page load
-            # This uses Selenium to fetch the page and wait for content
-            success, page_html = self.init_cloudflare_and_fetch_first_page()
-            if not success:
+            # Fetch first page via FlareSolverr
+            self.logger.info(f"Fetching first page: {self.base_url}")
+            page_html = self.fetch_rendered_page(self.base_url)
+            if not page_html:
                 result.status = "failed"
-                result.errors.append("Bot protection challenge blocked access")
+                result.errors.append("Failed to fetch first page via FlareSolverr")
                 return result
 
             # Check for Akamai challenge in response
             if "bm-verify" in page_html:
-                self.logger.warning("Akamai challenge detected, waiting for resolution...")
+                self.logger.warning("Akamai challenge detected in response, retrying...")
                 time.sleep(5)
-                page_html = self.get_page_source()
-                if "bm-verify" in page_html:
+                page_html = self.fetch_rendered_page(self.base_url)
+                if not page_html or "bm-verify" in page_html:
                     result.status = "failed"
                     result.errors.append("Akamai bot protection blocked access")
                     return result
@@ -182,13 +156,10 @@ class AERScraper(CardListPaginationMixin, BaseScraper):
                 self.logger.info(f"Fetching page {page_num + 1}/{pages_to_scrape}")
 
                 try:
-                    # Use Selenium to navigate
-                    if not self.driver:
-                        raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-                    assert self.driver is not None
-                    self.driver.get(page_url)
-                    self._wait_for_content()
-                    page_html = self.get_page_source()
+                    page_html = self.fetch_rendered_page(page_url)
+                    if not page_html:
+                        self.logger.warning(f"Empty response for page {page_num}")
+                        continue
                     self._process_page(page_html, result)
                 except Exception as e:
                     self.logger.warning(f"Failed to fetch page {page_num}: {e}")
@@ -234,13 +205,13 @@ class AERScraper(CardListPaginationMixin, BaseScraper):
                 )
                 continue
 
-            # Find PDF on detail page
+            # Find PDF on detail page (uses CardListPaginationMixin which
+            # now supports FlareSolverr via fetch_rendered_page)
             self._polite_delay()
             pdf_url = self._find_pdf_on_detail_page(doc.url)
 
             if not pdf_url:
                 self.logger.debug(f"No PDF found for: {doc.title}")
-                # Still track the document metadata even without PDF
                 continue
 
             # Update document with actual PDF URL

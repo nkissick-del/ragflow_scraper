@@ -12,28 +12,24 @@ Saves article content as Markdown for RAGFlow indexing.
 
 from __future__ import annotations
 
-import time
 from typing import Any, Optional
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 
 from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.flaresolverr_mixin import FlareSolverrPageFetchMixin
 from app.scrapers.jsonld_mixin import JSONLDDateExtractionMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename, ArticleConverter
-from app.utils.errors import ScraperError
 
 
-class RenewEconomyScraper(JSONLDDateExtractionMixin, BaseScraper):
+class RenewEconomyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, BaseScraper):
     """
     Scraper for RenewEconomy news articles.
 
     Key features:
+    - Uses FlareSolverr for rendered page fetching
     - Server-side rendered (no JS challenge, no Cloudflare)
     - Category-first scraping strategy with homepage fallback
     - Path-based pagination: /category/{cat}/page/{n}/
@@ -46,6 +42,8 @@ class RenewEconomyScraper(JSONLDDateExtractionMixin, BaseScraper):
     display_name = "RenewEconomy"
     description = "Scrapes articles from RenewEconomy (reneweconomy.com.au)"
     base_url = "https://reneweconomy.com.au"
+
+    skip_webdriver = True  # Use FlareSolverr instead of Selenium
 
     # RenewEconomy-specific settings
     request_delay = 1.5  # Polite crawling
@@ -90,14 +88,6 @@ class RenewEconomyScraper(JSONLDDateExtractionMixin, BaseScraper):
         "news-and-commentary",
     ]
 
-    # Note: Article extraction now handled by trafilatura
-    # No need for manual CSS selectors - trafilatura automatically removes:
-    # - WordPress embeds and separators
-    # - Navigation, ads, sidebars
-    # - Social sharing buttons
-    # - Author bios
-    # - Newsletter CTAs
-
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize scraper with article converter."""
         super().__init__(*args, **kwargs)
@@ -137,28 +127,9 @@ class RenewEconomyScraper(JSONLDDateExtractionMixin, BaseScraper):
             return f"{self.base_url}/"
         return f"{self.base_url}/page/{page}/"
 
-    def _wait_for_content(self, timeout: int = 10) -> None:
-        """Wait for article content to load."""
-        try:
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-            assert self.driver is not None
-            WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".post, article"))
-            )
-            time.sleep(0.5)  # Small buffer for render
-        except TimeoutException:
-            self.logger.warning("Timeout waiting for content")
-
     def _get_max_pages_from_html(self, html: str) -> Optional[int]:
         """
         Extract max page number from pagination element in HTML.
-
-        RenewEconomy pages show pagination with the last page number:
-        <div class="wp-block-query-pagination-numbers">
-            ...
-            <a class="page-numbers" href=".../page/214/">214</a>
-        </div>
 
         Args:
             html: HTML content of the page
@@ -252,11 +223,6 @@ class RenewEconomyScraper(JSONLDDateExtractionMixin, BaseScraper):
         """
         Scrape all pages of a single category.
 
-        Strategy:
-        1. Try to get max pages from pagination element on first page
-        2. If pagination found, scrape up to max_pages
-        3. If no pagination, continue scraping until 2 consecutive empty pages
-
         Args:
             category: Category path (e.g., "storage/battery")
             result: ScraperResult to update
@@ -288,24 +254,30 @@ class RenewEconomyScraper(JSONLDDateExtractionMixin, BaseScraper):
                 self.logger.info(f"Scraping {category} page {page_num}")
 
             try:
-                if not self.driver:
-                    raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-                assert self.driver is not None
-                self.driver.get(page_url)
+                # Fetch page via FlareSolverr (full result for redirect detection)
+                fs_result = self.fetch_rendered_page_full(page_url)
+
+                if not fs_result.success or not fs_result.html:
+                    self.logger.warning(f"Failed to fetch {category} page {page_num}")
+                    consecutive_empty_pages += 1
+                    if consecutive_empty_pages >= 2:
+                        break
+                    page_num += 1
+                    self._polite_delay()
+                    continue
 
                 # Check for redirect (end of pagination)
-                current_url = self.driver.current_url
-                if page_num > 1 and (
-                    f"/category/{category}" not in current_url
-                    or "/page/" not in current_url
+                final_url = fs_result.url
+                if page_num > 1 and final_url and (
+                    f"/category/{category}" not in final_url
+                    or "/page/" not in final_url
                 ):
                     self.logger.info(
-                        f"Category {category} pagination ended (redirected to {current_url})"
+                        f"Category {category} pagination ended (redirected to {final_url})"
                     )
                     break
 
-                self._wait_for_content()
-                page_html = self.get_page_source()
+                page_html = fs_result.html
 
                 # On first page, try to get max pages from pagination
                 if page_num == 1:
@@ -396,19 +368,20 @@ class RenewEconomyScraper(JSONLDDateExtractionMixin, BaseScraper):
             self.logger.info(f"Scraping homepage page {page_num}")
 
             try:
-                if not self.driver:
-                    raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-                assert self.driver is not None
-                self.driver.get(page_url)
+                # Fetch page via FlareSolverr (full result for redirect detection)
+                fs_result = self.fetch_rendered_page_full(page_url)
+
+                if not fs_result.success or not fs_result.html:
+                    self.logger.warning(f"Failed to fetch homepage page {page_num}")
+                    continue
 
                 # Check for redirect (end of pagination)
-                current_url = self.driver.current_url
-                if page_num > 1 and current_url == f"{self.base_url}/":
+                final_url = fs_result.url
+                if page_num > 1 and final_url and final_url.rstrip("/") == self.base_url:
                     self.logger.info("Homepage pagination ended (redirected)")
                     break
 
-                self._wait_for_content()
-                page_html = self.get_page_source()
+                page_html = fs_result.html
 
                 # Parse articles from listing page
                 articles = self.parse_page(page_html)
@@ -447,12 +420,6 @@ class RenewEconomyScraper(JSONLDDateExtractionMixin, BaseScraper):
     def parse_page(self, page_source: str) -> list[DocumentMetadata]:
         """
         Parse listing page and extract article metadata.
-
-        CSS Selectors:
-        - Articles: .post
-        - Title: h1, h2, h3, h4, h5, h6
-        - Link: a[href] (filtered to exclude category/author/tag)
-        - Category: .post-primary-category
 
         Args:
             page_source: HTML source of the listing page
@@ -597,12 +564,11 @@ class RenewEconomyScraper(JSONLDDateExtractionMixin, BaseScraper):
         # Stage 2: Fetch article page for JSON-LD dates and content
         try:
             self.logger.debug(f"Fetching article: {article.url}")
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-            assert self.driver is not None
-            self.driver.get(article.url)
-            self._wait_for_content(timeout=10)
-            article_html = self.get_page_source()
+            article_html = self.fetch_rendered_page(article.url)
+            if not article_html:
+                self.logger.warning(f"Empty response for article: {article.url}")
+                result.failed_count += 1
+                return
 
             # Extract JSON-LD dates
             dates = self._extract_jsonld_dates(article_html)

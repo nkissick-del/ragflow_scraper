@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>ragflow-scraper</Name>
+  <Repository>ghcr.io/nkissick-del/ragflow_scraper:latest</Repository>
+  <Registry>https://ghcr.io/nkissick-del/ragflow_scraper</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project>https://github.com/nkissick-del/ragflow_scraper</Project>
+  <Overview>Multi-site PDF scraper with RAGFlow integration. Scrapes energy sector documents and articles, converts to Markdown, archives to Paperless-ngx, and indexes via AnythingLLM or RAGFlow for RAG pipelines.</Overview>
+  <Category>Productivity: Tools</Category>
+  <WebUI>http://[IP]:[PORT:5000]</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/nkissick-del/ragflow_scraper/main/app/web/static/favicon.ico</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>FlareSolverr container for rendered page fetching.</Requires>
+  <Config Name="Web UI Port" Target="5000" Default="5000" Mode="tcp" Description="Web UI port" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
+  <Config Name="App Data" Target="/app/data" Default="/mnt/user/appdata/ragflow-scraper/data" Mode="rw" Description="Persistent data (scraped files, state, logs)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ragflow-scraper/data</Config>
+  <Config Name="App Config" Target="/app/config" Default="/mnt/user/appdata/ragflow-scraper/config" Mode="rw" Description="Configuration files (settings.json)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/ragflow-scraper/config</Config>
+  <Config Name="Secret Key" Target="SECRET_KEY" Default="" Mode="" Description="Flask secret key for session security. Generate with: python3 -c 'import secrets; print(secrets.token_hex(32))'" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Basic Auth Enabled" Target="BASIC_AUTH_ENABLED" Default="true" Mode="" Description="Enable basic authentication for the web UI" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+  <Config Name="Basic Auth Username" Target="BASIC_AUTH_USERNAME" Default="admin" Mode="" Description="Username for basic auth" Type="Variable" Display="always" Required="false" Mask="false">admin</Config>
+  <Config Name="Basic Auth Password" Target="BASIC_AUTH_PASSWORD" Default="" Mode="" Description="Password for basic auth. Required when Basic Auth is enabled." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="FlareSolverr URL" Target="FLARESOLVERR_URL" Default="http://localhost:8191" Mode="" Description="URL of FlareSolverr instance. Use host IP (not localhost) when running in bridge network mode." Type="Variable" Display="always" Required="true" Mask="false">http://localhost:8191</Config>
+  <Config Name="Gotenberg URL" Target="GOTENBERG_URL" Default="http://localhost:3000" Mode="" Description="URL of Gotenberg instance. Use host IP (not localhost) when running in bridge network mode." Type="Variable" Display="always" Required="false" Mask="false">http://localhost:3000</Config>
+  <Config Name="Archive Backend" Target="ARCHIVE_BACKEND" Default="paperless" Mode="" Description="Document archive backend (paperless, s3, local)" Type="Variable" Display="advanced" Required="false" Mask="false">paperless</Config>
+  <Config Name="Parser Backend" Target="PARSER_BACKEND" Default="docling_serve" Mode="" Description="PDF parser backend (docling_serve, docling, mineru, tika)" Type="Variable" Display="advanced" Required="false" Mask="false">docling_serve</Config>
+  <Config Name="RAG Backend" Target="RAG_BACKEND" Default="anythingllm" Mode="" Description="RAG indexing backend (anythingllm, ragflow, pgvector)" Type="Variable" Display="advanced" Required="false" Mask="false">anythingllm</Config>
+  <Config Name="Paperless API URL" Target="PAPERLESS_API_URL" Default="http://localhost:8000" Mode="" Description="URL of Paperless-ngx instance. Use host IP (not localhost) when running in bridge network mode." Type="Variable" Display="advanced" Required="false" Mask="false">http://localhost:8000</Config>
+  <Config Name="Paperless API Token" Target="PAPERLESS_API_TOKEN" Default="" Mode="" Description="API token for Paperless-ngx" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="AnythingLLM API URL" Target="ANYTHINGLLM_API_URL" Default="http://localhost:3001" Mode="" Description="URL of AnythingLLM instance. Use host IP (not localhost) when running in bridge network mode." Type="Variable" Display="advanced" Required="false" Mask="false">http://localhost:3001</Config>
+  <Config Name="AnythingLLM API Key" Target="ANYTHINGLLM_API_KEY" Default="" Mode="" Description="API key for AnythingLLM" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="AnythingLLM Workspace ID" Target="ANYTHINGLLM_WORKSPACE_ID" Default="" Mode="" Description="Workspace slug/ID for AnythingLLM" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Docling Serve URL" Target="DOCLING_SERVE_URL" Default="http://localhost:4949" Mode="" Description="URL of docling-serve instance. Use host IP (not localhost) when running in bridge network mode." Type="Variable" Display="advanced" Required="false" Mask="false">http://localhost:4949</Config>
+  <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Mode="" Description="Logging level (DEBUG, INFO, WARNING, ERROR)" Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+  <Config Name="Metadata Merge Strategy" Target="METADATA_MERGE_STRATEGY" Default="smart" Mode="" Description="How to merge scraper and parser metadata (smart, parser_wins, scraper_wins)" Type="Variable" Display="advanced" Required="false" Mask="false">smart</Config>
+  <Config Name="Host" Target="HOST" Default="0.0.0.0" Mode="" Description="Listen address" Type="Variable" Display="advanced-hide" Required="false" Mask="false">0.0.0.0</Config>
+  <Config Name="Port" Target="PORT" Default="5000" Mode="" Description="Listen port (inside container)" Type="Variable" Display="advanced-hide" Required="false" Mask="false">5000</Config>
+  <Config Name="Flask Env" Target="FLASK_ENV" Default="production" Mode="" Description="Flask environment" Type="Variable" Display="advanced-hide" Required="false" Mask="false">production</Config>
+  <Config Name="Download Dir" Target="DOWNLOAD_DIR" Default="/app/data/scraped" Mode="" Description="Directory for downloaded files (inside container)" Type="Variable" Display="advanced-hide" Required="false" Mask="false">/app/data/scraped</Config>
+</Container>

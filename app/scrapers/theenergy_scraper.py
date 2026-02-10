@@ -11,28 +11,25 @@ Saves article content as Markdown for RAGFlow indexing.
 
 from __future__ import annotations
 
-import time
 from typing import Any, Optional
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 
 from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.flaresolverr_mixin import FlareSolverrPageFetchMixin
 from app.scrapers.jsonld_mixin import JSONLDDateExtractionMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename, ArticleConverter
 from app.utils.errors import ScraperError
 
 
-class TheEnergyScraper(JSONLDDateExtractionMixin, BaseScraper):
+class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, BaseScraper):
     """
     Scraper for TheEnergy news articles.
 
     Key features:
+    - Uses FlareSolverr for rendered page fetching
     - Server-side rendered (no JS challenge, no Cloudflare)
     - Path-based pagination: /articles/pN
     - Two-stage scraping for full ISO 8601 dates from JSON-LD
@@ -45,6 +42,8 @@ class TheEnergyScraper(JSONLDDateExtractionMixin, BaseScraper):
     display_name = "The Energy"
     description = "Scrapes articles from The Energy (theenergy.co)"
     base_url = "https://theenergy.co/articles"
+
+    skip_webdriver = True  # Use FlareSolverr instead of Selenium
 
     # TheEnergy-specific settings
     articles_per_page = 10
@@ -88,30 +87,6 @@ class TheEnergyScraper(JSONLDDateExtractionMixin, BaseScraper):
         if page_num == 1:
             return self.base_url
         return f"{self.base_url}/p{page_num}"
-
-    def _ensure_driver_initialized(self) -> None:
-        """Ensure WebDriver is initialized.
-        
-        Raises:
-            ScraperError: If driver is not initialized
-        """
-        if not self.driver:
-            raise ScraperError("Driver not initialized", scraper=self.name)
-        assert self.driver is not None
-
-    def _wait_for_content(self, timeout: int = 10) -> None:
-        """Wait for article content to load."""
-        try:
-            self._ensure_driver_initialized()
-            assert self.driver is not None
-            WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, "main article, article")
-                )
-            )
-            time.sleep(0.5)  # Small buffer for render
-        except TimeoutException:
-            self.logger.warning("Timeout waiting for article content")
 
     def _extract_article_content(self, html: str) -> str:
         """
@@ -163,11 +138,12 @@ class TheEnergyScraper(JSONLDDateExtractionMixin, BaseScraper):
                 self.logger.info(f"Scraping page {page_num}: {page_url}")
 
                 try:
-                    self._ensure_driver_initialized()
-                    assert self.driver is not None
-                    self.driver.get(page_url)
-                    self._wait_for_content()
-                    page_html = self.get_page_source()
+                    page_html = self.fetch_rendered_page(page_url)
+                    if not page_html:
+                        raise ScraperError(
+                            f"Empty response for page {page_num}",
+                            scraper=self.name,
+                        )
 
                     # Parse articles from listing page
                     articles = self.parse_page(page_html)
@@ -218,16 +194,6 @@ class TheEnergyScraper(JSONLDDateExtractionMixin, BaseScraper):
     def parse_page(self, page_source: str) -> list[DocumentMetadata]:
         """
         Parse listing page and extract article metadata.
-
-        CSS Selectors:
-        - Container: main
-        - Articles: article
-        - Link: article > a
-        - Title: article h3
-        - Category: article .metadata span:first-child
-        - Type: article .metadata span:nth-child(2)
-        - Date (display): article .metadata .date
-        - Abstract: article .abstract
 
         Args:
             page_source: HTML source of the listing page
@@ -370,11 +336,11 @@ class TheEnergyScraper(JSONLDDateExtractionMixin, BaseScraper):
         # Stage 2: Fetch article page for JSON-LD dates and content
         try:
             self.logger.debug(f"Fetching article: {article.url}")
-            self._ensure_driver_initialized()
-            assert self.driver is not None
-            self.driver.get(article.url)
-            self._wait_for_content(timeout=10)
-            article_html = self.get_page_source()
+            article_html = self.fetch_rendered_page(article.url)
+            if not article_html:
+                self.logger.warning(f"Empty response for article: {article.url}")
+                result.failed_count += 1
+                return
 
             # Extract JSON-LD dates
             dates = self._extract_jsonld_dates(article_html)

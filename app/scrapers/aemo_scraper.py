@@ -3,37 +3,33 @@ AEMO (Australian Energy Market Operator) scraper for major publications.
 
 Scrapes PDFs from: https://www.aemo.com.au/library/major-publications
 
-Uses Selenium to handle JavaScript-rendered content. FlareSolverr can be
-enabled to bypass Cloudflare protection before Selenium takes over.
+Uses FlareSolverr for rendered page fetching. Hash-fragment pagination
+loads each page as a fresh FlareSolverr request with the hash in the URL.
 """
 
 from __future__ import annotations
 
 import re
-import time
 from datetime import datetime
 from typing import Optional
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 
 from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.flaresolverr_mixin import FlareSolverrPageFetchMixin
 from app.scrapers.models import DocumentMetadata, ScraperResult, ExcludedDocument
 from app.utils import sanitize_filename, parse_file_size
-from app.utils.errors import ScraperError
 
 
-class AEMOScraper(BaseScraper):
+class AEMOScraper(FlareSolverrPageFetchMixin, BaseScraper):
     """
     Scraper for AEMO Major Publications.
 
     Key features:
+    - Uses FlareSolverr for rendered page fetching
     - JavaScript-rendered page with hash fragment pagination
-    - Pagination offset is REVERSED: #e=20 (page 1), #e=10 (page 2), #e=0 (page 3), #e=-10 (page 4)
+    - Each page loaded as a fresh FlareSolverr request with hash fragment
     - Documents listed in <ul class="search-result-list">
     - Tag-based filtering (excludes Gas, Annual Report, etc.)
     - Metadata extraction (title, date, size, file type)
@@ -44,13 +40,11 @@ class AEMOScraper(BaseScraper):
     description = "Scrapes PDFs from AEMO Major Publications"
     base_url = "https://www.aemo.com.au/library/major-publications"
 
+    skip_webdriver = True  # Use FlareSolverr instead of Selenium
+
     # AEMO-specific settings
     documents_per_page = 10
     request_delay = 2.0  # Be polite
-
-    # Pagination: AEMO uses a standard offset system
-    # offset=0 (or no hash) = page 1, offset=10 = page 2, etc.
-    # Total pages can be estimated from HTML or assumed from typical page count
 
     # Uses base class exclusion defaults:
     # - excluded_tags: ["Gas", "Corporate reports"]
@@ -68,17 +62,11 @@ class AEMOScraper(BaseScraper):
         """
         Detect the total pages from the page HTML.
 
-        AEMO pagination is client-side rendered, so we may not find
-        pagination links in the static HTML. We estimate based on
-        document count or use a reasonable default.
-
         Args:
             html: HTML content to parse
 
         Returns:
             Tuple of (starting_offset, total_pages)
-            - starting_offset is always 0 (page 1 starts at offset 0)
-            - total_pages is estimated from HTML or defaults to ~22
         """
         try:
             soup = BeautifulSoup(html, "lxml")
@@ -99,7 +87,6 @@ class AEMOScraper(BaseScraper):
                 return 0, max_page
 
             # Pagination not found in HTML (JS-rendered) - use default
-            # Based on typical AEMO page count (around 22 pages)
             default_pages = 22
             self.logger.info(f"Pagination not found in HTML, using default of {default_pages} pages")
             return 0, default_pages
@@ -112,12 +99,6 @@ class AEMOScraper(BaseScraper):
         """
         Calculate the offset for a given page number.
 
-        AEMO uses standard pagination where offset increases each page:
-        - Page 1 (index 0): offset = 0 (or no hash)
-        - Page 2 (index 1): offset = 10
-        - Page 3 (index 2): offset = 20
-        - etc.
-
         Args:
             page_num: Zero-based page index
 
@@ -125,53 +106,6 @@ class AEMOScraper(BaseScraper):
             Offset value for the hash fragment
         """
         return page_num * self.documents_per_page
-
-    def _navigate_to_page(self, page_num: int):
-        """
-        Navigate to a specific page using hash fragment.
-
-        Args:
-            page_num: Zero-based page index
-        """
-        offset = self._get_page_offset(page_num)
-
-        if page_num == 0:
-            # First page - just load the base URL
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-            assert self.driver is not None
-            self.driver.get(self.base_url)
-        else:
-            # Subsequent pages - update hash fragment
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-            assert self.driver is not None
-            self.driver.execute_script(f"window.location.hash = 'e={offset}'")
-
-        # Wait for content to load
-        self._wait_for_content()
-
-    def _wait_for_content(self, timeout: int = 15):
-        """Wait for the document list to load."""
-        try:
-            # Wait for the search result list to be present
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-            assert self.driver is not None
-            WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, ".search-result-list, .search-result-list-item")
-                )
-            )
-            # Additional wait for JavaScript rendering
-            time.sleep(1.5)
-        except TimeoutException:
-            self.logger.warning("Timeout waiting for content to load")
-            # Debug: log page info if driver available
-            if self.driver:
-                self.logger.debug(f"Page title: {self.driver.title}")
-            if "Just a moment" in self.get_page_source():
-                self.logger.warning("Cloudflare challenge detected - FlareSolverr may be needed")
 
     def _get_page_url(self, page_num: int) -> str:
         """
@@ -188,12 +122,34 @@ class AEMOScraper(BaseScraper):
             return self.base_url
         return f"{self.base_url}#e={offset}"
 
+    def _fetch_with_cloudflare_retry(self, url: str) -> Optional[str]:
+        """Fetch a page via FlareSolverr, retrying once on Cloudflare challenge.
+
+        Args:
+            url: URL to fetch.
+
+        Returns:
+            Rendered HTML or ``None`` on failure.
+        """
+        page_html = self.fetch_rendered_page(url)
+        if not page_html:
+            return None
+
+        if "Just a moment" in page_html:
+            self.logger.warning("Cloudflare challenge detected in response, retrying...")
+            self._polite_delay()
+            page_html = self.fetch_rendered_page(url)
+            if not page_html or "Just a moment" in page_html:
+                return None
+
+        return page_html
+
     def scrape(self) -> ScraperResult:
         """
         Scrape AEMO Major Publications.
 
-        Uses the base class FlareSolverr infrastructure for Cloudflare bypass,
-        with AEMO-specific pagination and document parsing.
+        Uses FlareSolverr for all page fetching. Each page (including hash-fragment
+        pagination) is a fresh FlareSolverr request.
 
         Returns:
             ScraperResult with statistics and document list
@@ -203,11 +159,12 @@ class AEMOScraper(BaseScraper):
             scraper=self.name,
         )
 
-        # Use base class method to initialize bypass and fetch first page
-        success, page_html = self.init_cloudflare_and_fetch_first_page()
-        if not success:
+        # Fetch first page via FlareSolverr
+        self.logger.info(f"Fetching first page: {self.base_url}")
+        page_html = self._fetch_with_cloudflare_retry(self.base_url)
+        if not page_html:
             result.status = "failed"
-            result.errors.append("Cloudflare challenge blocked access")
+            result.errors.append("Failed to fetch first page via FlareSolverr")
             return result
 
         # Detect pagination info from the loaded page
@@ -232,13 +189,18 @@ class AEMOScraper(BaseScraper):
             self.logger.info(f"Scraping page {page_num + 1}/{pages_to_scrape} (offset={offset})")
 
             try:
-                # Get page HTML using base class method
-                # First page uses cached HTML, subsequent pages fetch via FlareSolverr/Selenium
+                # First page uses already-fetched HTML, subsequent pages fetch via FlareSolverr
                 if page_num > 0:
                     page_url = self._get_page_url(page_num)
-                    page_html = self.fetch_page(page_url, use_cached=False)
+                    page_html = self._fetch_with_cloudflare_retry(page_url)
+                    if not page_html:
+                        self.logger.warning(f"Empty response for page {page_num + 1}")
+                        continue
 
                 # Parse documents from the page
+                if page_html is None:
+                    self.logger.error(f"Unexpected None page_html on page {page_num + 1}")
+                    continue
                 documents = self.parse_page(page_html)
                 result.scraped_count += len(documents)
 
@@ -271,7 +233,6 @@ class AEMOScraper(BaseScraper):
 
                     # Download the file (or simulate in dry_run mode)
                     if self.dry_run:
-                        # In dry_run, we just log and count as "would download"
                         self.logger.info(f"[DRY RUN] Would download: {doc.title}")
                         result.downloaded_count += 1
                         result.documents.append(doc.to_dict())

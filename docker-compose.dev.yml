@@ -28,9 +28,8 @@ services:
       - SECRET_KEY=dev-secret-key
       - HOST=0.0.0.0
       - PORT=5000
-      # Selenium Configuration (override for docker networking)
-      - SELENIUM_REMOTE_URL=http://chrome:4444/wd/hub
-      - SELENIUM_HEADLESS=true
+      # FlareSolverr (rendered page fetching + anti-bot bypass)
+      - FLARESOLVERR_URL=http://flaresolverr:8191
       # Directories (container paths)
       - DOWNLOAD_DIR=/app/data/scraped
       - METADATA_DIR=/app/data/metadata
@@ -40,7 +39,7 @@ services:
       # Gotenberg (document → PDF conversion for archiving)
       - GOTENBERG_URL=http://gotenberg:3000
     depends_on:
-      chrome:
+      flaresolverr:
         condition: service_healthy
       gotenberg:
         condition: service_healthy
@@ -52,30 +51,28 @@ services:
           memory: 1g
           cpus: "0.75"
 
-  # Browser for web scraping (not used for PDF generation — see gotenberg)
-  chrome:
-    image: seleniarm/standalone-chromium:120.0
-    platform: linux/arm64
-    container_name: pdf-scraper-chrome-dev
+  # FlareSolverr for rendered page fetching and anti-bot bypass
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: pdf-scraper-flaresolverr-dev
     restart: unless-stopped
     ports:
-      - "4444:4444"
-      - "7900:7900"
-    shm_size: 2gb
+      - "8191:8191"
     environment:
-      - SE_NODE_MAX_SESSIONS=3
-      - SE_NODE_SESSION_TIMEOUT=300
-      - SE_VNC_NO_PASSWORD=1
+      - LOG_LEVEL=info
+      - LOG_HTML=false
+      - CAPTCHA_SOLVER=none
+      - TZ=Australia/Sydney
     networks:
       - scraper-net
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:8191/health"]
       interval: 15s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
   gotenberg:
     image: gotenberg/gotenberg:8

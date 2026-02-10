@@ -131,7 +131,7 @@ class TestGetPage:
 
     @patch("app.services.flaresolverr_client.requests.post")
     def test_success(self, mock_post):
-        """Successful response extracts HTML and cookies."""
+        """Successful response extracts HTML, URL, and cookies."""
         client = FlareSolverrClient(url="http://flaresolverr:8191")
 
         mock_resp = Mock()
@@ -141,6 +141,7 @@ class TestGetPage:
             "status": "ok",
             "solution": {
                 "status": 200,
+                "url": "http://example.com/final",
                 "response": "<html>content</html>",
                 "cookies": [{"name": "cf", "value": "abc"}],
                 "userAgent": "Mozilla/5.0",
@@ -152,8 +153,33 @@ class TestGetPage:
 
         assert result.success is True
         assert "content" in result.html
+        assert result.url == "http://example.com/final"
         assert len(result.cookies) == 1
         assert result.user_agent == "Mozilla/5.0"
+
+    @patch("app.services.flaresolverr_client.requests.post")
+    def test_url_field_default_empty(self, mock_post):
+        """URL field defaults to empty string when not in solution."""
+        client = FlareSolverrClient(url="http://flaresolverr:8191")
+
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json.return_value = {
+            "status": "ok",
+            "solution": {
+                "status": 200,
+                "response": "<html></html>",
+                "cookies": [],
+                "userAgent": "",
+            },
+        }
+        mock_post.return_value = mock_resp
+
+        result = client.get_page("http://example.com")
+
+        assert result.success is True
+        assert result.url == ""
 
     @patch("app.services.flaresolverr_client.requests.post")
     def test_backend_error(self, mock_post):

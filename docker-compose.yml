@@ -28,9 +28,8 @@ services:
       - RAGFLOW_API_URL=${RAGFLOW_API_URL:-http://localhost:9380}
       - RAGFLOW_API_KEY=${RAGFLOW_API_KEY:-}
       - RAGFLOW_DATASET_ID=${RAGFLOW_DATASET_ID:-}
-      # Selenium Configuration
-      - SELENIUM_REMOTE_URL=http://chrome:4444/wd/hub
-      - SELENIUM_HEADLESS=true
+      # FlareSolverr (rendered page fetching + anti-bot bypass)
+      - FLARESOLVERR_URL=${FLARESOLVERR_URL:-http://flaresolverr:8191}
       # Directories (inside container)
       - DOWNLOAD_DIR=/app/data/scraped
       - METADATA_DIR=/app/data/metadata
@@ -67,7 +66,7 @@ services:
       - CONTEXTUAL_ENRICHMENT_ENABLED=${CONTEXTUAL_ENRICHMENT_ENABLED:-false}
       - CONTEXTUAL_ENRICHMENT_WINDOW=${CONTEXTUAL_ENRICHMENT_WINDOW:-3}
     depends_on:
-      chrome:
+      flaresolverr:
         condition: service_healthy
       gotenberg:
         condition: service_healthy
@@ -90,15 +89,16 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Browser for web scraping (not used for PDF generation — see gotenberg)
-  chrome:
-    image: selenium/standalone-chromium:120.0
-    container_name: pdf-scraper-chrome
+  # FlareSolverr for rendered page fetching and anti-bot bypass
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: pdf-scraper-flaresolverr
     restart: unless-stopped
-    shm_size: 2gb
     environment:
-      - SE_NODE_MAX_SESSIONS=3
-      - SE_NODE_SESSION_TIMEOUT=300
+      - LOG_LEVEL=info
+      - LOG_HTML=false
+      - CAPTCHA_SOLVER=none
+      - TZ=Australia/Sydney
     networks:
       - scraper-net
     security_opt:
@@ -106,14 +106,14 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 1g
           cpus: "1.0"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:8191/health"]
       interval: 15s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     logging:
       driver: "json-file"
       options:
@@ -148,4 +148,3 @@ services:
 networks:
   scraper-net:
     driver: bridge
-

@@ -14,18 +14,14 @@ Supports multiple document types: PDF, Word, Excel.
 from __future__ import annotations
 
 import re
-import time
 from typing import Any, Optional
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.card_pagination_mixin import CardListPaginationMixin
+from app.scrapers.flaresolverr_mixin import FlareSolverrPageFetchMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
 from app.utils.errors import ScraperError
@@ -46,12 +42,12 @@ ECA_RESOURCE_SECTIONS = [
 ]
 
 
-class ECAScraper(CardListPaginationMixin, BaseScraper):
+class ECAScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScraper):
     """
     Scraper for Energy Consumers Australia Research and Submissions.
 
     Key features:
-    - Uses Selenium for page fetching (consistent with other scrapers)
+    - Uses FlareSolverr for rendered page fetching
     - Server-side rendered Drupal CMS (no JS challenge)
     - Scrapes multiple resource sections (research + submissions)
     - Traditional pagination with ?page=N (0-indexed)
@@ -65,6 +61,8 @@ class ECAScraper(CardListPaginationMixin, BaseScraper):
     display_name = "Energy Consumers Australia"
     description = "Scrapes documents from Energy Consumers Australia (Research & Submissions)"
     base_url = "https://energyconsumersaustralia.com.au/our-work/research"
+
+    skip_webdriver = True  # Use FlareSolverr instead of Selenium
 
     # ECA is a consumer advocacy org covering all energy sectors
     # Disable sector-based filtering (no Electricity/Gas tags on documents)
@@ -83,22 +81,6 @@ class ECAScraper(CardListPaginationMixin, BaseScraper):
         if page_num == 0:
             return section_url
         return f"{section_url}?page={page_num}"
-
-    def _wait_for_content(self, timeout: int = 15):
-        """Wait for the research cards to load."""
-        try:
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-            assert self.driver is not None
-            WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, ".image-card, .main-content")
-                )
-            )
-            # Small additional wait for content to fully render
-            time.sleep(1)
-        except TimeoutException:
-            self.logger.warning("Timeout waiting for content to load")
 
     def _detect_total_pages(self, html: str) -> int:
         """
@@ -177,14 +159,14 @@ class ECAScraper(CardListPaginationMixin, BaseScraper):
 
                 self.logger.info(f"=== Processing section: {section_name} ===")
 
-                # Step 1: Fetch first page
+                # Step 1: Fetch first page via FlareSolverr
                 self.logger.info(f"Fetching first page: {section_url}")
-                if not self.driver:
-                    raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-                assert self.driver is not None
-                self.driver.get(section_url)
-                self._wait_for_content()
-                page_html = self.get_page_source()
+                page_html = self.fetch_rendered_page(section_url)
+                if not page_html:
+                    raise ScraperError(
+                        f"Failed to fetch section page: {section_name}",
+                        scraper=self.name,
+                    )
 
                 # Step 2: Detect total pages
                 total_pages = self._detect_total_pages(page_html)
@@ -212,12 +194,10 @@ class ECAScraper(CardListPaginationMixin, BaseScraper):
                     self.logger.info(f"Fetching page {page_num + 1}/{pages_to_scrape}")
 
                     try:
-                        if not self.driver:
-                            raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-                        assert self.driver is not None
-                        self.driver.get(page_url)
-                        self._wait_for_content()
-                        page_html = self.get_page_source()
+                        page_html = self.fetch_rendered_page(page_url)
+                        if not page_html:
+                            self.logger.warning(f"Empty response for page {page_num}")
+                            continue
                         self._process_page(page_html, result, section_category)
                     except Exception as e:
                         self.logger.warning(f"Failed to fetch page {page_num}: {e}")
@@ -270,7 +250,8 @@ class ECAScraper(CardListPaginationMixin, BaseScraper):
                 )
                 continue
 
-            # Find documents on detail page
+            # Find documents on detail page (uses CardListPaginationMixin which
+            # now supports FlareSolverr via fetch_rendered_page)
             self._polite_delay()
             doc_urls = self._find_documents_on_detail_page(doc.url)
 

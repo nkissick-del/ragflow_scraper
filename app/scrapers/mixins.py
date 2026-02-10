@@ -9,6 +9,7 @@ from app.scrapers.common_mixins import (  # noqa: F401
     ExclusionAndMetadataMixin,
 )
 from app.scrapers.download_mixin import HttpDownloadMixin  # noqa: F401
+from app.scrapers.flaresolverr_mixin import FlareSolverrPageFetchMixin  # noqa: F401
 
 __all__ = [
     "IncrementalStateMixin",
@@ -18,4 +19,5 @@ __all__ = [
     "WebDriverLifecycleMixin",
     "CloudflareBypassMixin",
     "ExclusionAndMetadataMixin",
+    "FlareSolverrPageFetchMixin",
 ]

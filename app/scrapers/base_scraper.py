@@ -287,6 +287,11 @@ class BaseScraper(
 
         if self.skip_webdriver:
             self.logger.debug("Using HTTP session (skip_webdriver=True)")
+            # Initialize FlareSolverr page fetch if mixin is present
+            init_fs = getattr(self, "_init_flaresolverr_page_fetch", None)
+            if callable(init_fs):
+                self.logger.info("Initializing FlareSolverr page fetch")
+                init_fs()
             return
 
         self.driver = self._init_driver()
@@ -297,6 +302,11 @@ class BaseScraper(
             if self._session:
                 self._session.close()
                 self._session = None
+
+            # Cleanup FlareSolverr page fetch if mixin is present
+            cleanup_fs = getattr(self, "_cleanup_flaresolverr_page_fetch", None)
+            if callable(cleanup_fs):
+                cleanup_fs()
 
             if self.driver:
                 self._close_driver()  # type: ignore
