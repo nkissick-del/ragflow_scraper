@@ -5,7 +5,6 @@ against the live Ollama instance with llama3.1:8b.
 """
 
 import json
-from pathlib import Path
 
 from app.services.llm_client import OllamaLLMClient, create_llm_client
 from app.services.document_enrichment import DocumentEnrichmentService
