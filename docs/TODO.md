@@ -19,35 +19,36 @@ Address authentication, authorization, and header gaps found in pre-deployment a
 
 ---
 
-## 2. Resilience & Thread Safety (High)
+## 2. Resilience & Thread Safety ~~(High)~~ DONE
 
-**Priority:** HIGH | **Effort:** 4-6h | **Type:** [Code]
+**Priority:** ~~HIGH~~ DONE | **Effort:** ~~4-6h~~ 0 | **Type:** [Code]
 
 Harden core runtime for production reliability under load.
 
-- [ ] **Scheduler exception guard** — `scheduler.py:235-239` has no try/except around `schedule.run_pending()`; unhandled exception kills scheduler thread permanently
-- [ ] **StateTracker thread safety** — `state_tracker.py:71-81` reads `_state` dict without lock; add `threading.Lock` for concurrent read/write
-- [ ] **ServiceContainer singleton lock** — `container.py:67-71` uses bare `if _instance is None`; add double-checked locking
+- [x] **Scheduler exception guard** — try/except around `schedule.run_pending()` with `log_exception()` — scheduler thread survives exceptions
+- [x] **StateTracker thread safety** — `threading.RLock` wrapping all 12 methods that touch `_state`; `copy.deepcopy()` on all getters
+- [x] **ServiceContainer singleton lock** — double-checked locking on `__new__()`, `_trackers_lock` for `state_tracker()`, locks in `reset()`/`reset_container()`
 - [x] **Settings page timeout isolation** — `settings.py:174-200` health check HTTP calls now have `timeout=10` and `_check_service_status()` wrapper catches all exceptions per-service
-- [ ] **Paperless retry logic** — `paperless_client.py:87-88` has no retry; add exponential backoff for transient 503/429/connection errors
-- [ ] **Job error traceback** — `job_queue.py:73` only saves `str(exc)`; capture `traceback.format_exc()` for debugging
-- [ ] **FlareSolverr session cache eviction** — `flaresolverr_client.py:64-65` grows unbounded; add TTL or LRU eviction
-- [ ] **File size limits** — `tika_client.py:83-84` and `gotenberg_client.py` read full files into memory; add configurable max size check
+- [x] **Paperless retry logic** — `urllib3.util.retry.Retry` adapter on session (GET-only, 3 retries, backoff=1s, status 429/500/502/503/504)
+- [x] **Job error traceback** — `traceback.format_exc()` captures full stack trace instead of `str(exc)`
+- [x] **FlareSolverr session cache eviction** — TTL (3600s) + LRU (max 50) eviction via `_evict_stale_sessions()` called at start of `get_page()`
+- [x] **File size limits** — `MAX_UPLOAD_FILE_SIZE` env var (default 500MB, 0=disabled); guards in `TikaClient` and `GotenbergClient` using `getattr()` for safe access
 
 ---
 
-## 3. Pipeline Refactor (High)
+## 3. Pipeline Refactor ~~(High)~~ DONE
 
-**Priority:** HIGH | **Effort:** 3-4h | **Type:** [Code]
+**Priority:** ~~HIGH~~ DONE | **Effort:** ~~3-4h~~ 0 | **Type:** [Code]
 
-`Pipeline._process_document()` is 276 lines (`pipeline.py:314-589`). Break into focused methods for testability and maintainability.
+`Pipeline._process_document()` was 276 lines (`pipeline.py:314-589`). Broken into 6 focused methods with `_process_document()` as a ~45-line orchestrator.
 
-- [ ] Extract `_archive_document()` — upload to Paperless/archive backend
-- [ ] Extract `_parse_document()` — PDF-to-markdown conversion
-- [ ] Extract `_verify_document()` — poll archive until confirmed
-- [ ] Extract `_ingest_to_rag()` — markdown ingestion to RAG backend
-- [ ] Extract `_cleanup_local_files()` — post-verification file removal
-- [ ] Add unit tests for each extracted method
+- [x] Extract `_parse_document()` — PDF/markdown/office-to-markdown conversion with Tika enrichment
+- [x] Extract `_prepare_archive_file()` — Gotenberg PDF conversion for non-PDF documents
+- [x] Extract `_archive_document()` — upload to Paperless/archive backend
+- [x] Extract `_verify_document()` — poll archive until confirmed
+- [x] Extract `_ingest_to_rag()` — markdown ingestion to RAG backend
+- [x] Extract `_cleanup_local_files()` — post-verification file removal with orphan warning
+- [x] Add unit tests for each extracted method (28 tests in `test_pipeline_steps.py`)
 
 ---
 
@@ -55,10 +56,12 @@ Harden core runtime for production reliability under load.
 
 **Priority:** MEDIUM | **Effort:** 8-12h | **Type:** [Tests]
 
-668 tests passing but gaps in unit coverage for scrapers and orchestrator. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
+715 tests passing but gaps in unit coverage for scrapers and orchestrator. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
 
-### Orchestrator (critical gap)
-- [ ] `test_pipeline.py` — unit tests for `run()`, `_process_document()` with mocked backends (only `test_pipeline_enrichment.py` exists — 10 tests for Tika enrichment helper)
+### Orchestrator ~~(critical gap)~~ (mostly covered)
+- [x] `test_pipeline_steps.py` — 28 unit tests for extracted pipeline methods (`_parse_document`, `_prepare_archive_file`, `_archive_document`, `_verify_document`, `_ingest_to_rag`, `_cleanup_local_files`)
+- [x] `test_pipeline_enrichment.py` — 10 tests for Tika enrichment helper
+- [ ] `test_pipeline.py` — unit tests for `run()` orchestration logic (currently covered by integration tests in `test_pipeline_e2e.py`)
 - [ ] `test_scheduler.py` — unit tests for job scheduling, error recovery, thread lifecycle (only `test_scheduler_mocked.py` integration test exists — 1 test)
 
 ### Service clients (3 untested)
@@ -320,11 +323,40 @@ Closed all 5 TODO Section 1 items + error handlers + numeric range validation. C
 
 </details>
 
+<details>
+<summary>Phase 9 (2026-02-10) — Resilience & Thread Safety</summary>
+
+Closed all 8 TODO Section 2 items. CodeRabbit review pass: 7 findings → 0. CI fully green.
+
+- **Job error traceback** — `traceback.format_exc()` replaces `str(exc)` in job_queue.py for full stack traces
+- **Scheduler exception guard** — try/except around `schedule.run_pending()` prevents scheduler thread death
+- **StateTracker thread safety** — `threading.RLock` on all 12 methods, `copy.deepcopy()` on all getters
+- **ServiceContainer singleton lock** — double-checked locking on `__new__()`, `_trackers_lock` for state trackers
+- **File size limits** — `MAX_UPLOAD_FILE_SIZE` env var (default 500MB), guards in TikaClient + GotenbergClient
+- **FlareSolverr cache eviction** — TTL (1hr) + LRU (max 50) via `_evict_stale_sessions()`
+- **Paperless retry logic** — `urllib3 Retry` adapter on session (GET-only, 3 retries, backoff=1s)
+- **662→679 tests**, pyright 0 errors, CodeRabbit 0 findings
+
+</details>
+
+<details>
+<summary>Phase 10 (2026-02-10) — Pipeline Refactor</summary>
+
+Closed all TODO Section 3 items. CodeRabbit review pass: 3 findings → 0.
+
+- **Pipeline method extraction** — `_process_document()` (276 lines) split into 6 focused methods; orchestrator reduced to ~45 lines
+- **Extracted methods** — `_parse_document()`, `_prepare_archive_file()`, `_archive_document()`, `_verify_document()`, `_ingest_to_rag()`, `_cleanup_local_files()`
+- **CodeRabbit fixes** — `archived` flag deferred until `document_id` validated; orphan file warning when RAG succeeds but Paperless verification times out
+- **28 new unit tests** in `test_pipeline_steps.py` — each extracted method tested in isolation
+- **679→715 tests**, pyright 0 errors, ruff 0 findings, CodeRabbit 0 findings
+
+</details>
+
 ---
 
 ## Current State
 
-- **668 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
+- **715 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika, Ollama, pgvector)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local

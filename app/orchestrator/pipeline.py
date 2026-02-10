@@ -350,19 +350,75 @@ class Pipeline:
             raise ParserBackendError(f"File not found: {file_path}")
 
         doc_type = self._detect_document_type(file_path)
-        self.logger.info(
-            f"Processing document ({doc_type}): {file_path.name}"
-        )
+        self.logger.info(f"Processing document ({doc_type}): {file_path.name}")
 
-        # -- Step 1: Parse → Markdown (depends on document type) --
+        # Step 1: Parse → Markdown
+        md_path, parse_metadata = self._parse_document(file_path, doc_metadata, doc_type)
+        result["parsed"] = True
+
+        # Step 2: Merge metadata
+        merge_strategy = Config.METADATA_MERGE_STRATEGY
+        override = self.container.settings.get("pipeline.metadata_merge_strategy", "")
+        if override:
+            merge_strategy = override
+        merged_metadata = doc_metadata.merge_parser_metadata(
+            parse_metadata, strategy=merge_strategy,  # type: ignore[arg-type]
+        )
+        self.logger.debug(f"Metadata merged using '{merge_strategy}' strategy")
+
+        # Step 3: Generate canonical filename
+        canonical_name = generate_filename_from_template(merged_metadata)
+        self.logger.debug(f"Canonical filename: {canonical_name}")
+
+        # Step 4: Prepare archive PDF (Gotenberg conversion for non-PDF)
+        archive_file_path, archive_pdf_path = self._prepare_archive_file(
+            file_path, md_path, doc_type, merged_metadata)
+
+        # Step 5: Archive (if enabled)
+        if self.upload_to_paperless:
+            document_id = self._archive_document(archive_file_path, merged_metadata)
+
+            if document_id:
+                result["archived"] = True
+                result["verified"] = self._verify_document(document_id)
+            else:
+                error_msg = (
+                    "Archive backend returned success but no document_id. "
+                    "This indicates an anomalous backend state."
+                )
+                self.logger.error(error_msg)
+                result["error"] = error_msg
+
+        # Step 6: RAG ingestion (if enabled)
+        if self.upload_to_ragflow and self.dataset_id:
+            result["rag_indexed"] = self._ingest_to_rag(md_path, merged_metadata)
+
+        # Step 7: Cleanup
+        self._cleanup_local_files(file_path, md_path, archive_pdf_path, doc_dict, result)
+
+        return result
+
+    def _parse_document(
+        self,
+        file_path: Path,
+        doc_metadata: DocumentMetadata,
+        doc_type: str,
+    ) -> tuple[Path, dict]:
+        """
+        Parse document to markdown based on type.
+
+        Returns:
+            (md_path, parse_metadata) — path to markdown file and extracted metadata dict
+
+        Raises:
+            ParserBackendError: If parsing fails (FAIL FAST)
+        """
         md_path: Path
         parse_metadata: dict = {}
-        archive_pdf_path: Path | None = None  # track generated PDF for cleanup
 
         if doc_type == "markdown":
             # Markdown already exists — skip parsing
             md_path = file_path
-            result["parsed"] = True
             self.logger.info(
                 f"Markdown file detected, skipping parse: {file_path.name}"
             )
@@ -398,7 +454,6 @@ class Pipeline:
             md_path = file_path.with_suffix(".md")
             md_path.write_text(md_content, encoding="utf-8")
 
-            result["parsed"] = True
             self.logger.info(f"Tika parse successful: {md_path.name}")
 
         else:
@@ -423,36 +478,33 @@ class Pipeline:
 
             md_path = parse_result.markdown_path
             parse_metadata = parse_result.metadata or {}
-            result["parsed"] = True
             self.logger.info(
                 f"Parse successful: {md_path.name} ({parse_result.parser_name})"
             )
 
-        # -- Step 1b: Tika enrichment (optional, after parse, before archive) --
+        # Tika enrichment (optional, after parse, before archive)
         self._run_tika_enrichment(file_path, parse_metadata, doc_type)
 
-        # -- Step 2: Merge metadata --
-        # Check settings override before Config fallback
-        merge_strategy = Config.METADATA_MERGE_STRATEGY
-        override = self.container.settings.get("pipeline.metadata_merge_strategy", "")
-        if override:
-            merge_strategy = override
+        return md_path, parse_metadata
 
-        merged_metadata = doc_metadata.merge_parser_metadata(
-            parse_metadata,
-            strategy=merge_strategy,  # type: ignore[arg-type]
-        )
-        self.logger.debug(
-            f"Metadata merged using '{merge_strategy}' strategy"
-        )
+    def _prepare_archive_file(
+        self,
+        file_path: Path,
+        md_path: Path,
+        doc_type: str,
+        merged_metadata: DocumentMetadata,
+    ) -> tuple[Path, Path | None]:
+        """
+        Prepare file for archive upload (Gotenberg PDF conversion if needed).
 
-        # -- Step 3: Generate canonical filename --
-        canonical_name = generate_filename_from_template(merged_metadata)
-        self.logger.debug(f"Canonical filename: {canonical_name}")
+        Returns:
+            (archive_file_path, archive_pdf_path) — archive_pdf_path is None if no
+            conversion was done (tracks generated file for cleanup)
+        """
+        archive_pdf_path: Path | None = None
 
-        # -- Step 3b: Prepare archive PDF (Gotenberg conversion for non-PDF) --
         if doc_type == "pdf":
-            archive_file_path = file_path
+            return file_path, None
         elif self.upload_to_paperless and Config.GOTENBERG_URL:
             try:
                 gotenberg = self.container.gotenberg_client
@@ -466,127 +518,164 @@ class Pipeline:
 
                 archive_pdf_path = file_path.with_suffix(".archive.pdf")
                 archive_pdf_path.write_bytes(pdf_bytes)
-                archive_file_path = archive_pdf_path
                 self.logger.info(
                     f"Gotenberg PDF generated: {archive_pdf_path.name}"
                 )
+                return archive_pdf_path, archive_pdf_path
             except Exception as e:
                 self.logger.error(f"Gotenberg PDF conversion failed: {e}")
-                archive_file_path = file_path  # Fall back to original
+                return file_path, None  # Fall back to original
         else:
-            archive_file_path = file_path
+            return file_path, None
 
-        # -- Step 4: Archive to Paperless (if enabled) --
-        if self.upload_to_paperless:
-            self.logger.info(f"Archiving to Paperless: {canonical_name}")
-            archive = self.container.archive_backend
+    def _archive_document(
+        self,
+        archive_file_path: Path,
+        merged_metadata: DocumentMetadata,
+    ) -> str | None:
+        """
+        Archive document to backend.
 
-            # Inject scraper_name into metadata for Paperless custom field
-            metadata_dict = merged_metadata.to_dict()
-            metadata_dict["scraper_name"] = self.scraper_name
+        Returns:
+            document_id (str or None if backend returned success but no ID)
 
-            archive_result = archive.archive_document(
-                file_path=archive_file_path,
-                title=merged_metadata.title,
-                created=merged_metadata.publication_date,
-                correspondent=merged_metadata.organization,
-                tags=merged_metadata.tags,
-                metadata=metadata_dict,
+        Raises:
+            ArchiveError: If archive backend returns failure (FAIL FAST)
+        """
+        self.logger.info(f"Archiving to Paperless: {archive_file_path.name}")
+        archive = self.container.archive_backend
+
+        # Inject scraper_name into metadata for Paperless custom field
+        metadata_dict = merged_metadata.to_dict()
+        metadata_dict["scraper_name"] = self.scraper_name
+
+        archive_result = archive.archive_document(
+            file_path=archive_file_path,
+            title=merged_metadata.title,
+            created=merged_metadata.publication_date,
+            correspondent=merged_metadata.organization,
+            tags=merged_metadata.tags,
+            metadata=metadata_dict,
+        )
+
+        if not archive_result.success:
+            raise ArchiveError(
+                archive_result.error or "Archive failed without error message"
             )
 
-            if not archive_result.success:
-                raise ArchiveError(
-                    archive_result.error or "Archive failed without error message"
-                )
+        self.logger.info(
+            f"Archive successful: document_id={archive_result.document_id}"
+        )
+        return archive_result.document_id
 
-            result["archived"] = True
+    def _verify_document(
+        self,
+        document_id: str,
+    ) -> bool:
+        """
+        Verify document exists in archive (polling with timeout).
+
+        Returns:
+            True if verified, False if timed out
+        """
+        self.logger.info("Verifying document in archive...")
+        archive = self.container.archive_backend
+        verified = archive.verify_document(
+            document_id,
+            timeout=self.verify_document_timeout,
+        )
+
+        if verified:
+            self.logger.info(f"Document verified: {document_id}")
+        else:
+            self.logger.warning(
+                f"Document verification timed out: {document_id}"
+            )
+
+        return verified
+
+    def _ingest_to_rag(
+        self,
+        md_path: Path,
+        merged_metadata: DocumentMetadata,
+    ) -> bool:
+        """
+        Ingest markdown to RAG backend (non-fatal).
+
+        Returns:
+            True if ingestion succeeded, False otherwise
+        """
+        self.logger.info(f"Ingesting to RAG: {md_path.name}")
+        rag = self.container.rag_backend
+
+        rag_result = rag.ingest_document(
+            markdown_path=md_path,
+            metadata=merged_metadata.to_dict(),
+            collection_id=self.dataset_id,
+        )
+
+        if rag_result.success:
             self.logger.info(
-                f"Archive successful: document_id={archive_result.document_id}"
+                f"RAG ingestion successful: {rag_result.document_id}"
             )
+            return True
+        else:
+            self.logger.error(f"RAG ingestion failed: {rag_result.error}")
+            return False
 
-            # -- Step 5: Verify document (Sonarr-style) --
-            if archive_result.document_id is None:
-                error_msg = (
-                    f"Archive backend returned success but no document_id "
-                    f"(archive_result={archive_result}). "
-                    f"This indicates an anomalous backend state."
-                )
-                self.logger.error(error_msg)
-                result["verified"] = False
-                if result["error"] is None:
-                    result["error"] = error_msg
-                else:
-                    result["error"] = f"{result['error']}; {error_msg}"
-            else:
-                self.logger.info("Verifying document in archive...")
-                verified = archive.verify_document(
-                    archive_result.document_id,
-                    timeout=self.verify_document_timeout,
-                )
-                result["verified"] = verified
-
-                if verified:
-                    self.logger.info(
-                        f"Document verified: {archive_result.document_id}"
-                    )
-                else:
-                    self.logger.warning(
-                        f"Document verification timed out: "
-                        f"{archive_result.document_id}"
-                    )
-
-        # -- Step 6: Ingest to RAG (if enabled) --
-        if self.upload_to_ragflow and self.dataset_id:
-            self.logger.info(f"Ingesting to RAG: {md_path.name}")
-            rag = self.container.rag_backend
-
-            rag_result = rag.ingest_document(
-                markdown_path=md_path,
-                metadata=merged_metadata.to_dict(),
-                collection_id=self.dataset_id,
-            )
-
-            if rag_result.success:
-                result["rag_indexed"] = True
-                self.logger.info(
-                    f"RAG ingestion successful: {rag_result.document_id}"
-                )
-            else:
-                self.logger.error(f"RAG ingestion failed: {rag_result.error}")
-
-        # -- Step 7: Delete local files (if verified or RAG-only mode) --
+    def _cleanup_local_files(
+        self,
+        file_path: Path,
+        md_path: Path,
+        archive_pdf_path: Path | None,
+        doc_dict: dict,
+        result: dict,
+    ) -> None:
+        """
+        Delete local files if document was successfully archived/verified or RAG-indexed.
+        Non-fatal — logs warnings on failure.
+        """
         should_delete = False
         if self.upload_to_paperless and result["verified"]:
             should_delete = True
         elif not self.upload_to_paperless and result["rag_indexed"]:
             should_delete = True
 
-        if should_delete:
-            self.logger.info("Deleting local files (archived/verified)")
-            try:
-                if file_path.exists():
-                    file_path.unlink()
-                if md_path and md_path.exists() and md_path != file_path:
-                    md_path.unlink()
-                # Delete metadata JSON if exists
-                metadata_path = file_path.with_suffix(".json")
-                if metadata_path.exists():
-                    metadata_path.unlink()
-                # Clean up Gotenberg-generated archive PDF
-                if archive_pdf_path and archive_pdf_path.exists():
-                    archive_pdf_path.unlink()
-                # Clean up HTML file saved by scraper
-                extra = doc_dict.get("extra", {}) or {}
-                html_path_str = extra.get("html_path")
-                if html_path_str:
-                    html_path = Path(html_path_str)
-                    if html_path.exists():
-                        html_path.unlink()
-                self.logger.debug("Local files deleted")
-            except Exception as e:
-                self.logger.warning(f"Failed to delete local files: {e}")
+        if not should_delete:
+            if (
+                self.upload_to_paperless
+                and not result["verified"]
+                and result.get("rag_indexed")
+            ):
+                self.logger.warning(
+                    "RAG ingestion succeeded but Paperless verification "
+                    "did not — skipping local file cleanup"
+                )
+            return
 
-        return result
+        self.logger.info("Deleting local files (archived/verified)")
+        try:
+            if file_path.exists():
+                file_path.unlink()
+            if md_path and md_path.exists() and md_path != file_path:
+                md_path.unlink()
+            # Delete metadata JSON if exists
+            metadata_path = file_path.with_suffix(".json")
+            if metadata_path.exists():
+                metadata_path.unlink()
+            # Clean up Gotenberg-generated archive PDF
+            if archive_pdf_path and archive_pdf_path.exists():
+                archive_pdf_path.unlink()
+            # Clean up HTML file saved by scraper
+            extra = doc_dict.get("extra", {}) or {}
+            html_path_str = extra.get("html_path")
+            if html_path_str:
+                html_path = Path(html_path_str)
+                if html_path.exists():
+                    html_path.unlink()
+            self.logger.debug("Local files deleted")
+        except Exception as e:
+            self.logger.warning(f"Failed to delete local files: {e}")
 
     def _run_tika_enrichment(self, file_path: Path, parse_metadata: dict, doc_type: str):
         """Run optional Tika metadata enrichment (fill-gaps strategy)."""
