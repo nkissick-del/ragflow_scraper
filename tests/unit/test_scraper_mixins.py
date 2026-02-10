@@ -199,7 +199,7 @@ class TestWebDriverLifecycleMixin:
         self.state_tracker.get_state.return_value = {}
         self.scraper.state_tracker = self.state_tracker
 
-    @patch("app.scrapers.mixins.webdriver.Remote")
+    @patch("app.scrapers.common_mixins.webdriver.Remote")
     def test_init_driver_creates_driver(self, mock_remote):
         """Should create a Selenium WebDriver."""
         mock_driver = Mock()

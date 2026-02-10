@@ -129,15 +129,13 @@ class FlareSolverrClient:
 
         self._evict_stale_sessions()
 
-        # Always work with seconds internally, convert to ms for FlareSolverr
         effective_timeout_seconds = max_timeout or self.max_timeout
         payload = {
             "cmd": "request.get",
             "url": url,
-            "maxTimeout": effective_timeout_seconds * 1000,  # Convert to ms
+            "maxTimeout": effective_timeout_seconds * 1000,
         }
 
-        # Use existing session if provided
         if session_id and session_id in self._session_cache:
             cached = self._session_cache[session_id]
             payload["cookies"] = cached.get("cookies", [])
@@ -145,81 +143,110 @@ class FlareSolverrClient:
         start = time.time()
 
         try:
-            # Request timeout should be longer than FlareSolverr's maxTimeout
-            request_timeout = effective_timeout_seconds + 30  # Extra buffer for network latency
+            data, status_code = self._execute_request(payload, effective_timeout_seconds)
+            if data.get("status") == "ok":
+                return self._handle_success_response(data, session_id, start)
+            else:
+                return self._handle_error_response(data, status_code, start)
+        except requests.Timeout:
+            return self._handle_request_failure(None, start, is_timeout=True)
+        except Exception as e:
+            return self._handle_request_failure(e, start, is_timeout=False)
 
-            self.logger.info(f"FlareSolverr request: {url} (timeout: {request_timeout}s)")
-            response = requests.post(
-                f"{self.url}/v1",
-                json=payload,
-                timeout=request_timeout,
+    def _execute_request(
+        self, payload: dict, effective_timeout_seconds: int
+    ) -> tuple[dict, int]:
+        """POST to FlareSolverr and return (response_data, status_code).
+
+        Raises on HTTP errors or connection failures.
+        """
+        request_timeout = effective_timeout_seconds + 30
+        url = payload.get("url", "")
+        self.logger.info(f"FlareSolverr request: {url} (timeout: {request_timeout}s)")
+
+        response = requests.post(
+            f"{self.url}/v1",
+            json=payload,
+            timeout=request_timeout,
+        )
+
+        if response.status_code != 200:
+            self.logger.error(
+                f"FlareSolverr returned {response.status_code}: {response.text[:500]}"
             )
 
-            # Log full response for debugging if not 200
-            if response.status_code != 200:
-                self.logger.error(f"FlareSolverr returned {response.status_code}: {response.text[:500]}")
+        response.raise_for_status()
+        return response.json(), response.status_code
 
-            response.raise_for_status()
-            data = response.json()
+    def _handle_success_response(
+        self, data: dict, session_id: Optional[str], start: float
+    ) -> FlareSolverResult:
+        """Parse solution from a successful FlareSolverr response."""
+        solution = data.get("solution", {})
+        result = FlareSolverResult(
+            success=True,
+            status=solution.get("status", 200),
+            html=solution.get("response", ""),
+            cookies=solution.get("cookies", []),
+            user_agent=solution.get("userAgent", ""),
+        )
 
-            if data.get("status") == "ok":
-                solution = data.get("solution", {})
-                result = FlareSolverResult(
-                    success=True,
-                    status=solution.get("status", 200),
-                    html=solution.get("response", ""),
-                    cookies=solution.get("cookies", []),
-                    user_agent=solution.get("userAgent", ""),
-                )
+        if session_id:
+            self._session_cache[session_id] = {
+                "cookies": result.cookies,
+                "user_agent": result.user_agent,
+                "_cached_at": time.time(),
+            }
 
-                # Cache session data
-                if session_id:
-                    self._session_cache[session_id] = {
-                        "cookies": result.cookies,
-                        "user_agent": result.user_agent,
-                        "_cached_at": time.time(),
-                    }
+        self.logger.info(f"FlareSolverr success: {len(result.html)} bytes")
+        self._success_count += 1
+        log_event(
+            self.logger,
+            "info",
+            "flaresolverr.request.complete",
+            duration_s=round(time.time() - start, 2),
+            success=self._success_count,
+            failure=self._failure_count,
+            timeout=self._timeout_count,
+            success_rate=self._compute_success_rate(),
+        )
+        return result
 
-                self.logger.info(f"FlareSolverr success: {len(result.html)} bytes")
-                self._success_count += 1
-                log_event(
-                    self.logger,
-                    "info",
-                    "flaresolverr.request.complete",
-                    duration_s=round(time.time() - start, 2),
-                    success=self._success_count,
-                    failure=self._failure_count,
-                    timeout=self._timeout_count,
-                    success_rate=self._compute_success_rate(),
-                )
-                return result
-            else:
-                error_msg = data.get("message", "Unknown error")
-                log_event(
-                    self.logger,
-                    "warning",
-                    "flaresolverr.request.backend_failed",
-                    status_code=response.status_code,
-                    error=error_msg,
-                )
-                self._failure_count += 1
-                log_event(
-                    self.logger,
-                    "warning",
-                    "flaresolverr.request.failed",
-                    duration_s=round(time.time() - start, 2),
-                    success=self._success_count,
-                    failure=self._failure_count,
-                    timeout=self._timeout_count,
-                    success_rate=self._compute_success_rate(),
-                    error=error_msg,
-                )
-                return FlareSolverResult(
-                    success=False,
-                    error=error_msg,
-                )
+    def _handle_error_response(
+        self, data: dict, status_code: int, start: float
+    ) -> FlareSolverResult:
+        """Handle a non-ok status from FlareSolverr."""
+        error_msg = data.get("message", "Unknown error")
+        log_event(
+            self.logger,
+            "warning",
+            "flaresolverr.request.backend_failed",
+            status_code=status_code,
+            error=error_msg,
+        )
+        self._failure_count += 1
+        log_event(
+            self.logger,
+            "warning",
+            "flaresolverr.request.failed",
+            duration_s=round(time.time() - start, 2),
+            success=self._success_count,
+            failure=self._failure_count,
+            timeout=self._timeout_count,
+            success_rate=self._compute_success_rate(),
+            error=error_msg,
+        )
+        return FlareSolverResult(success=False, error=error_msg)
 
-        except requests.Timeout:
+    def _handle_request_failure(
+        self,
+        exc: Optional[Exception],
+        start: float,
+        *,
+        is_timeout: bool,
+    ) -> FlareSolverResult:
+        """Unified handler for timeout and general request exceptions."""
+        if is_timeout:
             self.logger.error("FlareSolverr request timed out")
             self._timeout_count += 1
             log_event(
@@ -232,28 +259,23 @@ class FlareSolverrClient:
                 timeout=self._timeout_count,
                 success_rate=self._compute_success_rate(),
             )
-            return FlareSolverResult(
-                success=False,
-                error="Request timed out",
-            )
-        except Exception as e:
-            log_exception(self.logger, e, "flaresolverr.request.exception_raw")
-            self._failure_count += 1
-            log_event(
-                self.logger,
-                "error",
-                "flaresolverr.request.exception",
-                duration_s=round(time.time() - start, 2),
-                success=self._success_count,
-                failure=self._failure_count,
-                timeout=self._timeout_count,
-                success_rate=self._compute_success_rate(),
-                error=str(e),
-            )
-            return FlareSolverResult(
-                success=False,
-                error=str(e),
-            )
+            return FlareSolverResult(success=False, error="Request timed out")
+
+        assert exc is not None
+        log_exception(self.logger, exc, "flaresolverr.request.exception_raw")
+        self._failure_count += 1
+        log_event(
+            self.logger,
+            "error",
+            "flaresolverr.request.exception",
+            duration_s=round(time.time() - start, 2),
+            success=self._success_count,
+            failure=self._failure_count,
+            timeout=self._timeout_count,
+            success_rate=self._compute_success_rate(),
+            error=str(exc),
+        )
+        return FlareSolverResult(success=False, error=str(exc))
 
     def create_session(self, session_id: str) -> bool:
         """

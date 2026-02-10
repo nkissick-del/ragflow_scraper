@@ -129,22 +129,22 @@ class TestParsePageECA:
 
 
 class TestParseDateECA:
-    """_parse_date handles DD Month YYYY format."""
+    """_parse_date_dmy handles DD Month YYYY format."""
 
     def test_valid_date(self, scraper):
-        assert scraper._parse_date("15 July 2025") == "2025-07-15"
+        assert scraper._parse_date_dmy("15 July 2025") == "2025-07-15"
 
     def test_another_date(self, scraper):
-        assert scraper._parse_date("1 January 2020") == "2020-01-01"
+        assert scraper._parse_date_dmy("1 January 2020") == "2020-01-01"
 
     def test_empty_string(self, scraper):
-        assert scraper._parse_date("") is None
+        assert scraper._parse_date_dmy("") is None
 
     def test_none_returns_none(self, scraper):
-        assert scraper._parse_date(None) is None
+        assert scraper._parse_date_dmy(None) is None
 
     def test_invalid_format(self, scraper):
-        assert scraper._parse_date("07/15/2025") is None
+        assert scraper._parse_date_dmy("07/15/2025") is None
 
 
 class TestDetectTotalPagesECA:

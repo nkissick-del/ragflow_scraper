@@ -9,13 +9,14 @@ from app.web.blueprints import auth, scrapers, settings, metrics_logs, ragflow_a
 
 def register_blueprints(app: Flask) -> None:
     """Register all application blueprints.
-    
+
     Note: auth.bp uses @bp.before_app_request to apply basic auth globally.
     All other blueprints provide modular route functionality.
     """
     app.register_blueprint(auth.bp)
     app.register_blueprint(scrapers.bp)
-    app.register_blueprint(settings.bp)
+    for bp in settings.blueprints:
+        app.register_blueprint(bp)
     app.register_blueprint(metrics_logs.bp)
     app.register_blueprint(ragflow_api.bp)
     app.register_blueprint(api_scrapers.bp)

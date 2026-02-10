@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import datetime
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -26,6 +25,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.card_pagination_mixin import CardListPaginationMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
 from app.utils.errors import ScraperError
@@ -46,7 +46,7 @@ ECA_RESOURCE_SECTIONS = [
 ]
 
 
-class ECAScraper(BaseScraper):
+class ECAScraper(CardListPaginationMixin, BaseScraper):
     """
     Scraper for Energy Consumers Australia Research and Submissions.
 
@@ -142,25 +142,6 @@ class ECAScraper(BaseScraper):
                 return max_page + 1
 
         return 1  # Default to single page
-
-    def _parse_date(self, date_str: str) -> Optional[str]:
-        """
-        Parse date from 'DD Month YYYY' to ISO format.
-
-        Args:
-            date_str: Date string like "24 July 2025"
-
-        Returns:
-            ISO format date string "YYYY-MM-DD" or None if parsing fails
-        """
-        if not date_str:
-            return None
-        try:
-            dt = datetime.strptime(date_str.strip(), "%d %B %Y")
-            return dt.strftime("%Y-%m-%d")
-        except ValueError:
-            self.logger.debug(f"Could not parse date: {date_str}")
-            return None
 
     def scrape(self) -> ScraperResult:
         """
@@ -415,7 +396,7 @@ class ECAScraper(BaseScraper):
         date_elem = card.select_one(".image-card__date")
         pub_date = None
         if date_elem:
-            pub_date = self._parse_date(date_elem.get_text(strip=True))
+            pub_date = self._parse_date_dmy(date_elem.get_text(strip=True))
 
         # Description
         desc_elem = card.select_one(".image-card__teaser")
@@ -455,61 +436,10 @@ class ECAScraper(BaseScraper):
             },
         )
 
-    def _find_documents_on_detail_page(self, detail_url: str) -> list[str]:
-        """
-        Visit a detail page and find all downloadable documents.
-
-        Args:
-            detail_url: URL of the detail page
-
-        Returns:
-            List of document URLs (PDF, Word, Excel)
-        """
-        try:
-            self.logger.debug(f"Fetching detail page: {detail_url}")
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-            assert self.driver is not None
-            self.driver.get(detail_url)
-            self._wait_for_content(timeout=10)
-
-            soup = BeautifulSoup(self.get_page_source(), "lxml")
-            document_urls = []
-
-            # Find all document links by extension
-            for ext in self.DOCUMENT_EXTENSIONS:
-                # Case-insensitive search for links ending with extension
-                links = soup.find_all("a", href=re.compile(rf"\.{ext[1:]}$", re.I))
-                for link in links:
-                    href = link.get("href", "")
-                    if href:
-                        full_url = urljoin(detail_url, href)
-                        if full_url not in document_urls:
-                            document_urls.append(full_url)
-
-            # Also check for links containing common document paths
-            doc_path_links = soup.select(
-                "a[href*='/sites/default/files/'], "
-                "a[href*='/documents/'], "
-                "a[href*='/files/']"
-            )
-            for link in doc_path_links:
-                href = link.get("href", "")
-                if href:
-                    # Check if it's a document type we support
-                    href_lower = href.lower()
-                    if any(href_lower.endswith(ext) for ext in self.DOCUMENT_EXTENSIONS):
-                        full_url = urljoin(detail_url, href)
-                        if full_url not in document_urls:
-                            document_urls.append(full_url)
-
-            if document_urls:
-                self.logger.debug(f"Found {len(document_urls)} documents on detail page")
-            else:
-                self.logger.debug(f"No documents found on detail page: {detail_url}")
-
-            return document_urls
-
-        except Exception as e:
-            self.logger.warning(f"Error fetching detail page {detail_url}: {e}")
-            return []
+    def _find_documents_on_detail_page(self, detail_url: str) -> list[str]:  # type: ignore[override]
+        """Visit a detail page and find all downloadable documents."""
+        return super()._find_documents_on_detail_page(
+            detail_url,
+            extensions=self.DOCUMENT_EXTENSIONS,
+            path_patterns=["/sites/default/files/", "/documents/", "/files/"],
+        )

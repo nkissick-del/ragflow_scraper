@@ -410,6 +410,63 @@ class PaperlessClient:
             )
             return False
 
+    def _resolve_tag_ids(self, tags: list[Union[str, int]]) -> list[int]:
+        """Convert a mixed string/int tag list to integer IDs via cache lookup."""
+        tag_ids: list[int] = []
+        string_tags: list[str] = []
+
+        for t in tags:
+            if isinstance(t, int):
+                tag_ids.append(t)
+            elif isinstance(t, str) and t.isdigit():
+                tag_ids.append(int(t))
+            elif isinstance(t, str):
+                string_tags.append(t)
+
+        if string_tags:
+            resolved_ids = self.get_or_create_tags(string_tags)
+            tag_ids.extend(resolved_ids)
+
+        return tag_ids
+
+    def _extract_task_id_from_response(self, response: requests.Response) -> Optional[str]:
+        """Extract raw task ID string from a Paperless upload response.
+
+        Handles JSON (dict, list) and plain-text response formats.
+        """
+        raw_text = response.text.strip()
+
+        content_type = response.headers.get("Content-Type", "")
+        if content_type.startswith("application/json") or raw_text.startswith(("{", "[")):
+            try:
+                response_data = response.json()
+                if isinstance(response_data, dict):
+                    return response_data.get("task_id")
+                elif (
+                    isinstance(response_data, list)
+                    and response_data
+                    and isinstance(response_data[0], dict)
+                ):
+                    return response_data[0].get("task_id")
+                else:
+                    return response_data if isinstance(response_data, str) else None
+            except Exception:
+                return raw_text.strip("'\"")
+        else:
+            return raw_text.strip("'\"")
+
+    def _validate_task_id(self, raw: Any) -> Optional[str]:
+        """Validate and normalize a raw task ID to a UUID string."""
+        if not raw:
+            self.logger.error("No task_id received from Paperless")
+            return None
+        try:
+            uuid.UUID(str(raw))
+            return str(raw)
+        except (ValueError, TypeError, AttributeError):
+            self.logger.error(f"Invalid task_id received from Paperless: {raw}")
+            return None
+
     def post_document(
         self,
         file_path: Union[str, Path],
@@ -449,13 +506,11 @@ class PaperlessClient:
             data["created"] = created.isoformat()
 
         if correspondent:
-            # Resolve string name to integer ID if needed
             if isinstance(correspondent, int):
                 data["correspondent"] = correspondent
             elif isinstance(correspondent, str) and correspondent.isdigit():
                 data["correspondent"] = int(correspondent)
             else:
-                # Look up or create correspondent by name
                 corr_id = self.get_or_create_correspondent(correspondent)
                 if corr_id:
                     data["correspondent"] = corr_id
@@ -465,23 +520,7 @@ class PaperlessClient:
                     )
 
         if tags:
-            # Resolve string names to integer IDs
-            tag_ids: list[int] = []
-            string_tags: list[str] = []
-
-            for t in tags:
-                if isinstance(t, int):
-                    tag_ids.append(t)
-                elif isinstance(t, str) and t.isdigit():
-                    tag_ids.append(int(t))
-                elif isinstance(t, str):
-                    string_tags.append(t)
-
-            # Look up or create string tags
-            if string_tags:
-                resolved_ids = self.get_or_create_tags(string_tags)
-                tag_ids.extend(resolved_ids)
-
+            tag_ids = self._resolve_tag_ids(tags)
             if tag_ids:
                 data["tags"] = tag_ids
 
@@ -496,47 +535,9 @@ class PaperlessClient:
 
             response.raise_for_status()
 
-            # Paperless returns task_id (UUID string).
-            # We sanitize and validate the response text.
-            raw_text = response.text.strip()
-
-            # Handle JSON response if applicable
-            content_type = response.headers.get("Content-Type", "")
-            if content_type.startswith("application/json") or raw_text.startswith(
-                ("{", "[")
-            ):
-                try:
-                    response_data = response.json()
-                    if isinstance(response_data, dict):
-                        task_id = response_data.get("task_id")
-                    elif (
-                        isinstance(response_data, list)
-                        and response_data
-                        and isinstance(response_data[0], dict)
-                    ):
-                        task_id = response_data[0].get("task_id")
-                    else:
-                        task_id = (
-                            response_data if isinstance(response_data, str) else None
-                        )
-                except Exception:
-                    task_id = raw_text.strip("'\"")
-            else:
-                # Strip surrounding quotes if present
-                task_id = raw_text.strip("'\"")
-
-            # Validate task_id is a proper UUID
-            if task_id:
-                try:
-                    uuid.UUID(str(task_id))
-                    task_id = str(task_id)
-                except (ValueError, TypeError, AttributeError):
-                    self.logger.error(
-                        f"Invalid task_id received from Paperless: {task_id}"
-                    )
-                    return None
-            else:
-                self.logger.error("No task_id received from Paperless")
+            raw_task_id = self._extract_task_id_from_response(response)
+            task_id = self._validate_task_id(raw_task_id)
+            if not task_id:
                 return None
 
             self.logger.info(f"Upload successful. Task ID: {task_id}")

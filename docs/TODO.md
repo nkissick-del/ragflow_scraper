@@ -52,35 +52,36 @@ Harden core runtime for production reliability under load.
 
 ---
 
-## 4. Test Coverage (Medium)
+## 4. Test Coverage ~~(Medium)~~ DONE
 
-**Priority:** MEDIUM | **Effort:** 8-12h | **Type:** [Tests]
+**Priority:** ~~MEDIUM~~ DONE | **Effort:** ~~8-12h~~ 0 | **Type:** [Tests]
 
-715 tests passing but gaps in unit coverage for scrapers and orchestrator. Integration tests cover happy paths; unit tests needed for edge cases and failure modes.
+984 tests passing. All identified coverage gaps closed — orchestrator, service clients, scrapers, and data models now have dedicated unit tests.
 
-### Orchestrator ~~(critical gap)~~ (mostly covered)
+### Orchestrator ~~(critical gap)~~ DONE
 - [x] `test_pipeline_steps.py` — 28 unit tests for extracted pipeline methods (`_parse_document`, `_prepare_archive_file`, `_archive_document`, `_verify_document`, `_ingest_to_rag`, `_cleanup_local_files`)
 - [x] `test_pipeline_enrichment.py` — 10 tests for Tika enrichment helper
-- [ ] `test_pipeline.py` — unit tests for `run()` orchestration logic (currently covered by integration tests in `test_pipeline_e2e.py`)
-- [ ] `test_scheduler.py` — unit tests for job scheduling, error recovery, thread lifecycle (only `test_scheduler_mocked.py` integration test exists — 1 test)
+- [x] `test_pipeline_run.py` — 19 unit tests for `run()` orchestration logic (scraper failures, document processing, error recovery, status determination, preflight reconciliation, finalization)
+- [x] `test_scheduler.py` — 24 unit tests for job scheduling, cron parsing, start/stop lifecycle, load from config, error recovery
 
-### Service clients (3 untested)
-- [ ] `test_ragflow_client.py` — API interaction, retry logic, session management
-- [ ] `test_flaresolverr_client.py` — Cloudflare bypass, session cache, timeout handling
-- [ ] `test_settings_manager.py` — load/save, schema validation, defaults
+### Service clients DONE
+- [x] `test_ragflow_client.py` — 18 tests: HttpAdapter retry/auth, client init, list_datasets, upload, check_exists, wait_for_ready, test_connection, catalogs
+- [x] `test_flaresolverr_client.py` — 27 tests: properties, get_page (success/error/timeout/unconfigured), session management, test_connection, metrics, cache eviction
+- [x] `test_settings_manager.py` — 21 tests: singleton, load/save, dot-notation get/set, sections, merge_defaults, properties, scraper settings
 - [x] `test_container.py` — covered by `test_service_container.py` + `test_container_refactoring.py` (23 tests)
 - [x] `test_ragflow_metadata.py` — covered by `test_ragflow_upload_metadata.py` (2 tests)
 
-### Scrapers (9 without dedicated unit tests)
-- [ ] Unit tests for each scraper (AEMC, AEMO, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy) — AEMC has integration test only
-- [ ] Unit tests for `base_scraper.py`, `models.py`
+### Scrapers DONE
+- [x] Unit tests for each scraper — `test_aemo_scraper.py` (16), `test_aer_scraper.py` (15), `test_aemc_scraper.py` (16), `test_eca_scraper.py` (16), `test_ena_scraper.py` (17), `test_guardian_scraper.py` (16), `test_reneweconomy_scraper.py` (18), `test_the_conversation_scraper.py` (15), `test_theenergy_scraper.py` (18)
+- [x] `test_base_scraper.py` — 9 tests: run lifecycle, cancellation, finalize_result
+- [x] `test_models.py` — 9 tests: DocumentMetadata (fields, defaults, to_dict, merge strategies), ScraperResult (defaults, to_dict, to_json)
 - [x] `test_scraper_mixins.py` (18 tests), `test_download_mixin.py`, `test_metadata_io.py` — mixin coverage exists
 
-### Backends ~~(7 without dedicated tests)~~ (mostly covered)
+### Backends DONE
 - [x] Docling — `test_docling_headings.py`, `test_docling_integration.py`, `test_docling_serve_parser.py` (16 tests)
 - [x] Tika — `test_tika_parser.py`, `test_tika_client.py` (20+ tests)
 - [x] Paperless — `test_paperless_client.py`, `test_paperless_query.py`, `test_paperless_integration.py` (43+ tests)
-- [x] RAGFlow — `test_ragflow_ingestion_workflow.py`, `test_ragflow_ingestion.py` (40 tests)
+- [x] RAGFlow — `test_ragflow_client.py` (18), `test_ragflow_ingestion_workflow.py`, `test_ragflow_ingestion.py` (58 tests total)
 - [x] AnythingLLM — `test_anythingllm_backend.py`, `test_anythingllm_client.py` (22+ tests)
 - [x] pgvector — `test_pgvector_backend.py`, `test_pgvector_client.py` (39+ tests)
 - [x] Base class contract tests — `test_backend_abstractions.py` (23 tests)
@@ -110,18 +111,18 @@ All CI/CD items resolved. Pipeline fully green.
 
 ---
 
-## 6. Code Quality & Deduplication (Medium)
+## 6. Code Quality & Deduplication ~~(Medium)~~ DONE
 
-**Priority:** MEDIUM | **Effort:** 4-6h | **Type:** [Code]
+**Priority:** ~~MEDIUM~~ DONE | **Effort:** ~~4-6h~~ 0 | **Type:** [Code]
 
 Address code smells and duplication identified in audit.
 
-- [ ] **Scraper deduplication** — `reneweconomy` and `theenergy` are 50% similar; extract `JSONLDDateExtractionMixin`
-- [ ] **Scraper deduplication** — `aer` and `eca` are 44% similar; extract `CardListPaginationMixin`
-- [ ] **Split `settings.py`** (969 lines, was 784) — separate into `settings_ui.py` + `settings_api.py` + `settings_reconciliation.py`
-- [ ] **Split `mixins.py`** (599 lines, was 595) — separate into `download_mixin.py` + `common_mixin.py`
-- [ ] **Refactor `flaresolverr_client.get_page()`** (147 lines) — extract retry loop and browser state management
-- [ ] **Refactor `paperless_client.post_document()`** (139 lines) — extract multipart payload construction
+- [x] **Refactor `flaresolverr_client.get_page()`** (147→~40 lines) — extracted `_execute_request`, `_handle_success_response`, `_handle_error_response`, `_handle_request_failure`
+- [x] **Refactor `paperless_client.post_document()`** (139→~60 lines) — extracted `_resolve_tag_ids`, `_extract_task_id_from_response`, `_validate_task_id`
+- [x] **Scraper deduplication** — `reneweconomy` and `theenergy` JSON-LD date extraction → `JSONLDDateExtractionMixin` (`app/scrapers/jsonld_mixin.py`), 20 mixin tests
+- [x] **Scraper deduplication** — `aer` and `eca` card pagination → `CardListPaginationMixin` (`app/scrapers/card_pagination_mixin.py`), 12 mixin tests
+- [x] **Split `mixins.py`** (599 lines) → `download_mixin.py` + `common_mixins.py` + re-export shim
+- [x] **Split `settings.py`** (969 lines) → `settings/` sub-package with `helpers.py`, `ui.py`, `api.py`, `reconciliation.py`
 
 ---
 
@@ -352,11 +353,39 @@ Closed all TODO Section 3 items. CodeRabbit review pass: 3 findings → 0.
 
 </details>
 
+<details>
+<summary>Phase 11 (2026-02-10) — Test Coverage</summary>
+
+Closed all TODO Section 4 items. 269 new tests across 16 files (14 new + 2 extended). CodeRabbit review pass: 5 findings → 0. CI fully green.
+
+- **Phase 1 (Orchestrator)** — `test_pipeline_run.py` (19 tests for `run()` orchestration), `test_scheduler.py` rewritten from 2→24 tests (cron parsing, start/stop, load_schedules, error recovery)
+- **Phase 2 (Service Clients)** — `test_ragflow_client.py` (18 tests: HttpAdapter, client init, API methods), `test_settings_manager.py` (21 tests: singleton, load/save, schema validation, dot-notation, properties), `test_flaresolverr_client.py` extended from 3→27 tests (properties, get_page, sessions, metrics)
+- **Phase 3 (Scrapers)** — `test_base_scraper.py` (9 tests: lifecycle, cancellation, finalize), `test_models.py` (9 tests: dataclass fields, merge strategies), 9 individual scraper test files (147 tests total: parse_page, date parsing, pagination, helpers)
+- **CodeRabbit fixes** — `yield` vs `return` in patch fixtures (10 files), `copy.deepcopy()` for nested dict fixtures, misleading docstring
+- **715→984 tests**, pyright 0 errors, ruff 0 findings, CodeRabbit 0 findings
+
+</details>
+
+<details>
+<summary>Phase 12 (2026-02-10) — Code Quality & Deduplication</summary>
+
+Closed all 6 TODO Section 6 items. 24 new tests (32 new mixin tests, offset by removed duplicates). CodeRabbit review pending.
+
+- **`flaresolverr_client.get_page()` refactored** — 150→40 lines; extracted `_execute_request`, `_handle_success_response`, `_handle_error_response`, `_handle_request_failure`
+- **`paperless_client.post_document()` refactored** — 139→60 lines; extracted `_resolve_tag_ids`, `_extract_task_id_from_response`, `_validate_task_id`
+- **JSONLDDateExtractionMixin** — shared JSON-LD Article date extraction for reneweconomy + theenergy scrapers; `app/scrapers/jsonld_mixin.py`, 20 unit tests
+- **CardListPaginationMixin** — shared date parsing + detail-page document discovery for aer + eca scrapers; `app/scrapers/card_pagination_mixin.py`, 12 unit tests
+- **`mixins.py` split** — `download_mixin.py` (HttpDownloadMixin) + `common_mixins.py` (6 classes) + re-export shim
+- **`settings.py` split** — `settings/` sub-package with `helpers.py` (constants + shared utils), `ui.py` (1 route), `api.py` (16 routes), `reconciliation.py` (3 routes)
+- **984→1008 tests**, pyright 0 errors, ruff 0 findings
+
+</details>
+
 ---
 
 ## Current State
 
-- **715 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
+- **1008 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika, Ollama, pgvector)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local

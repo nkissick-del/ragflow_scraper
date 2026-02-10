@@ -14,7 +14,7 @@
             <h2>FlareSolverr</h2>
             <span class="status-badge status-{{ flaresolverr_status }}">{{ flaresolverr_status | replace('_', ' ') }}</span>
         </div>
-        <form hx-post="{{ url_for('settings.save_flaresolverr_settings') }}"
+        <form hx-post="{{ url_for('settings_api.save_flaresolverr_settings') }}"
               hx-target="#flaresolverr-message"
               hx-swap="innerHTML">
             <div class="card-body">
@@ -72,7 +72,7 @@
             </div>
             <div class="card-footer">
                 <button type="button" class="btn btn-secondary"
-                        hx-post="{{ url_for('settings.test_flaresolverr') }}"
+                        hx-post="{{ url_for('settings_api.test_flaresolverr') }}"
                         hx-target="#flaresolverr-status"
                         hx-swap="innerHTML"
                         {% if not config.FLARESOLVERR_URL %}disabled{% endif %}>
@@ -89,7 +89,7 @@
         <div class="card-header">
             <h2>Scraping Defaults</h2>
         </div>
-        <form hx-post="{{ url_for('settings.save_scraping_settings') }}"
+        <form hx-post="{{ url_for('settings_api.save_scraping_settings') }}"
               hx-target="#scraping-message"
               hx-swap="innerHTML">
             <div class="card-body">
@@ -198,7 +198,7 @@
         </div>
         <div class="card-footer">
             <button type="button" class="btn btn-secondary"
-                    hx-post="{{ url_for('settings.test_ragflow') }}"
+                    hx-post="{{ url_for('settings_api.test_ragflow') }}"
                     hx-target="#ragflow-status"
                     hx-swap="innerHTML">
                 Test Connection
@@ -212,7 +212,7 @@
         <div class="card-header">
             <h2>RAGFlow Dataset Defaults</h2>
         </div>
-        <form hx-post="{{ url_for('settings.save_ragflow_settings') }}"
+        <form hx-post="{{ url_for('settings_api.save_ragflow_settings') }}"
               hx-target="#ragflow-settings-message"
               hx-swap="innerHTML">
             <div class="card-body">
@@ -353,7 +353,7 @@
         <div class="card-header">
             <h2>Pipeline Backends</h2>
         </div>
-        <form hx-post="{{ url_for('settings.save_backend_settings') }}"
+        <form hx-post="{{ url_for('settings_api.save_backend_settings') }}"
               hx-target="#backends-message"
               hx-swap="innerHTML">
             <div class="card-body">
@@ -430,7 +430,7 @@
         <div class="card-header">
             <h2>Service Configuration</h2>
         </div>
-        <form hx-post="{{ url_for('settings.save_service_settings') }}"
+        <form hx-post="{{ url_for('settings_api.save_service_settings') }}"
               hx-target="#services-message"
               hx-swap="innerHTML">
             <div class="card-body">
@@ -456,7 +456,7 @@
                             <span class="status-badge status-{{ gotenberg_status }}">{{ gotenberg_status | replace('_', ' ') }}</span>
                         </div>
                         <button type="button" class="btn btn-secondary btn-sm"
-                                hx-post="{{ url_for('settings.test_gotenberg') }}"
+                                hx-post="{{ url_for('settings_api.test_gotenberg') }}"
                                 hx-target="#gotenberg-status"
                                 hx-swap="innerHTML">
                             Test
@@ -482,7 +482,7 @@
                             <span class="status-badge status-{{ tika_status }}">{{ tika_status | replace('_', ' ') }}</span>
                         </div>
                         <button type="button" class="btn btn-secondary btn-sm"
-                                hx-post="{{ url_for('settings.test_tika') }}"
+                                hx-post="{{ url_for('settings_api.test_tika') }}"
                                 hx-target="#tika-status"
                                 hx-swap="innerHTML">
                             Test
@@ -508,7 +508,7 @@
                             <span class="status-badge status-{{ docling_serve_status }}">{{ docling_serve_status | replace('_', ' ') }}</span>
                         </div>
                         <button type="button" class="btn btn-secondary btn-sm"
-                                hx-post="{{ url_for('settings.test_docling_serve') }}"
+                                hx-post="{{ url_for('settings_api.test_docling_serve') }}"
                                 hx-target="#docling-serve-status"
                                 hx-swap="innerHTML">
                             Test
@@ -529,7 +529,7 @@
                             <span class="status-badge status-{{ paperless_status }}">{{ paperless_status | replace('_', ' ') }}</span>
                         </div>
                         <button type="button" class="btn btn-secondary btn-sm"
-                                hx-post="{{ url_for('settings.test_paperless') }}"
+                                hx-post="{{ url_for('settings_api.test_paperless') }}"
                                 hx-target="#paperless-status"
                                 hx-swap="innerHTML">
                             Test
@@ -551,7 +551,7 @@
                             <span class="status-badge status-{{ ragflow_status }}">{{ ragflow_status }}</span>
                         </div>
                         <button type="button" class="btn btn-secondary btn-sm"
-                                hx-post="{{ url_for('settings.test_ragflow') }}"
+                                hx-post="{{ url_for('settings_api.test_ragflow') }}"
                                 hx-target="#ragflow-url-status"
                                 hx-swap="innerHTML">
                             Test
@@ -573,7 +573,7 @@
                             <span class="status-badge status-{{ anythingllm_status }}">{{ anythingllm_status | replace('_', ' ') }}</span>
                         </div>
                         <button type="button" class="btn btn-secondary btn-sm"
-                                hx-post="{{ url_for('settings.test_anythingllm') }}"
+                                hx-post="{{ url_for('settings_api.test_anythingllm') }}"
                                 hx-target="#anythingllm-status"
                                 hx-swap="innerHTML">
                             Test
@@ -600,7 +600,7 @@
                             <span class="status-badge status-{{ embedding_status }}">{{ embedding_status | replace('_', ' ') }}</span>
                         </div>
                         <button type="button" class="btn btn-secondary btn-sm"
-                                hx-post="{{ url_for('settings.test_embedding') }}"
+                                hx-post="{{ url_for('settings_api.test_embedding') }}"
                                 hx-target="#embedding-status"
                                 hx-swap="innerHTML">
                             Test
@@ -623,7 +623,7 @@
                             <span class="status-badge status-{{ pgvector_status }}">{{ pgvector_status | replace('_', ' ') }}</span>
                         </div>
                         <button type="button" class="btn btn-secondary btn-sm"
-                                hx-post="{{ url_for('settings.test_pgvector') }}"
+                                hx-post="{{ url_for('settings_api.test_pgvector') }}"
                                 hx-target="#pgvector-status"
                                 hx-swap="innerHTML">
                             Test
@@ -650,7 +650,7 @@
         <div class="card-header">
             <h2>Pipeline Settings</h2>
         </div>
-        <form hx-post="{{ url_for('settings.save_pipeline_settings') }}"
+        <form hx-post="{{ url_for('settings_api.save_pipeline_settings') }}"
               hx-target="#pipeline-message"
               hx-swap="innerHTML">
             <div class="card-body">
@@ -695,7 +695,7 @@
                     </p>
                     <div class="setting-row mt-2">
                         <button type="button" class="btn btn-secondary btn-sm"
-                                hx-post="{{ url_for('settings.preview_filename') }}"
+                                hx-post="{{ url_for('settings_api.preview_filename') }}"
                                 hx-target="#filename-preview"
                                 hx-swap="innerHTML"
                                 hx-include="#filename-template">
@@ -803,20 +803,20 @@
                 <label>{{ name }}</label>
                 <div class="setting-row">
                     <button type="button" class="btn btn-secondary btn-sm"
-                            hx-post="{{ url_for('settings.reconciliation_report', name=name) }}"
+                            hx-post="{{ url_for('settings_recon.reconciliation_report', name=name) }}"
                             hx-target="#recon-result-{{ safe_id }}"
                             hx-swap="innerHTML">
                         Report
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm"
-                            hx-post="{{ url_for('settings.reconciliation_rebuild', name=name) }}"
+                            hx-post="{{ url_for('settings_recon.reconciliation_rebuild', name=name) }}"
                             hx-target="#recon-result-{{ safe_id }}"
                             hx-swap="innerHTML"
                             hx-confirm="Rebuild state for {{ name }} from Paperless? This adds missing URLs to state.">
                         Rebuild State
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm"
-                            hx-post="{{ url_for('settings.reconciliation_sync_rag', name=name) }}"
+                            hx-post="{{ url_for('settings_recon.reconciliation_sync_rag', name=name) }}"
                             hx-target="#recon-result-{{ safe_id }}"
                             hx-swap="innerHTML"
                             hx-confirm="Sync RAG for {{ name }}? This downloads and re-ingests documents missing from RAG.">

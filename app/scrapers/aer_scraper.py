@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import datetime
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -24,12 +23,13 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.card_pagination_mixin import CardListPaginationMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename
 from app.utils.errors import ScraperError
 
 
-class AERScraper(BaseScraper):
+class AERScraper(CardListPaginationMixin, BaseScraper):
     """
     Scraper for AER Reports and Publications.
 
@@ -121,25 +121,6 @@ class AERScraper(BaseScraper):
                 return max_page + 1
 
         return 1  # Default to single page
-
-    def _parse_date(self, date_str: str) -> Optional[str]:
-        """
-        Parse date from 'DD Month YYYY' to ISO format.
-
-        Args:
-            date_str: Date string like "24 December 2025"
-
-        Returns:
-            ISO format date string "YYYY-MM-DD" or None if parsing fails
-        """
-        if not date_str:
-            return None
-        try:
-            dt = datetime.strptime(date_str.strip(), "%d %B %Y")
-            return dt.strftime("%Y-%m-%d")
-        except ValueError:
-            self.logger.debug(f"Could not parse date: {date_str}")
-            return None
 
     def scrape(self) -> ScraperResult:
         """
@@ -352,7 +333,7 @@ class AERScraper(BaseScraper):
             if label and "Release date" in label.get_text():
                 date_item = field.select_one(".field__item")
                 if date_item:
-                    pub_date = self._parse_date(date_item.get_text(strip=True))
+                    pub_date = self._parse_date_dmy(date_item.get_text(strip=True))
                 break
 
         # Report type
@@ -404,53 +385,15 @@ class AERScraper(BaseScraper):
         )
 
     def _find_pdf_on_detail_page(self, detail_url: str) -> Optional[str]:
-        """
-        Visit a detail page using Selenium and find the PDF download link.
-
-        Args:
-            detail_url: URL of the document detail page
-
-        Returns:
-            PDF URL if found, None otherwise
-        """
-        try:
-            self.logger.debug(f"Fetching detail page: {detail_url}")
-            if not self.driver:
-                raise ScraperError("Driver not initialized", scraper=getattr(self, 'name', 'unknown'))
-            assert self.driver is not None
-            self.driver.get(detail_url)
-            self._wait_for_content(timeout=15)
-
-            soup = BeautifulSoup(self.get_page_source(), "lxml")
-
-            # Strategy 1: Find links with .pdf extension
-            pdf_links = soup.find_all("a", href=re.compile(r"\.pdf$", re.I))
-
-            # Strategy 2: Look in document/file field sections
-            doc_sections = soup.select(
-                ".field--name-field-document a, "
-                ".field--name-field-documents a, "
-                ".field--type-file a, "
-                "a[href*='/sites/default/files/']"
-            )
-            pdf_links.extend(doc_sections)
-
-            # Return first PDF link found
-            for link in pdf_links:
-                href = link.get("href", "")
-                if not href:
-                    continue
-
-                full_url = urljoin(detail_url, href)
-
-                # Verify it's a PDF
-                if full_url.lower().endswith(".pdf"):
-                    self.logger.debug(f"Found PDF: {full_url}")
-                    return full_url
-
-            self.logger.debug(f"No PDF found on detail page: {detail_url}")
-            return None
-
-        except Exception as e:
-            self.logger.warning(f"Error fetching detail page {detail_url}: {e}")
-            return None
+        """Visit a detail page and find the first PDF download link."""
+        urls = self._find_documents_on_detail_page(
+            detail_url,
+            extensions=(".pdf",),
+            link_selectors=[
+                ".field--name-field-document a",
+                ".field--name-field-documents a",
+                ".field--type-file a",
+            ],
+            path_patterns=["/sites/default/files/"],
+        )
+        return urls[0] if urls else None

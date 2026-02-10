@@ -52,8 +52,12 @@ def app():
     """Create test Flask app."""
     mock_container = _make_mock_container()
     patches = [
-        patch("app.web.blueprints.settings.container", mock_container),
-        patch("app.web.blueprints.settings.http_requests"),
+        patch("app.web.blueprints.settings.ui.container", mock_container),
+        patch("app.web.blueprints.settings.api.container", mock_container),
+        patch("app.web.blueprints.settings.helpers.container", mock_container),
+        patch("app.web.blueprints.settings.reconciliation.container", mock_container),
+        patch("app.web.blueprints.settings.ui.http_requests"),
+        patch("app.web.blueprints.settings.api.http_requests"),
         patch("app.web.blueprints.scrapers.container", mock_container),
         patch("app.web.blueprints.metrics_logs.container", mock_container),
         patch("app.web.helpers.container", mock_container),

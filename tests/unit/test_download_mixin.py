@@ -16,9 +16,9 @@ class TestHttpDownloadMixin:
 
         self.scraper = TestScraper()
 
-    @patch("app.scrapers.mixins.requests.get")
+    @patch("app.scrapers.download_mixin.requests.get")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("app.scrapers.mixins.ensure_dir")
+    @patch("app.scrapers.download_mixin.ensure_dir")
     def test_download_file_computes_hash(self, mock_ensure_dir, mock_file, mock_get):
         # Setup
         mock_ensure_dir.return_value = Path("/tmp")
@@ -46,9 +46,9 @@ class TestHttpDownloadMixin:
         assert metadata.hash == expected_hash
         assert metadata.file_size == 12  # len("chunk1") + len("chunk2")
 
-    @patch("app.scrapers.mixins.requests.get")
+    @patch("app.scrapers.download_mixin.requests.get")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("app.scrapers.mixins.ensure_dir")
+    @patch("app.scrapers.download_mixin.ensure_dir")
     def test_download_file_uses_chunk_size(self, mock_ensure_dir, mock_file, mock_get):
         # Setup
         mock_ensure_dir.return_value = Path("/tmp")

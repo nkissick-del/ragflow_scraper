@@ -11,9 +11,7 @@ Saves article content as Markdown for RAGFlow indexing.
 
 from __future__ import annotations
 
-import json
 import time
-from datetime import datetime
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -24,12 +22,13 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 from app.scrapers.base_scraper import BaseScraper
+from app.scrapers.jsonld_mixin import JSONLDDateExtractionMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename, ArticleConverter
 from app.utils.errors import ScraperError
 
 
-class TheEnergyScraper(BaseScraper):
+class TheEnergyScraper(JSONLDDateExtractionMixin, BaseScraper):
     """
     Scraper for TheEnergy news articles.
 
@@ -113,101 +112,6 @@ class TheEnergyScraper(BaseScraper):
             time.sleep(0.5)  # Small buffer for render
         except TimeoutException:
             self.logger.warning("Timeout waiting for article content")
-
-    def _extract_jsonld_dates(self, html: str) -> dict[str, Optional[str]]:
-        """
-        Extract dates from JSON-LD structured data on an article page.
-
-        TheEnergy articles contain JSON-LD with schema.org Article type:
-        {
-            "@type": "Article",
-            "datePublished": "2025-12-24T07:30:00+11:00",
-            "dateCreated": "2025-12-24T12:04:37+11:00",
-            "dateModified": "2025-12-24T12:39:08+11:00"
-        }
-
-        Args:
-            html: HTML content of the article page
-
-        Returns:
-            Dict with keys: date_published, date_created, date_modified
-            Values are ISO date strings (YYYY-MM-DD) or None
-        """
-        result: dict[str, Optional[str]] = {
-            "date_published": None,
-            "date_created": None,
-            "date_modified": None,
-        }
-
-        soup = BeautifulSoup(html, "lxml")
-
-        # Find JSON-LD script tags
-        jsonld_scripts = soup.find_all("script", type="application/ld+json")
-
-        for script in jsonld_scripts:
-            if not script.string:
-                continue
-            try:
-                data = json.loads(script.string)
-
-                # Handle both single object and @graph array
-                items: list[Any] = []
-                if isinstance(data, list):
-                    items = data
-                elif isinstance(data, dict):
-                    if "@graph" in data:
-                        items = data["@graph"]
-                    else:
-                        items = [data]
-
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    if item.get("@type") == "Article":
-                        # Extract and parse dates
-                        for key, field in [
-                            ("date_published", "datePublished"),
-                            ("date_created", "dateCreated"),
-                            ("date_modified", "dateModified"),
-                        ]:
-                            if field in item and item[field]:
-                                result[key] = self._parse_iso_date(item[field])
-
-                        # Found Article, return if we have data
-                        if any(result.values()):
-                            return result
-
-            except (json.JSONDecodeError, TypeError, KeyError) as e:
-                self.logger.debug(f"Failed to parse JSON-LD: {e}")
-                continue
-
-        return result
-
-    def _parse_iso_date(self, date_str: str) -> Optional[str]:
-        """
-        Parse ISO 8601 date string to YYYY-MM-DD format.
-
-        Args:
-            date_str: ISO date like "2025-12-24T07:30:00+11:00"
-
-        Returns:
-            Date in YYYY-MM-DD format or None
-        """
-        if not date_str:
-            return None
-
-        try:
-            # Handle various ISO formats
-            # Remove timezone info for simple parsing
-            clean = date_str.split("+")[0].split("Z")[0]
-            if "T" in clean:
-                clean = clean.split("T")[0]
-            # Validate it's a proper date
-            dt = datetime.strptime(clean, "%Y-%m-%d")
-            return dt.strftime("%Y-%m-%d")
-        except ValueError:
-            self.logger.debug(f"Could not parse ISO date: {date_str}")
-            return None
 
     def _extract_article_content(self, html: str) -> str:
         """

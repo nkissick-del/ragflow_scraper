@@ -24,7 +24,10 @@ def app():
         # Must come first — prevents runtime.py from creating a real container
         patch("app.container.get_container", return_value=mock_container),
         patch("app.web.blueprints.scrapers.container", mock_container),
-        patch("app.web.blueprints.settings.container", mock_container),
+        patch("app.web.blueprints.settings.ui.container", mock_container),
+        patch("app.web.blueprints.settings.api.container", mock_container),
+        patch("app.web.blueprints.settings.helpers.container", mock_container),
+        patch("app.web.blueprints.settings.reconciliation.container", mock_container),
         patch("app.web.blueprints.metrics_logs.container", mock_container),
         patch("app.web.helpers.container", mock_container),
         patch("app.web.blueprints.scrapers.job_queue"),
@@ -68,7 +71,7 @@ class TestBlueprintRegistration:
         
         # Verify key blueprints are registered
         assert "scrapers" in blueprint_names
-        assert "settings" in blueprint_names
+        assert "settings_ui" in blueprint_names
         assert "metrics_logs" in blueprint_names
         assert "api_scrapers" in blueprint_names
     

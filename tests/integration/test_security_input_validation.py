@@ -13,7 +13,10 @@ def app():
     mock_container.settings.get_all.return_value = {}
     mock_container.settings.get.return_value = ""
     patches = [
-        patch("app.web.blueprints.settings.container", mock_container),
+        patch("app.web.blueprints.settings.ui.container", mock_container),
+        patch("app.web.blueprints.settings.api.container", mock_container),
+        patch("app.web.blueprints.settings.helpers.container", mock_container),
+        patch("app.web.blueprints.settings.reconciliation.container", mock_container),
         patch("app.web.blueprints.scrapers.container", mock_container),
         patch("app.web.blueprints.scrapers.job_queue"),
         patch("app.web.blueprints.api_scrapers.job_queue"),

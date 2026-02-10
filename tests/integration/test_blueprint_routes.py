@@ -101,12 +101,16 @@ def app():
         patch.object(Config, "BASIC_AUTH_PASSWORD", "testpass"),
         patch.object(Config, "SECRET_KEY", "test-secret-key-for-integration-tests"),
         # Patch container in every module that imports it from runtime
-        patch("app.web.blueprints.settings.container", mock_container),
+        patch("app.web.blueprints.settings.ui.container", mock_container),
+        patch("app.web.blueprints.settings.api.container", mock_container),
+        patch("app.web.blueprints.settings.helpers.container", mock_container),
+        patch("app.web.blueprints.settings.reconciliation.container", mock_container),
         patch("app.web.blueprints.scrapers.container", mock_container),
         patch("app.web.blueprints.metrics_logs.container", mock_container),
         patch("app.web.helpers.container", mock_container),
         # Patch http_requests in settings to prevent real HTTP calls
-        patch("app.web.blueprints.settings.http_requests"),
+        patch("app.web.blueprints.settings.ui.http_requests"),
+        patch("app.web.blueprints.settings.api.http_requests"),
         # Patch job_queue in modules that use it
         patch("app.web.blueprints.scrapers.job_queue"),
         patch("app.web.blueprints.api_scrapers.job_queue"),
@@ -293,37 +297,35 @@ class TestSettingsEndpoints:
     
     def test_test_ragflow_connection(self, client):
         """Test RAGFlow connection test endpoint."""
-        with patch("app.web.blueprints.settings.container") as mock_container:
+        with patch("app.web.blueprints.settings.api.container") as mock_container:
             mock_ragflow = MagicMock()
             mock_ragflow.test_connection.return_value = True
             mock_ragflow.list_datasets.return_value = []
             mock_container.ragflow_client = mock_ragflow
-            
+
             response = client.post("/settings/test-ragflow")
             assert response.status_code == 200
             assert b"connected" in response.data.lower()
     
     def test_test_flaresolverr_connection(self, client):
         """Test FlareSolverr connection test endpoint."""
-        with patch("app.web.blueprints.settings.container") as mock_container, \
-             patch("app.web.blueprints.settings.Config") as mock_config:
-
-            mock_config.FLARESOLVERR_URL = "http://test:8191"
+        with patch("app.web.blueprints.settings.api.container") as mock_container, \
+             patch.object(Config, "FLARESOLVERR_URL", "http://test:8191"):
 
             mock_flaresolverr = MagicMock()
             mock_flaresolverr.test_connection.return_value = True
             mock_container.flaresolverr_client = mock_flaresolverr
-            
+
             response = client.post("/settings/test-flaresolverr")
             assert response.status_code == 200
             assert b"connected" in response.data.lower()
     
     def test_save_flaresolverr_settings(self, client):
         """Test save FlareSolverr settings."""
-        with patch("app.web.blueprints.settings.container") as mock_container:
+        with patch("app.web.blueprints.settings.api.container") as mock_container:
             mock_settings = MagicMock()
             mock_container.settings = mock_settings
-            
+
             response = client.post("/settings/flaresolverr", data={
                 "enabled": "on",
                 "timeout": "60"
@@ -333,10 +335,10 @@ class TestSettingsEndpoints:
     
     def test_save_scraping_settings(self, client):
         """Test save scraping settings."""
-        with patch("app.web.blueprints.settings.container") as mock_container:
+        with patch("app.web.blueprints.settings.api.container") as mock_container:
             mock_settings = MagicMock()
             mock_container.settings = mock_settings
-            
+
             response = client.post("/settings/scraping", data={
                 "use_flaresolverr_by_default": "on",
                 "default_request_delay": "2.0"
@@ -346,7 +348,7 @@ class TestSettingsEndpoints:
     
     def test_save_ragflow_settings(self, client):
         """Test save RAGFlow settings."""
-        with patch("app.web.blueprints.settings.container") as mock_container:
+        with patch("app.web.blueprints.settings.api.container") as mock_container:
             mock_settings = MagicMock()
             mock_container.settings = mock_settings
 
@@ -359,9 +361,8 @@ class TestSettingsEndpoints:
 
     def test_test_gotenberg_connection(self, client):
         """Test Gotenberg connection test endpoint."""
-        with patch("app.web.blueprints.settings.container") as mock_container, \
-             patch("app.web.blueprints.settings.Config") as mock_config:
-            mock_config.GOTENBERG_URL = "http://test:3000"
+        with patch("app.web.blueprints.settings.api.container") as mock_container, \
+             patch.object(Config, "GOTENBERG_URL", "http://test:3000"):
             mock_container.settings.get.return_value = ""
             mock_gotenberg = MagicMock()
             mock_gotenberg.health_check.return_value = True
@@ -373,9 +374,8 @@ class TestSettingsEndpoints:
 
     def test_test_tika_connection(self, client):
         """Test Tika connection test endpoint."""
-        with patch("app.web.blueprints.settings.container") as mock_container, \
-             patch("app.web.blueprints.settings.Config") as mock_config:
-            mock_config.TIKA_SERVER_URL = "http://test:9998"
+        with patch("app.web.blueprints.settings.api.container") as mock_container, \
+             patch.object(Config, "TIKA_SERVER_URL", "http://test:9998"):
             mock_container.settings.get.return_value = ""
             mock_tika = MagicMock()
             mock_tika.health_check.return_value = True
@@ -387,11 +387,10 @@ class TestSettingsEndpoints:
 
     def test_test_paperless_connection(self, client):
         """Test Paperless connection test endpoint."""
-        with patch("app.web.blueprints.settings.container") as mock_container, \
-             patch("app.web.blueprints.settings.Config") as mock_config, \
-             patch("app.web.blueprints.settings.http_requests") as mock_requests:
-            mock_config.PAPERLESS_API_URL = "http://test:8000"
-            mock_config.PAPERLESS_API_TOKEN = "test-token"
+        with patch("app.web.blueprints.settings.api.container") as mock_container, \
+             patch.object(Config, "PAPERLESS_API_URL", "http://test:8000"), \
+             patch.object(Config, "PAPERLESS_API_TOKEN", "test-token"), \
+             patch("app.web.blueprints.settings.api.http_requests") as mock_requests:
             # _get_effective_url reads from settings; return empty to fall through to Config
             mock_container.settings.get.return_value = ""
 
@@ -410,10 +409,9 @@ class TestSettingsEndpoints:
 
     def test_test_anythingllm_connection(self, client):
         """Test AnythingLLM connection test endpoint."""
-        with patch("app.web.blueprints.settings.container") as mock_container, \
-             patch("app.web.blueprints.settings.Config") as mock_config:
-            mock_config.ANYTHINGLLM_API_URL = "http://test:3001"
-            mock_config.ANYTHINGLLM_API_KEY = "test-key"
+        with patch("app.web.blueprints.settings.api.container") as mock_container, \
+             patch.object(Config, "ANYTHINGLLM_API_URL", "http://test:3001"), \
+             patch.object(Config, "ANYTHINGLLM_API_KEY", "test-key"):
             mock_container.settings.get.return_value = ""
 
             mock_instance = MagicMock()
@@ -426,10 +424,9 @@ class TestSettingsEndpoints:
 
     def test_test_docling_serve_connection(self, client):
         """Test Docling-serve connection test endpoint."""
-        with patch("app.web.blueprints.settings.container") as mock_container, \
-             patch("app.web.blueprints.settings.Config") as mock_config, \
-             patch("app.web.blueprints.settings.http_requests") as mock_requests:
-            mock_config.DOCLING_SERVE_URL = "http://test:4949"
+        with patch("app.web.blueprints.settings.api.container") as mock_container, \
+             patch.object(Config, "DOCLING_SERVE_URL", "http://test:4949"), \
+             patch("app.web.blueprints.settings.api.http_requests") as mock_requests:
             # _get_effective_url reads from settings; return empty to fall through to Config
             mock_container.settings.get.return_value = ""
 
@@ -447,9 +444,8 @@ class TestSettingsEndpoints:
 
     def test_save_pipeline_settings(self, client):
         """Test save pipeline settings."""
-        with patch("app.web.blueprints.settings.container") as mock_container, \
-             patch("app.web.blueprints.settings.Config") as mock_config:
-            mock_config.VALID_METADATA_MERGE_STRATEGIES = ("smart", "parser_wins", "scraper_wins")
+        with patch("app.web.blueprints.settings.api.container") as mock_container, \
+             patch.object(Config, "VALID_METADATA_MERGE_STRATEGIES", ("smart", "parser_wins", "scraper_wins")):
             mock_settings = MagicMock()
             mock_container.settings = mock_settings
 
@@ -472,8 +468,7 @@ class TestSettingsEndpoints:
 
     def test_preview_filename(self, client):
         """Test filename preview endpoint."""
-        with patch("app.web.blueprints.settings.Config") as mock_config:
-            mock_config.FILENAME_TEMPLATE = "{{ title }}{{ extension }}"
+        with patch.object(Config, "FILENAME_TEMPLATE", "{{ title }}{{ extension }}"):
 
             response = client.post("/settings/pipeline/preview-filename", data={
                 "template": "{{ org }}_{{ title | slugify }}{{ extension }}",

@@ -25,7 +25,7 @@ class TestScraperFixes:
         with patch(
             "pathlib.Path.write_bytes", side_effect=Exception("Write failed")
         ):
-            with patch("app.scrapers.mixins.ensure_dir", return_value=tmp_path):
+            with patch("app.scrapers.common_mixins.ensure_dir", return_value=tmp_path):
                 scraper._save_article(article, "content", html_content="<html>")
 
             # extra.html_path should NOT be set because we failed before the mutation block

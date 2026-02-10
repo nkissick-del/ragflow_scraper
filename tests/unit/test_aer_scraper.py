@@ -99,22 +99,22 @@ class TestParsePageAER:
 
 
 class TestParseDateAER:
-    """_parse_date handles DD Month YYYY format."""
+    """_parse_date_dmy handles DD Month YYYY format."""
 
     def test_valid_date(self, scraper):
-        assert scraper._parse_date("24 December 2025") == "2025-12-24"
+        assert scraper._parse_date_dmy("24 December 2025") == "2025-12-24"
 
     def test_another_date(self, scraper):
-        assert scraper._parse_date("1 January 2020") == "2020-01-01"
+        assert scraper._parse_date_dmy("1 January 2020") == "2020-01-01"
 
     def test_empty_string(self, scraper):
-        assert scraper._parse_date("") is None
+        assert scraper._parse_date_dmy("") is None
 
     def test_none_returns_none(self, scraper):
-        assert scraper._parse_date(None) is None
+        assert scraper._parse_date_dmy(None) is None
 
     def test_invalid_format(self, scraper):
-        assert scraper._parse_date("2025-12-24") is None
+        assert scraper._parse_date_dmy("2025-12-24") is None
 
 
 class TestSectorBadgeExtraction:
