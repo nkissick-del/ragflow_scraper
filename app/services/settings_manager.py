@@ -68,6 +68,12 @@ DEFAULT_SETTINGS = {
         "archive_backend": "",          # Empty = use Config.ARCHIVE_BACKEND
         "rag_backend": "",              # Empty = use Config.RAG_BACKEND
         "tika_enrichment_enabled": "",  # Empty = use Config.TIKA_ENRICHMENT_ENABLED
+        "llm_backend": "",              # Empty = use Config.LLM_BACKEND
+        "llm_model": "",                # Empty = use Config.LLM_MODEL
+        "llm_enrichment_enabled": "",   # Empty = use Config.LLM_ENRICHMENT_ENABLED
+        "llm_enrichment_max_tokens": 0, # 0 = use Config.LLM_ENRICHMENT_MAX_TOKENS
+        "contextual_enrichment_enabled": "",  # Empty = use Config.CONTEXTUAL_ENRICHMENT_ENABLED
+        "contextual_enrichment_window": 0,    # 0 = use Config.CONTEXTUAL_ENRICHMENT_WINDOW
         "embedding_backend": "",        # Empty = use Config.EMBEDDING_BACKEND
         "embedding_model": "",          # Empty = use Config.EMBEDDING_MODEL
         "chunking_strategy": "",        # Empty = use Config.CHUNKING_STRATEGY
@@ -87,6 +93,8 @@ DEFAULT_SETTINGS = {
         "embedding_url": "",
         "embedding_timeout": 0,
         "pgvector_url": "",
+        "llm_url": "",
+        "llm_timeout": 0,
     },
 }
 
@@ -160,6 +168,12 @@ SETTINGS_SCHEMA = {
                 "archive_backend": {"type": "string"},
                 "rag_backend": {"type": "string"},
                 "tika_enrichment_enabled": {"type": "string"},
+                "llm_backend": {"type": "string"},
+                "llm_model": {"type": "string"},
+                "llm_enrichment_enabled": {"type": "string"},
+                "llm_enrichment_max_tokens": {"type": "integer", "minimum": 0},
+                "contextual_enrichment_enabled": {"type": "string"},
+                "contextual_enrichment_window": {"type": "integer", "minimum": 0},
                 "embedding_backend": {"type": "string"},
                 "embedding_model": {"type": "string"},
                 "chunking_strategy": {"type": "string"},
@@ -183,6 +197,8 @@ SETTINGS_SCHEMA = {
                 "embedding_url": {"type": "string"},
                 "embedding_timeout": {"type": "integer", "minimum": 0, "maximum": 600},
                 "pgvector_url": {"type": "string"},
+                "llm_url": {"type": "string"},
+                "llm_timeout": {"type": "integer", "minimum": 0, "maximum": 600},
             },
             "additionalProperties": False,
         },

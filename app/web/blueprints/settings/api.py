@@ -174,6 +174,26 @@ def test_embedding():
         return '<span class="status-badge status-error">Connection test failed</span>'
 
 
+@bp.route("/settings/test-llm", methods=["POST"])
+def test_llm():
+    eff_url = _get_effective_url("llm", "LLM_URL")
+    if not eff_url:
+        # Fall back to embedding URL (same Ollama server)
+        eff_url = _get_effective_url("embedding", "EMBEDDING_URL")
+    if not eff_url:
+        return '<span class="status-badge status-not_configured">Not Configured</span>'
+
+    try:
+        client = container.llm_client
+        if client.test_connection():
+            return '<span class="status-badge status-connected">Connected</span>'
+        else:
+            return '<span class="status-badge status-disconnected">Connection Failed</span>'
+    except Exception as exc:
+        log_exception(logger, exc, "llm.test.error")
+        return '<span class="status-badge status-error">Connection test failed</span>'
+
+
 @bp.route("/settings/test-docling-serve", methods=["POST"])
 def test_docling_serve():
     eff_url = _get_effective_url("docling_serve", "DOCLING_SERVE_URL")
@@ -379,12 +399,14 @@ def save_service_settings():
     anythingllm_url = request.form.get("anythingllm_url", "").strip()
     embedding_url = request.form.get("embedding_url", "").strip()
     pgvector_url = request.form.get("pgvector_url", "").strip()
+    llm_url = request.form.get("llm_url", "").strip()
 
     # Extract timeouts
     gotenberg_timeout = request.form.get("gotenberg_timeout", 0, type=int)
     tika_timeout = request.form.get("tika_timeout", 0, type=int)
     docling_serve_timeout = request.form.get("docling_serve_timeout", 0, type=int)
     embedding_timeout = request.form.get("embedding_timeout", 0, type=int)
+    llm_timeout = request.form.get("llm_timeout", 0, type=int)
 
     # Validate pgvector database URL length, scheme, + SSRF
     if pgvector_url and len(pgvector_url) > _MAX_URL_LENGTH:
@@ -417,6 +439,7 @@ def save_service_settings():
         ("RAGFlow", ragflow_url),
         ("AnythingLLM", anythingllm_url),
         ("Embedding", embedding_url),
+        ("LLM", llm_url),
     ]:
         if url and len(url) > _MAX_URL_LENGTH:
             return f'''
@@ -445,6 +468,7 @@ def save_service_settings():
         ("Tika", tika_timeout),
         ("Docling-serve", docling_serve_timeout),
         ("Embedding", embedding_timeout),
+        ("LLM", llm_timeout),
     ]:
         if timeout != 0 and not (1 <= timeout <= 600):
             return f'''
@@ -466,6 +490,8 @@ def save_service_settings():
         "embedding_url": embedding_url,
         "embedding_timeout": embedding_timeout,
         "pgvector_url": pgvector_url,
+        "llm_url": llm_url,
+        "llm_timeout": llm_timeout,
     })
 
     container.reset_services()
@@ -488,6 +514,16 @@ def save_pipeline_settings():
     tika_enrichment = request.form.get("tika_enrichment_enabled", "")
     tika_enrichment_value = "true" if tika_enrichment else "false"
 
+    # LLM enrichment settings
+    llm_enrichment = request.form.get("llm_enrichment_enabled", "")
+    llm_enrichment_value = "true" if llm_enrichment else "false"
+    contextual_enrichment = request.form.get("contextual_enrichment_enabled", "")
+    contextual_enrichment_value = "true" if contextual_enrichment else "false"
+    llm_enrichment_max_tokens = request.form.get("llm_enrichment_max_tokens", 0, type=int)
+    contextual_enrichment_window = request.form.get("contextual_enrichment_window", 0, type=int)
+    llm_backend = request.form.get("llm_backend", "")
+    llm_model = request.form.get("llm_model", "")
+
     # Embedding / chunking pipeline settings
     embedding_backend = request.form.get("embedding_backend", "")
     embedding_model = request.form.get("embedding_model", "")
@@ -506,6 +542,33 @@ def save_pipeline_settings():
         return f'''
             <div class="alert alert-danger">
                 Embedding model name exceeds maximum length of {_MAX_FIELD_LENGTH} characters.
+            </div>
+        '''
+    if llm_model and len(llm_model) > _MAX_FIELD_LENGTH:
+        return f'''
+            <div class="alert alert-danger">
+                LLM model name exceeds maximum length of {_MAX_FIELD_LENGTH} characters.
+            </div>
+        '''
+
+    # Range validation for LLM settings
+    if llm_enrichment_max_tokens != 0 and not (1000 <= llm_enrichment_max_tokens <= 128000):
+        return '''
+            <div class="alert alert-danger">
+                LLM max tokens must be 0 (use default) or between 1,000 and 128,000.
+            </div>
+        '''
+    if contextual_enrichment_window != 0 and not (1 <= contextual_enrichment_window <= 10):
+        return '''
+            <div class="alert alert-danger">
+                Contextual enrichment window must be 0 (use default) or between 1 and 10.
+            </div>
+        '''
+    if llm_backend and llm_backend not in Config.VALID_LLM_BACKENDS:
+        return f'''
+            <div class="alert alert-danger">
+                Invalid LLM backend: {escape(llm_backend)}.
+                Must be one of: {", ".join(Config.VALID_LLM_BACKENDS)}
             </div>
         '''
 
@@ -549,6 +612,12 @@ def save_pipeline_settings():
         "metadata_merge_strategy": metadata_merge_strategy,
         "filename_template": filename_template,
         "tika_enrichment_enabled": tika_enrichment_value,
+        "llm_backend": llm_backend,
+        "llm_model": llm_model,
+        "llm_enrichment_enabled": llm_enrichment_value,
+        "llm_enrichment_max_tokens": llm_enrichment_max_tokens,
+        "contextual_enrichment_enabled": contextual_enrichment_value,
+        "contextual_enrichment_window": contextual_enrichment_window,
         "embedding_backend": embedding_backend,
         "embedding_model": embedding_model,
         "chunking_strategy": chunking_strategy,

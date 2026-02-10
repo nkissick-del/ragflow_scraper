@@ -39,6 +39,10 @@ def settings_page():
     eff_embedding_url = _get_effective_url("embedding", "EMBEDDING_URL")
     eff_embedding_timeout = _get_effective_timeout("embedding", "EMBEDDING_TIMEOUT")
     eff_pgvector_url = _get_effective_url("pgvector", "DATABASE_URL")
+    eff_llm_url_direct = _get_effective_url("llm", "LLM_URL")
+    eff_llm_url = eff_llm_url_direct or _get_effective_url("embedding", "EMBEDDING_URL")
+    llm_url_is_fallback = not eff_llm_url_direct and bool(eff_llm_url)
+    eff_llm_timeout = _get_effective_timeout("llm", "LLM_TIMEOUT")
 
     # Effective backend selections
     eff_parser_backend = _get_effective_backend("parser")
@@ -146,6 +150,12 @@ def settings_page():
                 client.close()
         anythingllm_status = _check_service_status(_check_anythingllm, "anythingllm")
 
+    llm_status = "not_configured"
+    if eff_llm_url:
+        llm_status = _check_service_status(
+            lambda: container.llm_client.test_connection(), "llm"
+        )
+
     # Current pipeline settings (with Config fallback)
     pipeline_settings = current_settings.get("pipeline", {})
     current_merge_strategy = pipeline_settings.get("metadata_merge_strategy", "") or Config.METADATA_MERGE_STRATEGY
@@ -157,6 +167,19 @@ def settings_page():
         tika_enrichment_active = tika_enrichment_override == "true"
     else:
         tika_enrichment_active = Config.TIKA_ENRICHMENT_ENABLED
+
+    # LLM enrichment toggles
+    llm_enrichment_override = pipeline_settings.get("llm_enrichment_enabled", "")
+    if llm_enrichment_override != "":
+        llm_enrichment_active = llm_enrichment_override == "true"
+    else:
+        llm_enrichment_active = Config.LLM_ENRICHMENT_ENABLED
+
+    contextual_enrichment_override = pipeline_settings.get("contextual_enrichment_enabled", "")
+    if contextual_enrichment_override != "":
+        contextual_enrichment_active = contextual_enrichment_override == "true"
+    else:
+        contextual_enrichment_active = Config.CONTEXTUAL_ENRICHMENT_ENABLED
 
     log_event(
         logger,
@@ -200,5 +223,11 @@ def settings_page():
         eff_embedding_timeout=eff_embedding_timeout,
         eff_pgvector_url=eff_pgvector_url,
         tika_enrichment_active=tika_enrichment_active,
+        llm_status=llm_status,
+        llm_enrichment_active=llm_enrichment_active,
+        contextual_enrichment_active=contextual_enrichment_active,
+        eff_llm_url=eff_llm_url,
+        llm_url_is_fallback=llm_url_is_fallback,
+        eff_llm_timeout=eff_llm_timeout,
         scraper_names=ScraperRegistry.get_scraper_names(),
     )

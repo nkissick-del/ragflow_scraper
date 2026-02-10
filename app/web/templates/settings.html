@@ -610,6 +610,33 @@
                 </div>
 
                 <div class="setting-group">
+                    <label>LLM Service (Ollama / OpenAI-compatible)</label>
+                    <div class="setting-row">
+                        <div style="flex: 3">
+                            <input type="text" name="llm_url" class="input-field"
+                                   value="{{ settings.services.llm_url or '' }}"
+                                   placeholder="{{ config.LLM_URL or eff_embedding_url or 'http://localhost:11434' }}">
+                        </div>
+                        <div style="flex: 1">
+                            <input type="number" name="llm_timeout" class="input-field input-small"
+                                   value="{{ settings.services.llm_timeout or 0 }}"
+                                   min="0" max="600" placeholder="{{ config.LLM_TIMEOUT }}">
+                            <span class="text-muted text-small">timeout (s)</span>
+                        </div>
+                        <div id="llm-status">
+                            <span class="status-badge status-{{ llm_status }}">{{ llm_status | replace('_', ' ') }}</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                hx-post="{{ url_for('settings_api.test_llm') }}"
+                                hx-target="#llm-status"
+                                hx-swap="innerHTML">
+                            Test
+                        </button>
+                    </div>
+                    <p class="text-muted text-small">Leave blank to use Embedding Service URL (same Ollama server). API key remains in .env (LLM_API_KEY).</p>
+                </div>
+
+                <div class="setting-group">
                     <label>pgvector (PostgreSQL Database URL)</label>
                     <div class="setting-row">
                         <div style="flex: 3">
@@ -718,6 +745,78 @@
                         <br>
                         <span class="text-muted">Default from .env: <strong>{{ 'Enabled' if config.TIKA_ENRICHMENT_ENABLED else 'Disabled' }}</strong></span>
                     </p>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="llm_enrichment_enabled"
+                               {% if llm_enrichment_active %}checked{% endif %}>
+                        Enable LLM Document Enrichment (Tier 1)
+                    </label>
+                    <p class="text-muted text-small">
+                        When enabled, a local LLM extracts structured metadata (title, summary, keywords,
+                        entities, tags, document type) from each document after parsing.
+                        Requires an LLM service (Ollama or OpenAI-compatible API) to be configured.
+                        <br>
+                        <span class="text-muted">Default from .env: <strong>{{ 'Enabled' if config.LLM_ENRICHMENT_ENABLED else 'Disabled' }}</strong></span>
+                    </p>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="contextual_enrichment_enabled"
+                               {% if contextual_enrichment_active %}checked{% endif %}>
+                        Enable Contextual Chunk Enrichment (Tier 2)
+                    </label>
+                    <p class="text-muted text-small">
+                        When enabled, each chunk gets a contextual description prepended before embedding
+                        (Anthropic technique, ~35% retrieval improvement). Raw text is preserved for display.
+                        Requires an LLM service and pgvector RAG backend.
+                        <br>
+                        <span class="text-muted">Default from .env: <strong>{{ 'Enabled' if config.CONTEXTUAL_ENRICHMENT_ENABLED else 'Disabled' }}</strong></span>
+                    </p>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-group">
+                        <label for="llm-max-tokens">LLM Max Tokens</label>
+                        <input type="number" id="llm-max-tokens" name="llm_enrichment_max_tokens"
+                               class="input-field input-small"
+                               value="{{ settings.pipeline.llm_enrichment_max_tokens or 0 }}"
+                               min="0" max="128000" placeholder="{{ config.LLM_ENRICHMENT_MAX_TOKENS }}">
+                        <span class="text-muted text-small">0 = default ({{ config.LLM_ENRICHMENT_MAX_TOKENS }})</span>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="contextual-window">Contextual Enrichment Window</label>
+                        <input type="number" id="contextual-window" name="contextual_enrichment_window"
+                               class="input-field input-small"
+                               value="{{ settings.pipeline.contextual_enrichment_window or 0 }}"
+                               min="0" max="10" placeholder="{{ config.CONTEXTUAL_ENRICHMENT_WINDOW }}">
+                        <span class="text-muted text-small">0 = default ({{ config.CONTEXTUAL_ENRICHMENT_WINDOW }})</span>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label for="llm-backend">LLM Backend</label>
+                    <select id="llm-backend" name="llm_backend" class="input-field">
+                        <option value="" {% if not settings.pipeline.llm_backend %}selected{% endif %}>
+                            Default ({{ config.LLM_BACKEND }})
+                        </option>
+                        {% for backend in config.VALID_LLM_BACKENDS %}
+                        <option value="{{ backend }}"
+                                {% if settings.pipeline.llm_backend == backend %}selected{% endif %}>
+                            {{ backend }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label for="llm-model">LLM Model</label>
+                    <input type="text" id="llm-model" name="llm_model" class="input-field"
+                           value="{{ settings.pipeline.llm_model or '' }}"
+                           placeholder="{{ config.LLM_MODEL or 'llama3.1:8b' }}">
                 </div>
 
                 <div class="setting-group">

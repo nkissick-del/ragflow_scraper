@@ -153,11 +153,38 @@ def _get_existing_filenames(pgvector: PgVectorClient) -> set[str]:
     return existing
 
 
+def _apply_contextual_enrichment_backfill(chunks: list, content: str) -> list[str]:
+    """Apply contextual chunk enrichment via LLM for backfill."""
+    try:
+        from app.services.llm_client import create_llm_client
+        from app.services.document_enrichment import DocumentEnrichmentService
+
+        llm = create_llm_client(
+            backend=Config.LLM_BACKEND,
+            model=Config.LLM_MODEL,
+            url=Config.LLM_URL or Config.EMBEDDING_URL,
+            api_key=Config.LLM_API_KEY,
+            timeout=Config.LLM_TIMEOUT,
+        )
+        if not llm.is_configured():
+            print("  WARNING: LLM not configured, skipping enrichment")
+            return [c.content for c in chunks]
+
+        service = DocumentEnrichmentService(llm, max_tokens=Config.LLM_ENRICHMENT_MAX_TOKENS)
+        return service.enrich_chunks(
+            chunks, content, window=Config.CONTEXTUAL_ENRICHMENT_WINDOW
+        )
+    except Exception as e:
+        print(f"  WARNING: Contextual enrichment failed, using raw content: {e}")
+        return [c.content for c in chunks]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Backfill pgvector from Paperless-ngx")
     parser.add_argument("--source", default=None, help="Source name for pgvector partition (default: correspondent name or 'paperless')")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without storing")
     parser.add_argument("--skip-existing", action="store_true", help="Skip documents already in pgvector")
+    parser.add_argument("--enrich", action="store_true", help="Enable contextual chunk enrichment via LLM")
     args = parser.parse_args()
 
     # Configuration — validate before using string methods
@@ -173,6 +200,9 @@ def main():
     if not Config.EMBEDDING_URL:
         print("ERROR: EMBEDDING_URL not configured")
         sys.exit(1)
+
+    if args.enrich and not Config.LLM_URL:
+        print("WARNING: --enrich specified but LLM_URL not configured; falling back to EMBEDDING_URL")
 
     paperless_url = Config.PAPERLESS_API_URL.rstrip("/")
     paperless_token = Config.PAPERLESS_API_TOKEN
@@ -292,8 +322,13 @@ def main():
                     skipped += 1
                     continue
 
+                # Optional contextual enrichment
+                if args.enrich:
+                    texts = _apply_contextual_enrichment_backfill(chunks, content)
+                else:
+                    texts = [c.content for c in chunks]
+
                 # Embed
-                texts = [c.content for c in chunks]
                 embedding_result = embedder.embed(texts)
 
                 if len(embedding_result.embeddings) != len(chunks):

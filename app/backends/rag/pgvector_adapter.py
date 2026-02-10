@@ -102,8 +102,10 @@ class PgVectorRAGBackend(RAGBackend):
                     rag_name=self.name,
                 )
 
+            # Contextual enrichment (optional — enriched text for embedding only)
+            texts = self._apply_contextual_enrichment(chunks, text)
+
             # Embed
-            texts = [c.content for c in chunks]
             embedding_result = self._embedder.embed(texts)
 
             if not embedding_result.embeddings:
@@ -158,3 +160,58 @@ class PgVectorRAGBackend(RAGBackend):
             error_msg = f"pgvector ingestion failed: {e}"
             self.logger.error(error_msg)
             return RAGResult(success=False, error=error_msg, rag_name=self.name)
+
+    def _apply_contextual_enrichment(
+        self,
+        chunks: list,
+        full_text: str,
+    ) -> list[str]:
+        """Apply contextual enrichment to chunks if enabled.
+
+        Returns enriched text for embedding. Raw chunk.content is still
+        stored in the database (line 129 in store loop).
+
+        Args:
+            chunks: List of Chunk objects
+            full_text: Full document text
+
+        Returns:
+            List of text strings for embedding
+        """
+        from app.config import Config
+
+        enabled = getattr(Config, "CONTEXTUAL_ENRICHMENT_ENABLED", False)
+
+        # Check settings override
+        try:
+            from app.container import get_container
+            override = get_container().settings.get(
+                "pipeline.contextual_enrichment_enabled", ""
+            )
+            if override != "":
+                enabled = override.lower() == "true"
+        except Exception:
+            pass
+
+        if not enabled:
+            return [c.content for c in chunks]
+
+        try:
+            from app.container import get_container
+            from app.services.document_enrichment import DocumentEnrichmentService
+
+            container = get_container()
+            llm_client = container.llm_client
+            if not llm_client.is_configured():
+                self.logger.debug("LLM client not configured, skipping contextual enrichment")
+                return [c.content for c in chunks]
+
+            window = getattr(Config, "CONTEXTUAL_ENRICHMENT_WINDOW", 3)
+            max_tokens = getattr(Config, "LLM_ENRICHMENT_MAX_TOKENS", 8000)
+            service = DocumentEnrichmentService(llm_client, max_tokens=max_tokens)
+            return service.enrich_chunks(chunks, full_text, window=window)
+        except Exception as e:
+            self.logger.warning(
+                f"Contextual enrichment failed, using raw content: {e}"
+            )
+            return [c.content for c in chunks]

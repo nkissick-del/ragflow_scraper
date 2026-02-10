@@ -485,6 +485,9 @@ class Pipeline:
         # Tika enrichment (optional, after parse, before archive)
         self._run_tika_enrichment(file_path, parse_metadata, doc_type)
 
+        # LLM enrichment (optional, after parse, before archive)
+        self._run_llm_enrichment(md_path, parse_metadata)
+
         return md_path, parse_metadata
 
     def _prepare_archive_file(
@@ -698,6 +701,74 @@ class Pipeline:
                     self.logger.warning(
                         f"Tika enrichment failed (non-fatal): {e}"
                     )
+
+    def _run_llm_enrichment(self, md_path: Path, parse_metadata: dict):
+        """Run optional LLM metadata enrichment (fill-gaps strategy)."""
+        enrichment_enabled = Config.LLM_ENRICHMENT_ENABLED
+        override = self.container.settings.get("pipeline.llm_enrichment_enabled", "")
+        if override != "":
+            enrichment_enabled = override.lower() == "true"
+
+        if not enrichment_enabled:
+            return
+
+        try:
+            llm_client = self.container.llm_client
+            if not llm_client.is_configured():
+                self.logger.debug("LLM client not configured, skipping enrichment")
+                return
+
+            from app.services.document_enrichment import DocumentEnrichmentService
+
+            max_tokens = Config.LLM_ENRICHMENT_MAX_TOKENS
+            service = DocumentEnrichmentService(llm_client, max_tokens=max_tokens)
+            enriched = service.enrich_metadata(md_path)
+
+            if not enriched:
+                return
+
+            # Fill-gaps merge for direct fields
+            for key in ("title", "document_type"):
+                if key in enriched and key not in parse_metadata:
+                    parse_metadata[key] = enriched[key]
+
+            # Store LLM-specific fields in extra dict
+            if "extra" not in parse_metadata:
+                parse_metadata["extra"] = {}
+
+            for src_key, dest_key in [
+                ("summary", "llm_summary"),
+                ("keywords", "llm_keywords"),
+                ("entities", "llm_entities"),
+                ("key_topics", "llm_topics"),
+            ]:
+                if src_key in enriched:
+                    value = enriched[src_key]
+                    # Convert lists to comma-separated strings for Paperless custom fields
+                    if isinstance(value, list):
+                        value = ", ".join(str(v) for v in value)
+                    parse_metadata["extra"][dest_key] = value
+
+            # Merge suggested_tags into tags list (deduped)
+            suggested_tags = enriched.get("suggested_tags", [])
+            if suggested_tags and isinstance(suggested_tags, list):
+                existing_tags = parse_metadata.get("tags", [])
+                if not isinstance(existing_tags, list):
+                    self.logger.debug(
+                        "Existing tags not a list (type: %s), resetting to empty list",
+                        type(existing_tags).__name__,
+                    )
+                    existing_tags = []
+                existing_lower = {t.lower() for t in existing_tags}
+                for tag in suggested_tags:
+                    if isinstance(tag, str) and tag.lower() not in existing_lower:
+                        existing_tags.append(tag)
+                        existing_lower.add(tag.lower())
+                parse_metadata["tags"] = existing_tags
+
+            self.logger.info("LLM enrichment applied")
+        except Exception as e:
+            self.logger.warning(f"LLM enrichment failed (non-fatal): {e}")
 
     @staticmethod
     def _text_to_markdown(text: str, title: str | None = None) -> str:

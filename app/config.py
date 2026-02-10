@@ -202,6 +202,24 @@ class Config:
     )
     TIKA_ENRICHMENT_ENABLED = os.getenv("TIKA_ENRICHMENT_ENABLED", "false").lower() == "true"
 
+    # LLM service (document enrichment & contextual embeddings)
+    VALID_LLM_BACKENDS = ("ollama", "openai", "api")
+    LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama").strip().lower()
+    LLM_MODEL = os.getenv("LLM_MODEL", "llama3.1:8b")
+    LLM_URL = os.getenv("LLM_URL", "")
+    LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+    LLM_TIMEOUT = _parse_timeout(
+        os.getenv("LLM_TIMEOUT", "120"), "LLM_TIMEOUT", min_val=30, max_val=600
+    )
+    LLM_ENRICHMENT_ENABLED = os.getenv("LLM_ENRICHMENT_ENABLED", "false").lower() == "true"
+    LLM_ENRICHMENT_MAX_TOKENS = _parse_int(
+        os.getenv("LLM_ENRICHMENT_MAX_TOKENS", "8000"), "LLM_ENRICHMENT_MAX_TOKENS"
+    )
+    CONTEXTUAL_ENRICHMENT_ENABLED = os.getenv("CONTEXTUAL_ENRICHMENT_ENABLED", "false").lower() == "true"
+    CONTEXTUAL_ENRICHMENT_WINDOW = _parse_int(
+        os.getenv("CONTEXTUAL_ENRICHMENT_WINDOW", "3"), "CONTEXTUAL_ENRICHMENT_WINDOW"
+    )
+
     # Embedding service
     VALID_EMBEDDING_BACKENDS = ("ollama", "openai", "api")
     EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "ollama").strip().lower()
@@ -446,6 +464,27 @@ class Config:
             raise ValueError(
                 f"Invalid Config: EMBEDDING_DIMENSIONS ({cls.EMBEDDING_DIMENSIONS}) "
                 "must be between 1 and 8192"
+            )
+
+        if cls.LLM_BACKEND not in cls.VALID_LLM_BACKENDS:
+            raise ValueError(
+                f"Invalid LLM_BACKEND '{cls.LLM_BACKEND}'. "
+                f"Must be one of: {', '.join(cls.VALID_LLM_BACKENDS)}"
+            )
+
+        if cls.LLM_BACKEND in ("openai", "api") and not cls.LLM_URL:
+            raise ValueError(
+                f"Invalid Config: LLM_BACKEND='{cls.LLM_BACKEND}' requires LLM_URL"
+            )
+
+        if cls.LLM_ENRICHMENT_MAX_TOKENS < 1:
+            raise ValueError(
+                f"Invalid Config: LLM_ENRICHMENT_MAX_TOKENS ({cls.LLM_ENRICHMENT_MAX_TOKENS}) must be >= 1"
+            )
+
+        if cls.CONTEXTUAL_ENRICHMENT_WINDOW < 1:
+            raise ValueError(
+                f"Invalid Config: CONTEXTUAL_ENRICHMENT_WINDOW ({cls.CONTEXTUAL_ENRICHMENT_WINDOW}) must be >= 1"
             )
 
         # Validate FILENAME_TEMPLATE (basic Jinja2 syntax check)

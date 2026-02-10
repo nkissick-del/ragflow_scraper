@@ -126,36 +126,80 @@ Address code smells and duplication identified in audit.
 
 ---
 
-## 7. pgvector RAG Enhancements (Medium)
+## 7. LLM-Powered Document Enrichment (Medium)
 
-**Priority:** MEDIUM | **Effort:** 3-4h | **Type:** [Code]
+**Priority:** MEDIUM | **Effort:** 6-8h | **Type:** [Code]
 
-Improvements to RAG retrieval quality, informed by [pgai](https://github.com/timescale/pgai) vectorizer patterns. Currently chunks are embedded as raw text only; metadata (title, source, date) is stored in JSONB but invisible to the embedding model.
+Two-tier LLM enrichment using local Ollama models (7-8B params, 128k context). Replaces the original static metadata injection approach, which was evaluated and rejected — prepending fixed `Source: AEMO` / `Date: 2024-03-15` to every chunk would shift embeddings toward boilerplate metadata rather than domain content, creating noise especially for large documents (e.g., AEMO ISP with 400+ chunks all biased toward "AEMO"). See [Anthropic Contextual Embeddings](https://platform.claude.com/cookbook/capabilities-contextual-embeddings-guide) (35% retrieval failure reduction), [Microsoft RAG Enrichment](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/rag/rag-enrichment-phase), [pgai Formatting Strategies](https://www.tigerdata.com/blog/which-rag-chunking-and-formatting-strategy-is-best).
 
-### Chunk formatting — templated metadata injection (high value)
+**Current metadata sources:** scraper (HTML page context: URL, org, date) and parser (document structure: Dublin Core, filename). Neither actually *reads* the content. A local LLM adds a third source that understands the document.
 
-Inject document metadata into chunk text **after chunking but before embedding**, so the embedding model encodes contextual signals. Improves retrieval for queries like "AEMO policy documents from 2024" or "RenewEconomy articles about hydrogen".
+### Tier 1 — Document-level metadata extraction (one LLM call per document)
 
-- [ ] **`ChunkFormatter` class** — new module (`app/services/chunk_formatter.py`) using `string.Template` with `safe_substitute()`. Receives `list[Chunk]` + document metadata dict, returns formatted chunks. Default template: `$chunk` (no-op, backward-compatible)
-- [ ] **Integration into pgvector adapter** — insert formatting step in `PgVectorRAGBackend.ingest_document()` between chunking (line 106) and embedding. Formatted text used for embedding; raw text preserved in `content` column for display
-- [ ] **`CHUNK_FORMATTING_TEMPLATE` env var** — configurable template with `$chunk`, `$title`, `$organization`, `$publication_date`, `$source_url`, `$heading_context` placeholders. Settings UI textarea in embedding/chunking config section
-- [ ] **Backfill support** — `scripts/backfill_vectors.py` applies formatting template when re-ingesting existing documents
-- [ ] **Unit tests** — template substitution, missing keys handled by `safe_substitute`, empty/default template, integration with existing chunking tests
+Pass full markdown to a local 7B model (e.g., `qwen2.5:7b`, `llama3.1:8b` via Ollama). Extract structured metadata that feeds into **both** Paperless filing and JSONB search metadata. Slots into pipeline between parsing and metadata merge — the existing `METADATA_MERGE_STRATEGY` handles multi-source merging.
 
-**Suggested templates:**
 ```
-# Minimal — just title context
-$title
-
-$chunk
-
-# Full metadata block
-Source: $organization
-Title: $title
-Date: $publication_date
-
-$chunk
+Pipeline flow:
+  Scraper → Parser → [NEW: LLM enrichment] → Metadata merge → Filename gen → Archive → Chunk → Embed → Store
+                                                    ↑
+                          3 sources: scraper + parser + LLM
 ```
+
+**Structured output per document:**
+```json
+{
+  "title": "2024 Integrated System Plan",
+  "summary": "AEMO's 30-year roadmap for the National Electricity Market...",
+  "document_type": "Strategic Plan",
+  "keywords": ["NEM", "renewable energy", "grid investment", "demand forecast"],
+  "entities": ["AEMO", "AEMC", "AER", "National Electricity Rules"],
+  "suggested_tags": ["ISP", "Long-term Planning"],
+  "publication_date_confirmed": "2024-06-28"
+}
+```
+
+- [ ] **`DocumentEnricher` class** — new module (`app/services/document_enricher.py`). Calls Ollama chat completion with structured prompt + full markdown. Parses JSON response. Falls back gracefully on LLM failure (non-fatal, pipeline continues with scraper+parser metadata only)
+- [ ] **`LLM_ENRICHMENT_ENABLED` env var** — default `false` (zero-cost if disabled, backward-compatible). `LLM_ENRICHMENT_MODEL` defaults to embedding model. `LLM_ENRICHMENT_URL` defaults to embedding URL
+- [ ] **Integration into pipeline** — call in `Pipeline._process_document()` after parsing, before metadata merge. Add `"llm"` as a metadata source in merge strategy
+- [ ] **Paperless integration** — LLM-extracted `suggested_tags`, `document_type`, and `title` used for Paperless tag resolution, custom fields, and filename template
+- [ ] **JSONB enrichment** — `keywords`, `entities`, `summary` stored in chunk JSONB metadata for GIN-indexed search filtering
+- [ ] **Settings UI** — enable/disable toggle, model selection (from Ollama model list), prompt template textarea
+- [ ] **Unit tests** — structured output parsing, LLM failure fallback, merge with existing metadata, Paperless tag mapping
+
+### Tier 2 — Chunk-level contextual enrichment (one LLM call per chunk)
+
+Anthropic's [contextual embeddings](https://platform.claude.com/cookbook/capabilities-contextual-embeddings-guide) technique: generate a unique 2-3 sentence description situating each chunk within its document, prepended before embedding. Unlike static metadata (identical across all chunks), each description is unique and semantically rich.
+
+**Two-tier context strategy based on document size:**
+- **Short documents** (<8k tokens): pass full document + chunk to LLM
+- **Long documents** (≥8k tokens): pass document outline (built from `heading_context` already extracted during chunking) + surrounding chunks
+
+**Example output for an ISP chunk:**
+```
+This chunk describes projected electricity demand scenarios for
+2030 from AEMO's Integrated System Plan, specifically the "Step
+Change" scenario's impact on grid infrastructure investment.
+
+[original chunk text preserved below]
+The projected electricity demand for 2030...
+```
+
+- [ ] **`ContextualEnricher` class** — new module or method in `document_enricher.py`. Calls Ollama per chunk with document context + chunk text. Returns situating description
+- [ ] **Outline builder** — extracts document outline from markdown headings (reuse `heading_context` detection from `FixedChunker`). Used as compressed context for long documents
+- [ ] **Integration into pgvector adapter** — insert between chunking and embedding in `PgVectorRAGBackend.ingest_document()`. Enriched text used for embedding; raw `content` preserved in column for display
+- [ ] **`CONTEXTUAL_ENRICHMENT_ENABLED` env var** — separate from Tier 1 (can enable document-level without chunk-level). Default `false`
+- [ ] **Backfill support** — `scripts/backfill_vectors.py` applies contextual enrichment when re-ingesting
+- [ ] **Unit tests** — context generation, outline extraction, long/short document strategy, enrichment failure fallback, embedding uses enriched text while storage uses raw text
+
+### Performance budget
+
+| Step | Calls | Time (7B model) | Notes |
+|------|-------|------------------|-------|
+| Tier 1: Document metadata | 1 per document | ~2-3s | Full markdown → structured JSON |
+| Tier 2: Chunk context | 1 per chunk | ~1-2s/chunk | 400 chunks (ISP) ≈ 10-13 min |
+| Embedding (existing) | 1 batch per document | ~5-10s | Unchanged, batch_size=32 |
+
+Both tiers use the same Ollama instance already deployed for embeddings. Both are non-fatal — LLM failure falls back to current behavior.
 
 ### Already covered by existing implementation
 
@@ -165,12 +209,14 @@ These pgai concepts were evaluated but are already present in the stack:
 - **Declarative pipeline stages** — backend registry provides composable parse → chunk → embed → store pipeline with env var + Settings UI configuration (Phase 7.4)
 - **Async processing** — job queue backgrounds scraping/ingestion; embedding runs within backgrounded pipeline (Phase 7.4)
 
-### Deferred (pgai concepts evaluated, not adopted)
+### Deferred (evaluated, not adopted)
 
-- **`VectorizerConfig` dataclass** — existing backend registry + env vars + Settings UI already provides equivalent configurability; a wrapper dataclass adds indirection without clear benefit. Revisit if pipeline stages need per-invocation overrides
-- **Per-scraper pipeline configs** — all scrapers share the same embedding/chunking config, appropriate for a single-domain energy policy corpus. Per-scraper configs would add complexity for a hypothetical future need (e.g., different chunk sizes for regulatory PDFs vs. news articles)
-- **Incremental re-indexing on content change** — documents are ingested once and rarely change post-ingestion. The backfill script (`--skip-existing` flag) handles re-ingestion when needed. Building change-detection infrastructure (triggers, hash comparison, update propagation) is over-engineering for current volumes
-- **Separate embedding worker process** — adds operational complexity (another container to manage, health-check, restart) for marginal throughput gain at current document volumes (~hundreds, not millions). The job queue already serializes pipeline runs. Revisit if embedding latency becomes a bottleneck
+- **Static metadata injection (`ChunkFormatter`)** — original Section 7 approach. Rejected: prepending identical `Source: AEMO` / `Title: ...` / `Date: ...` to every chunk pollutes embeddings with boilerplate, creates false positives (queries matching metadata prefix not content), and is redundant with existing JSONB filtering. LLM-generated contextual descriptions (Tier 2) achieve the same goal without the noise
+- **Pre-generated questions per chunk** — "What questions does this chunk answer?" as a secondary embedding vector. Valuable for question-form queries but adds a second vector column and doubles embedding storage. Revisit after Tier 2 proves out
+- **`VectorizerConfig` dataclass** — existing backend registry + env vars + Settings UI already provides equivalent configurability
+- **Per-scraper pipeline configs** — all scrapers share the same config, appropriate for a single-domain energy policy corpus
+- **Incremental re-indexing on content change** — documents are ingested once and rarely change. Backfill script handles re-ingestion
+- **Separate embedding worker process** — adds operational complexity for marginal throughput gain at current volumes
 
 ---
 

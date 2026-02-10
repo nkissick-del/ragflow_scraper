@@ -26,6 +26,10 @@ CUSTOM_FIELD_MAPPING: dict[str, tuple[str, str]] = {
     "file_size": ("File Size", "integer"),
     "source_page": ("Source Page", "url"),
     "scraper_name": ("Scraper Name", "string"),
+    "llm_summary": ("LLM Summary", "string"),
+    "llm_keywords": ("LLM Keywords", "string"),
+    "llm_entities": ("LLM Entities", "string"),
+    "llm_topics": ("LLM Topics", "string"),
 }
 
 
