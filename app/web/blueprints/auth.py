@@ -39,7 +39,7 @@ def enforce_basic_auth():
         )
 
     endpoint = (request.endpoint or "").split(".")[-1]
-    if endpoint == "static":
+    if endpoint in ("static", "health"):
         return None
 
     auth_header = request.headers.get("Authorization", "")

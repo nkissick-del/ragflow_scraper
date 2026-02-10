@@ -50,6 +50,11 @@ def create_app() -> Flask:
     from app.web.blueprints.search import bp as search_bp
     csrf.exempt(search_bp)
 
+    @app.route("/health")
+    def health():
+        """Health check endpoint (exempt from basic auth)."""
+        return jsonify({"status": "ok"}), 200
+
     @app.after_request
     def add_security_headers(response):
         response.headers["X-Content-Type-Options"] = "nosniff"
