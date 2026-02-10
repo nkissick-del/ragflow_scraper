@@ -37,8 +37,9 @@ def _set_context_date_from_dt(context: dict[str, str], dt: datetime) -> None:
     context["day"] = dt.strftime("%d")
 
 
-# Standard chunk size for file I/O operations (64KB)
-CHUNK_SIZE = 65536
+# Standard chunk size for file I/O operations (1MB)
+# Optimized for modern SSDs and network throughput
+CHUNK_SIZE = 1048576
 
 
 def sanitize_filename(filename: str, max_length: int = 200) -> str:
