@@ -126,70 +126,29 @@ Address code smells and duplication identified in audit.
 
 ---
 
-## 7. LLM-Powered Document Enrichment (Medium)
+## 7. LLM-Powered Document Enrichment ~~(Medium)~~ DONE
 
-**Priority:** MEDIUM | **Effort:** 6-8h | **Type:** [Code]
+**Priority:** ~~MEDIUM~~ DONE | **Effort:** ~~6-8h~~ 0 | **Type:** [Code]
 
-Two-tier LLM enrichment using local Ollama models (7-8B params, 128k context). Replaces the original static metadata injection approach, which was evaluated and rejected — prepending fixed `Source: AEMO` / `Date: 2024-03-15` to every chunk would shift embeddings toward boilerplate metadata rather than domain content, creating noise especially for large documents (e.g., AEMO ISP with 400+ chunks all biased toward "AEMO"). See [Anthropic Contextual Embeddings](https://platform.claude.com/cookbook/capabilities-contextual-embeddings-guide) (35% retrieval failure reduction), [Microsoft RAG Enrichment](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/rag/rag-enrichment-phase), [pgai Formatting Strategies](https://www.tigerdata.com/blog/which-rag-chunking-and-formatting-strategy-is-best).
+Two-tier LLM enrichment using local Ollama models (7-8B params, 128k context). Uses the same Ollama instance already deployed for embeddings. Both tiers optional (default off), non-fatal on failure.
 
-**Current metadata sources:** scraper (HTML page context: URL, org, date) and parser (document structure: Dublin Core, filename). Neither actually *reads* the content. A local LLM adds a third source that understands the document.
+### Tier 1 — Document-level metadata extraction DONE
 
-### Tier 1 — Document-level metadata extraction (one LLM call per document)
+- [x] **`LLMClient` ABC + implementations** — `app/services/llm_client.py`: `OllamaLLMClient` (POST `/api/chat`), `APILLMClient` (POST `/v1/chat/completions`), `create_llm_client()` factory. Mirrors `embedding_client.py` pattern
+- [x] **`DocumentEnrichmentService`** — `app/services/document_enrichment.py`: `enrich_metadata()` reads markdown, truncates to token limit, calls LLM with structured JSON prompt. Returns dict or None on failure
+- [x] **Config env vars** — `LLM_BACKEND`, `LLM_MODEL`, `LLM_URL` (falls back to `EMBEDDING_URL`), `LLM_API_KEY`, `LLM_TIMEOUT`, `LLM_ENRICHMENT_ENABLED`, `LLM_ENRICHMENT_MAX_TOKENS`. Validation in `Config.validate()`
+- [x] **`llm_client` property in ServiceContainer** — lazy-loading, URL fallback to `EMBEDDING_URL`, added to `reset_services()`
+- [x] **Pipeline integration** — `_run_llm_enrichment()` after `_run_tika_enrichment()`, fill-gaps merge (title, document_type), tags dedup, list→string conversion for Paperless custom fields
+- [x] **Paperless custom fields** — 4 new `CUSTOM_FIELD_MAPPING` entries: LLM Summary, LLM Keywords, LLM Entities, LLM Topics
+- [x] **Settings UI** — LLM Enrichment section in Pipeline Settings (toggles, backend, model, max tokens, window) + LLM service row in Services card (URL, timeout, test button, status badge)
+- [x] **Unit tests** — 30 tests (`test_llm_client.py`), 17 tests (`test_document_enrichment.py`), 10 tests (`test_pipeline_llm_enrichment.py`)
 
-Pass full markdown to a local 7B model (e.g., `qwen2.5:7b`, `llama3.1:8b` via Ollama). Extract structured metadata that feeds into **both** Paperless filing and JSONB search metadata. Slots into pipeline between parsing and metadata merge — the existing `METADATA_MERGE_STRATEGY` handles multi-source merging.
+### Tier 2 — Chunk-level contextual enrichment DONE
 
-```
-Pipeline flow:
-  Scraper → Parser → [NEW: LLM enrichment] → Metadata merge → Filename gen → Archive → Chunk → Embed → Store
-                                                    ↑
-                          3 sources: scraper + parser + LLM
-```
-
-**Structured output per document:**
-```json
-{
-  "title": "2024 Integrated System Plan",
-  "summary": "AEMO's 30-year roadmap for the National Electricity Market...",
-  "document_type": "Strategic Plan",
-  "keywords": ["NEM", "renewable energy", "grid investment", "demand forecast"],
-  "entities": ["AEMO", "AEMC", "AER", "National Electricity Rules"],
-  "suggested_tags": ["ISP", "Long-term Planning"],
-  "publication_date_confirmed": "2024-06-28"
-}
-```
-
-- [ ] **`DocumentEnricher` class** — new module (`app/services/document_enricher.py`). Calls Ollama chat completion with structured prompt + full markdown. Parses JSON response. Falls back gracefully on LLM failure (non-fatal, pipeline continues with scraper+parser metadata only)
-- [ ] **`LLM_ENRICHMENT_ENABLED` env var** — default `false` (zero-cost if disabled, backward-compatible). `LLM_ENRICHMENT_MODEL` defaults to embedding model. `LLM_ENRICHMENT_URL` defaults to embedding URL
-- [ ] **Integration into pipeline** — call in `Pipeline._process_document()` after parsing, before metadata merge. Add `"llm"` as a metadata source in merge strategy
-- [ ] **Paperless integration** — LLM-extracted `suggested_tags`, `document_type`, and `title` used for Paperless tag resolution, custom fields, and filename template
-- [ ] **JSONB enrichment** — `keywords`, `entities`, `summary` stored in chunk JSONB metadata for GIN-indexed search filtering
-- [ ] **Settings UI** — enable/disable toggle, model selection (from Ollama model list), prompt template textarea
-- [ ] **Unit tests** — structured output parsing, LLM failure fallback, merge with existing metadata, Paperless tag mapping
-
-### Tier 2 — Chunk-level contextual enrichment (one LLM call per chunk)
-
-Anthropic's [contextual embeddings](https://platform.claude.com/cookbook/capabilities-contextual-embeddings-guide) technique: generate a unique 2-3 sentence description situating each chunk within its document, prepended before embedding. Unlike static metadata (identical across all chunks), each description is unique and semantically rich.
-
-**Two-tier context strategy based on document size:**
-- **Short documents** (<8k tokens): pass full document + chunk to LLM
-- **Long documents** (≥8k tokens): pass document outline (built from `heading_context` already extracted during chunking) + surrounding chunks
-
-**Example output for an ISP chunk:**
-```
-This chunk describes projected electricity demand scenarios for
-2030 from AEMO's Integrated System Plan, specifically the "Step
-Change" scenario's impact on grid infrastructure investment.
-
-[original chunk text preserved below]
-The projected electricity demand for 2030...
-```
-
-- [ ] **`ContextualEnricher` class** — new module or method in `document_enricher.py`. Calls Ollama per chunk with document context + chunk text. Returns situating description
-- [ ] **Outline builder** — extracts document outline from markdown headings (reuse `heading_context` detection from `FixedChunker`). Used as compressed context for long documents
-- [ ] **Integration into pgvector adapter** — insert between chunking and embedding in `PgVectorRAGBackend.ingest_document()`. Enriched text used for embedding; raw `content` preserved in column for display
-- [ ] **`CONTEXTUAL_ENRICHMENT_ENABLED` env var** — separate from Tier 1 (can enable document-level without chunk-level). Default `false`
-- [ ] **Backfill support** — `scripts/backfill_vectors.py` applies contextual enrichment when re-ingesting
-- [ ] **Unit tests** — context generation, outline extraction, long/short document strategy, enrichment failure fallback, embedding uses enriched text while storage uses raw text
+- [x] **`enrich_chunks()` method** — in `DocumentEnrichmentService`. Short docs: full text context. Long docs: outline + surrounding chunks (windowed). Per-chunk fallback on failure
+- [x] **`_apply_contextual_enrichment()` in pgvector adapter** — enriched texts used for embedding, raw `chunk.content` preserved for storage. Config + settings override toggle
+- [x] **Backfill support** — `scripts/backfill_vectors.py` `--enrich` flag with `_apply_contextual_enrichment_backfill()` helper
+- [x] **Unit tests** — 8 tests (`test_contextual_enrichment.py`): toggle on/off, settings override, LLM not configured, failure fallback, enriched vs raw storage
 
 ### Performance budget
 
@@ -199,24 +158,11 @@ The projected electricity demand for 2030...
 | Tier 2: Chunk context | 1 per chunk | ~1-2s/chunk | 400 chunks (ISP) ≈ 10-13 min |
 | Embedding (existing) | 1 batch per document | ~5-10s | Unchanged, batch_size=32 |
 
-Both tiers use the same Ollama instance already deployed for embeddings. Both are non-fatal — LLM failure falls back to current behavior.
-
-### Already covered by existing implementation
-
-These pgai concepts were evaluated but are already present in the stack:
-
-- **Structured metadata storage** — `document_chunks` table has `metadata JSONB` with GIN index, `source`/`filename`/`chunk_index` columns, HNSW cosine similarity index, source-level partitioning (Phase 7.3)
-- **Declarative pipeline stages** — backend registry provides composable parse → chunk → embed → store pipeline with env var + Settings UI configuration (Phase 7.4)
-- **Async processing** — job queue backgrounds scraping/ingestion; embedding runs within backgrounded pipeline (Phase 7.4)
-
 ### Deferred (evaluated, not adopted)
 
-- **Static metadata injection (`ChunkFormatter`)** — original Section 7 approach. Rejected: prepending identical `Source: AEMO` / `Title: ...` / `Date: ...` to every chunk pollutes embeddings with boilerplate, creates false positives (queries matching metadata prefix not content), and is redundant with existing JSONB filtering. LLM-generated contextual descriptions (Tier 2) achieve the same goal without the noise
-- **Pre-generated questions per chunk** — "What questions does this chunk answer?" as a secondary embedding vector. Valuable for question-form queries but adds a second vector column and doubles embedding storage. Revisit after Tier 2 proves out
-- **`VectorizerConfig` dataclass** — existing backend registry + env vars + Settings UI already provides equivalent configurability
-- **Per-scraper pipeline configs** — all scrapers share the same config, appropriate for a single-domain energy policy corpus
-- **Incremental re-indexing on content change** — documents are ingested once and rarely change. Backfill script handles re-ingestion
-- **Separate embedding worker process** — adds operational complexity for marginal throughput gain at current volumes
+- **Static metadata injection (`ChunkFormatter`)** — original Section 7 approach. Rejected: prepending identical `Source: AEMO` / `Title: ...` / `Date: ...` to every chunk pollutes embeddings with boilerplate
+- **Pre-generated questions per chunk** — doubles embedding storage. Revisit after Tier 2 proves out
+- **Async Tier 2 processing** — CodeRabbit identified Tier 2 as a potential bottleneck for large documents (10-13 min for 400 chunks). Future improvement: queue chunk enrichment as background job with progress tracking
 
 ---
 
@@ -427,22 +373,42 @@ Closed all 6 TODO Section 6 items. 24 new tests (32 new mixin tests, offset by r
 
 </details>
 
+<details>
+<summary>Phase 13 (2026-02-10) — LLM-Powered Document Enrichment</summary>
+
+Closed all TODO Section 7 items. 74 new tests across 4 test files (+ 3 existing tests updated). Two CodeRabbit review passes: 5→3→0 findings. CI fully green.
+
+- **LLM Client** — `app/services/llm_client.py`: `LLMResult` dataclass, `LLMClient` ABC, `OllamaLLMClient` (POST `/api/chat`), `APILLMClient` (POST `/v1/chat/completions`), `create_llm_client()` factory. Mirrors `embedding_client.py` pattern
+- **Document Enrichment** — `app/services/document_enrichment.py`: `DocumentEnrichmentService` with `enrich_metadata()` (Tier 1 JSON) and `enrich_chunks()` (Tier 2 plain-text context). Logger in `__init__` not module level
+- **Config** — 10 env vars (LLM_BACKEND, LLM_MODEL, LLM_URL, LLM_API_KEY, LLM_TIMEOUT, LLM_ENRICHMENT_ENABLED, LLM_ENRICHMENT_MAX_TOKENS, CONTEXTUAL_ENRICHMENT_ENABLED, CONTEXTUAL_ENRICHMENT_WINDOW, VALID_LLM_BACKENDS). Validation in `Config.validate()`
+- **Container** — `llm_client` property with URL fallback `LLM_URL → settings → EMBEDDING_URL`
+- **Pipeline** — `_run_llm_enrichment()` after `_run_tika_enrichment()`, fill-gaps merge, tags dedup, list→string for custom fields
+- **Paperless** — 4 new CUSTOM_FIELD_MAPPING entries (LLM Summary, Keywords, Entities, Topics)
+- **pgvector** — `_apply_contextual_enrichment()` enriched texts for embedding, raw content for storage
+- **Backfill** — `--enrich` flag in `scripts/backfill_vectors.py`
+- **Settings UI** — LLM Enrichment section (toggles, backend, model, max tokens, window) + LLM service row (URL, timeout, test, status)
+- **CodeRabbit fixes** — case-insensitive boolean parsing, Config.validate() for LLM, context size safety margin, backfill URL warning, no-op test assertion
+- **1008→1085 tests**, pyright 0 errors, ruff 0 findings, CodeRabbit 0 findings
+
+</details>
+
 ---
 
 ## Current State
 
-- **1008 unit/integration tests passing** (all green locally; stack tests excluded from default collection)
+- **1085 unit/integration tests passing** (all green locally and CI; stack tests excluded from default collection)
 - **20+ stack tests** against live services (Paperless, AnythingLLM, docling-serve, Gotenberg, Tika, Ollama, pgvector)
 - **Parsers:** Docling (local), DoclingServe (HTTP), Tika | Stubs: MinerU
 - **Archives:** Paperless-ngx (with custom fields) | Stubs: S3, Local
 - **RAG:** pgvector (self-owned), AnythingLLM, RAGFlow
 - **Embedding:** Ollama, OpenAI-compatible API
+- **LLM Enrichment:** Tier 1 (document-level metadata) + Tier 2 (chunk-level contextual descriptions) via Ollama/OpenAI-compatible API
 - **Chunking:** Fixed (word-boundary with overlap), Hybrid (Docling fallback)
 - **Search:** REST API (`/api/search`, `/api/sources`) + HTMX web UI + MCP server
 - **Conversion:** Gotenberg (HTML/MD/Office→PDF)
 - **Scrapers:** 9 (AEMO, AEMC, AER, ECA, ENA, Guardian, RenewEconomy, The Conversation, TheEnergy)
-- **Settings UI:** Full coverage (backend selection, service URLs/timeouts, merge strategy, filename template, Tika enrichment toggle, embedding/chunking/pgvector config)
+- **Settings UI:** Full coverage (backend selection, service URLs/timeouts, merge strategy, filename template, Tika/LLM enrichment toggles, LLM backend/model config, embedding/chunking/pgvector config)
 - **Security:** CSRF, CSP, Permissions-Policy, HSTS, SSRF mitigation, rate limiting (Flask-Limiter), input validation (length/range), custom error handlers (403/404/429/500/CSRF), Basic Auth HTMX support, secrets rotation docs
-- **CI:** GitHub Actions — lint (ruff), security (pip-audit), unit tests, integration tests; Docker publish on main merge
+- **CI:** GitHub Actions — lint (ruff), security (pip-audit), unit tests, integration tests, Dockerfile lint (hadolint), container scan (Trivy); Docker publish on main merge
 - **Architecture:** Backend Registry pattern — adding a new backend is a single-line factory registration
 - **Infrastructure:** Unraid (192.168.1.101) — Paperless (:8000), PostgreSQL+pgvector (:5432), Ollama (:11434), AnythingLLM (:3151), docling-serve (:4949)
