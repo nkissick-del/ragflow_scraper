@@ -34,8 +34,14 @@ function handleScraperActions() {
         const target = event.target;
         if (target.matches('[hx-post*="/run"]')) {
             target.disabled = true;
-            target.dataset.originalText = target.textContent;
-            target.textContent = 'Starting...';
+            const btnText = target.querySelector('.btn-text');
+            if (btnText) {
+                target.dataset.originalText = btnText.textContent;
+                btnText.textContent = 'Starting...';
+            } else {
+                target.dataset.originalText = target.textContent;
+                target.textContent = 'Starting...';
+            }
         }
     });
 
@@ -44,6 +50,12 @@ function handleScraperActions() {
         if (target.matches('[hx-post*="/run"]') && target.dataset.originalText) {
             // Button will be replaced by HTMX, but just in case
             target.disabled = false;
+            const btnText = target.querySelector('.btn-text');
+            if (btnText) {
+                btnText.textContent = target.dataset.originalText;
+            } else {
+                target.textContent = target.dataset.originalText;
+            }
         }
         // Handle preview button - remove htmx-request class to stop spinner
         if (target.matches('[hx-post*="/preview"]')) {
@@ -56,7 +68,12 @@ function handleScraperActions() {
         const target = event.target;
         if (target.matches('[hx-post*="/run"]')) {
             target.disabled = false;
-            target.textContent = target.dataset.originalText || 'Run Now';
+            const btnText = target.querySelector('.btn-text');
+            if (btnText) {
+                btnText.textContent = target.dataset.originalText || 'Run Scraper';
+            } else {
+                target.textContent = target.dataset.originalText || 'Run Now';
+            }
             showNotification('Request failed. Please try again.', 'error');
         }
         // Handle preview button errors
