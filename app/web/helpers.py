@@ -59,7 +59,19 @@ def load_scraper_configs(scrapers: list[dict]) -> None:
 
 def build_ragflow_options(logger) -> dict[str, Any]:
     """Fetch ragflow options for dropdowns, handling optional session models."""
-    ragflow_client = container.ragflow_client
+    empty_options: dict[str, Any] = {
+        "chunk_methods": [],
+        "pdf_parsers": [],
+        "pipelines": [],
+        "embedding_providers": {},
+    }
+
+    try:
+        ragflow_client = container.ragflow_client
+    except ValueError:
+        # RAGFlow not configured — return empty options so the page still renders
+        return empty_options
+
     options = {
         "chunk_methods": ragflow_client.list_chunk_methods(),
         "pdf_parsers": ragflow_client.list_pdf_parsers(),
