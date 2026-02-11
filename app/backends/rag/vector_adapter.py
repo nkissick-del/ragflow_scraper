@@ -1,27 +1,29 @@
-"""pgvector RAG backend adapter.
+"""Generic vector store RAG backend adapter.
 
-Chunks markdown, generates embeddings, and stores in PostgreSQL+pgvector.
+Chunks markdown, generates embeddings, and stores via any VectorStoreBackend.
+Replaces the pgvector-specific adapter with a store-agnostic version.
 """
 
 from pathlib import Path
 from typing import Any, Optional
 
 from app.backends.rag.base import RAGBackend, RAGResult
+from app.backends.vectorstores.base import VectorStoreBackend
 from app.utils import get_logger
 
 
-class PgVectorRAGBackend(RAGBackend):
-    """RAG backend using pgvector for self-owned chunking/embedding/retrieval."""
+class VectorRAGBackend(RAGBackend):
+    """RAG backend using any VectorStoreBackend for chunking/embedding/retrieval."""
 
     def __init__(
         self,
-        pgvector_client: Any,
+        vector_store: VectorStoreBackend,
         embedding_client: Any,
         chunking_strategy: str = "fixed",
         chunk_max_tokens: int = 512,
         chunk_overlap_tokens: int = 64,
     ):
-        self._pgvector = pgvector_client
+        self._store = vector_store
         self._embedder = embedding_client
 
         from app.services.chunking import create_chunker
@@ -30,21 +32,21 @@ class PgVectorRAGBackend(RAGBackend):
             max_tokens=chunk_max_tokens,
             overlap_tokens=chunk_overlap_tokens,
         )
-        self.logger = get_logger("backends.rag.pgvector")
+        self.logger = get_logger("backends.rag.vector")
 
     @property
     def name(self) -> str:
-        return "pgvector"
+        return f"vector:{self._store.name}"
 
     def is_configured(self) -> bool:
-        return self._pgvector.is_configured() and self._embedder.is_configured()
+        return self._store.is_configured() and self._embedder.is_configured()
 
     def is_available(self) -> bool:
         """Override: test both connections, not just is_configured()."""
         if not self.is_configured():
             return False
         try:
-            return self._pgvector.test_connection() and self._embedder.test_connection()
+            return self._store.test_connection() and self._embedder.test_connection()
         except Exception:
             return False
 
@@ -52,9 +54,9 @@ class PgVectorRAGBackend(RAGBackend):
         if not self.is_configured():
             return False
         try:
-            pg_ok = self._pgvector.test_connection()
+            store_ok = self._store.test_connection()
             emb_ok = self._embedder.test_connection()
-            return pg_ok and emb_ok
+            return store_ok and emb_ok
         except Exception as e:
             self.logger.error(f"Connection test failed: {e}")
             return False
@@ -68,7 +70,7 @@ class PgVectorRAGBackend(RAGBackend):
         if not self.is_configured():
             return RAGResult(
                 success=False,
-                error="pgvector backend not configured (missing DATABASE_URL or EMBEDDING_URL)",
+                error=f"{self.name} backend not configured (missing vector store or embedding URL)",
                 rag_name=self.name,
             )
 
@@ -135,9 +137,9 @@ class PgVectorRAGBackend(RAGBackend):
                 })
 
             # Store
-            self._pgvector.ensure_schema()
+            self._store.ensure_ready()
             document_id = metadata.get("document_id")
-            count = self._pgvector.store_chunks(
+            count = self._store.store_chunks(
                 source=source,
                 filename=filename,
                 chunks=storage_chunks,
@@ -157,7 +159,7 @@ class PgVectorRAGBackend(RAGBackend):
             )
 
         except Exception as e:
-            error_msg = f"pgvector ingestion failed: {e}"
+            error_msg = f"{self.name} ingestion failed: {e}"
             self.logger.error(error_msg)
             return RAGResult(success=False, error=error_msg, rag_name=self.name)
 

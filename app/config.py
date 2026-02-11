@@ -240,11 +240,15 @@ class Config:
     # pgvector (PostgreSQL vector storage)
     DATABASE_URL = os.getenv("DATABASE_URL", "")
     ANYTHINGLLM_VIEW_NAME = os.getenv("ANYTHINGLLM_VIEW_NAME", "anythingllm_document_view")
+    PGVECTOR_DROP_ON_MISMATCH = os.getenv("PGVECTOR_DROP_ON_MISMATCH", "").lower() in (
+        "true", "1", "yes",
+    )
 
     # Valid values for backends and strategies
     VALID_PARSER_BACKENDS = ("docling", "docling_serve", "mineru", "tika")
     VALID_ARCHIVE_BACKENDS = ("paperless", "s3", "local")
     VALID_RAG_BACKENDS = ("ragflow", "anythingllm", "pgvector")
+    VALID_VECTOR_BACKENDS = ("pgvector",)
     VALID_METADATA_MERGE_STRATEGIES = ("smart", "parser_wins", "scraper_wins")
 
     # Backend Selection
@@ -257,6 +261,9 @@ class Config:
     RAG_BACKEND = (
         os.getenv("RAG_BACKEND", "ragflow").strip().lower()
     )  # ragflow, anythingllm, pgvector
+    VECTOR_BACKEND = (
+        os.getenv("VECTOR_BACKEND", "pgvector").strip().lower()
+    )  # pgvector
     METADATA_MERGE_STRATEGY = (
         os.getenv("METADATA_MERGE_STRATEGY", "smart").strip().lower()
     )  # smart, parser_wins, scraper_wins
@@ -425,6 +432,12 @@ class Config:
             raise ValueError(
                 f"Invalid RAG_BACKEND '{cls.RAG_BACKEND}'. "
                 f"Must be one of: {', '.join(cls.VALID_RAG_BACKENDS)}"
+            )
+
+        if cls.VECTOR_BACKEND not in cls.VALID_VECTOR_BACKENDS:
+            raise ValueError(
+                f"Invalid VECTOR_BACKEND '{cls.VECTOR_BACKEND}'. "
+                f"Must be one of: {', '.join(cls.VALID_VECTOR_BACKENDS)}"
             )
 
         if cls.METADATA_MERGE_STRATEGY not in cls.VALID_METADATA_MERGE_STRATEGIES:

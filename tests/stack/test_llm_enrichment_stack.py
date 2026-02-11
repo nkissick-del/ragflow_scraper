@@ -175,13 +175,15 @@ class TestPgVectorEnrichmentStack:
         """Test _apply_contextual_enrichment() with real LLM."""
         from unittest.mock import MagicMock, patch
         from app.config import Config
-        from app.backends.rag.pgvector_adapter import PgVectorRAGBackend
+        from app.backends.rag.vector_adapter import VectorRAGBackend
 
-        # Create backend with mocked pgvector/embedding (we only test enrichment)
-        with patch("app.backends.rag.pgvector_adapter.get_logger"), \
+        # Create backend with mocked vector store/embedding (we only test enrichment)
+        mock_store = MagicMock()
+        mock_store.name = "pgvector"
+        with patch("app.backends.rag.vector_adapter.get_logger"), \
              patch("app.services.chunking.get_logger"):
-            backend = PgVectorRAGBackend(
-                pgvector_client=MagicMock(),
+            backend = VectorRAGBackend(
+                vector_store=mock_store,
                 embedding_client=MagicMock(),
             )
 

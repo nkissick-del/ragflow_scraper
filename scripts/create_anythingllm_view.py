@@ -194,11 +194,11 @@ def main():
             return
 
         print("Creating VIEW...")
-        from app.services.pgvector_client import PgVectorClient
+        from app.backends.vectorstores.pgvector_store import PgVectorVectorStore
 
-        client = PgVectorClient(database_url=database_url, view_name=view_name)
+        client = PgVectorVectorStore(database_url=database_url, view_name=view_name)
         try:
-            client.ensure_schema()
+            client.ensure_ready()
         finally:
             client.close()
 

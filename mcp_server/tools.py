@@ -24,14 +24,14 @@ def _parse_int_env(name: str, default: int) -> int:
 
 
 def _get_pgvector_client():
-    """Create a PgVectorClient from environment."""
-    from app.services.pgvector_client import PgVectorClient
+    """Create a PgVectorVectorStore from environment."""
+    from app.backends.vectorstores.pgvector_store import PgVectorVectorStore
 
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         raise ValueError("DATABASE_URL environment variable is required")
 
-    return PgVectorClient(
+    return PgVectorVectorStore(
         database_url=database_url,
         dimensions=_parse_int_env("EMBEDDING_DIMENSIONS", 768),
     )

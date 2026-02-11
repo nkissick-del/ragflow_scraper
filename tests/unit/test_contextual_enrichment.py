@@ -11,13 +11,15 @@ from app.services.llm_client import LLMResult
 
 
 def _make_backend():
-    """Create a PgVectorRAGBackend with mocked loggers to avoid /app/data/logs/ issue."""
-    with patch("app.backends.rag.pgvector_adapter.get_logger"), \
+    """Create a VectorRAGBackend with mocked loggers to avoid /app/data/logs/ issue."""
+    mock_store = MagicMock()
+    mock_store.name = "pgvector"
+    with patch("app.backends.rag.vector_adapter.get_logger"), \
          patch("app.services.chunking.get_logger"):
-        from app.backends.rag.pgvector_adapter import PgVectorRAGBackend
+        from app.backends.rag.vector_adapter import VectorRAGBackend
 
-        return PgVectorRAGBackend(
-            pgvector_client=MagicMock(),
+        return VectorRAGBackend(
+            vector_store=mock_store,
             embedding_client=MagicMock(),
         )
 
@@ -150,7 +152,7 @@ class TestPgVectorIngestWithEnrichment:
     """Test that ingest_document uses enriched texts for embedding but raw for storage."""
 
     def test_enriched_texts_used_for_embedding(self, tmp_path):
-        from app.backends.rag.pgvector_adapter import PgVectorRAGBackend
+        from app.backends.rag.vector_adapter import VectorRAGBackend
 
         mock_embedder = MagicMock()
         mock_embedder.is_configured.return_value = True
@@ -159,15 +161,16 @@ class TestPgVectorIngestWithEnrichment:
             model="test",
             dimensions=2,
         )
-        mock_pgvector = MagicMock()
-        mock_pgvector.is_configured.return_value = True
-        mock_pgvector.test_connection.return_value = True
-        mock_pgvector.store_chunks.return_value = 2
+        mock_store = MagicMock()
+        mock_store.is_configured.return_value = True
+        mock_store.test_connection.return_value = True
+        mock_store.store_chunks.return_value = 2
+        mock_store.name = "pgvector"
 
-        with patch("app.backends.rag.pgvector_adapter.get_logger"), \
+        with patch("app.backends.rag.vector_adapter.get_logger"), \
              patch("app.services.chunking.get_logger"):
-            backend = PgVectorRAGBackend(
-                pgvector_client=mock_pgvector,
+            backend = VectorRAGBackend(
+                vector_store=mock_store,
                 embedding_client=mock_embedder,
             )
 
@@ -179,7 +182,7 @@ class TestPgVectorIngestWithEnrichment:
 
         with patch.object(backend._chunker, "chunk", return_value=fake_chunks), \
              patch.object(
-                 PgVectorRAGBackend,
+                 VectorRAGBackend,
                  "_apply_contextual_enrichment",
                  return_value=["enriched chunk 0", "enriched chunk 1"],
              ):
@@ -194,14 +197,14 @@ class TestPgVectorIngestWithEnrichment:
         mock_embedder.embed.assert_called_once_with(["enriched chunk 0", "enriched chunk 1"])
 
         # Storage chunks should have RAW content (not enriched)
-        store_call = mock_pgvector.store_chunks.call_args
+        store_call = mock_store.store_chunks.call_args
         stored_chunks = store_call[1]["chunks"] if "chunks" in store_call[1] else store_call[0][2]
         for sc in stored_chunks:
             assert "enriched" not in sc["content"]
 
     def test_enrichment_does_not_affect_storage(self, tmp_path):
         """Verify chunk.content (raw) is stored, not the enriched version."""
-        from app.backends.rag.pgvector_adapter import PgVectorRAGBackend
+        from app.backends.rag.vector_adapter import VectorRAGBackend
 
         mock_embedder = MagicMock()
         mock_embedder.is_configured.return_value = True
@@ -210,15 +213,16 @@ class TestPgVectorIngestWithEnrichment:
             model="test",
             dimensions=1,
         )
-        mock_pgvector = MagicMock()
-        mock_pgvector.is_configured.return_value = True
-        mock_pgvector.test_connection.return_value = True
-        mock_pgvector.store_chunks.return_value = 1
+        mock_store = MagicMock()
+        mock_store.is_configured.return_value = True
+        mock_store.test_connection.return_value = True
+        mock_store.store_chunks.return_value = 1
+        mock_store.name = "pgvector"
 
-        with patch("app.backends.rag.pgvector_adapter.get_logger"), \
+        with patch("app.backends.rag.vector_adapter.get_logger"), \
              patch("app.services.chunking.get_logger"):
-            backend = PgVectorRAGBackend(
-                pgvector_client=mock_pgvector,
+            backend = VectorRAGBackend(
+                vector_store=mock_store,
                 embedding_client=mock_embedder,
             )
 
@@ -230,7 +234,7 @@ class TestPgVectorIngestWithEnrichment:
 
         with patch.object(backend._chunker, "chunk", return_value=fake_chunks), \
              patch.object(
-                 PgVectorRAGBackend,
+                 VectorRAGBackend,
                  "_apply_contextual_enrichment",
                  return_value=["ENRICHED: first chunk"],
              ):
@@ -239,7 +243,7 @@ class TestPgVectorIngestWithEnrichment:
                 metadata={"source": "test"},
             )
 
-        store_call = mock_pgvector.store_chunks.call_args
+        store_call = mock_store.store_chunks.call_args
         stored_chunks = store_call[1]["chunks"] if "chunks" in store_call[1] else store_call[0][2]
         for sc in stored_chunks:
             assert "ENRICHED" not in sc["content"]

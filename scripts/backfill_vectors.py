@@ -33,7 +33,7 @@ import requests
 from app.config import Config
 from app.services.embedding_client import create_embedding_client
 from app.services.chunking import create_chunker
-from app.services.pgvector_client import PgVectorClient
+from app.backends.vectorstores.pgvector_store import PgVectorVectorStore
 
 
 def _mask_database_url(url: str) -> str:
@@ -136,7 +136,7 @@ def get_correspondents(api_url: str, token: str) -> dict[int, str]:
     return mapping
 
 
-def _get_existing_filenames(pgvector: PgVectorClient) -> set[str]:
+def _get_existing_filenames(pgvector: PgVectorVectorStore) -> set[str]:
     """Query pgvector for all existing (source, filename) pairs."""
     existing: set[str] = set()
     try:
@@ -228,7 +228,7 @@ def main():
         max_tokens=Config.CHUNK_MAX_TOKENS,
         overlap_tokens=Config.CHUNK_OVERLAP_TOKENS,
     )
-    pgvector = PgVectorClient(
+    pgvector = PgVectorVectorStore(
         database_url=database_url,
         dimensions=Config.EMBEDDING_DIMENSIONS,
     )
@@ -246,7 +246,7 @@ def main():
 
         # Ensure schema
         if not args.dry_run:
-            pgvector.ensure_schema()
+            pgvector.ensure_ready()
 
         # Fetch correspondents for source naming
         print("Fetching correspondents...")

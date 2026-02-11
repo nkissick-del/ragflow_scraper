@@ -19,11 +19,10 @@ from app.services.state_tracker import StateTracker
 from app.utils import get_logger
 
 if TYPE_CHECKING:
-    from app.backends import ParserBackend, ArchiveBackend, RAGBackend
+    from app.backends import ParserBackend, ArchiveBackend, RAGBackend, VectorStoreBackend
     from app.services.gotenberg_client import GotenbergClient
     from app.services.tika_client import TikaClient
     from app.services.embedding_client import EmbeddingClient
-    from app.services.pgvector_client import PgVectorClient
     from app.services.llm_client import LLMClient
 
 
@@ -62,12 +61,12 @@ class ServiceContainer:
         self._parser_backend: Optional[ParserBackend] = None
         self._archive_backend: Optional[ArchiveBackend] = None
         self._rag_backend: Optional[RAGBackend] = None
+        self._vector_store: Optional[VectorStoreBackend] = None
 
         # Service client instances (lazy-loaded)
         self._gotenberg_client: Optional[GotenbergClient] = None
         self._tika_client: Optional[TikaClient] = None
         self._embedding_client: Optional[EmbeddingClient] = None
-        self._pgvector_client: Optional[PgVectorClient] = None
         self._llm_client: Optional[LLMClient] = None
 
         # State trackers (cached by scraper name)
@@ -207,17 +206,17 @@ class ServiceContainer:
         self._parser_backend = None
         self._archive_backend = None
         self._rag_backend = None
+        self._vector_store = None
         self._gotenberg_client = None
         self._tika_client = None
         self._ragflow_client = None
         self._flaresolverr_client = None
         self._embedding_client = None
-        self._pgvector_client = None
         self._llm_client = None
         self.logger.debug("Service/backend instances reset (settings preserved)")
 
     @property
-    def parser_backend(self) -> ParserBackend:
+    def parser_backend(self) -> "ParserBackend":
         """
         Get parser backend (lazy-loaded singleton).
 
@@ -245,7 +244,7 @@ class ServiceContainer:
         return self._parser_backend
 
     @property
-    def archive_backend(self) -> ArchiveBackend:
+    def archive_backend(self) -> "ArchiveBackend":
         """
         Get archive backend (lazy-loaded singleton).
 
@@ -273,7 +272,7 @@ class ServiceContainer:
         return self._archive_backend
 
     @property
-    def rag_backend(self) -> RAGBackend:
+    def rag_backend(self) -> "RAGBackend":
         """
         Get RAG backend (lazy-loaded singleton).
 
@@ -299,6 +298,34 @@ class ServiceContainer:
             self.logger.info(f"Initialized RAG backend: {backend_name}")
         assert self._rag_backend is not None
         return self._rag_backend
+
+    @property
+    def vector_store(self) -> "VectorStoreBackend":
+        """
+        Get vector store backend (lazy-loaded singleton).
+
+        Raises:
+            ValueError: If backend name is invalid or backend is unavailable
+
+        Returns:
+            VectorStoreBackend instance
+        """
+        if self._vector_store is None:
+            from app.services.backend_registry import get_backend_registry
+
+            backend_name = self._get_effective_backend("vector")
+            candidate = get_backend_registry().create("vectorstore", backend_name, self)
+
+            if not candidate.is_available():
+                raise ValueError(
+                    f"Vector store '{backend_name}' not available "
+                    "(check configuration)"
+                )
+
+            self._vector_store = candidate
+            self.logger.info(f"Initialized vector store: {backend_name}")
+        assert self._vector_store is not None
+        return self._vector_store
 
     @property
     def gotenberg_client(self) -> "GotenbergClient":
@@ -387,30 +414,9 @@ class ServiceContainer:
         return self._llm_client
 
     @property
-    def pgvector_client(self) -> "PgVectorClient":
-        """
-        Get pgvector client (lazy-loaded singleton).
-
-        Returns:
-            PgVectorClient instance
-        """
-        if self._pgvector_client is None:
-            from app.services.pgvector_client import PgVectorClient
-
-            db_url = self._get_effective_url("pgvector", "DATABASE_URL")
-            if not db_url:
-                raise ValueError(
-                    "PgVector configuration missing: DATABASE_URL is required"
-                )
-            dims = self._safe_int(self._get_config_attr("EMBEDDING_DIMENSIONS", "768"), 768)
-            view_name = self._get_config_attr("ANYTHINGLLM_VIEW_NAME", "anythingllm_document_view")
-            self._pgvector_client = PgVectorClient(
-                database_url=db_url,
-                dimensions=dims,
-                view_name=view_name,
-            )
-            self.logger.debug("Initialized PgVectorClient")
-        return self._pgvector_client
+    def pgvector_client(self) -> "VectorStoreBackend":
+        """Backward-compat alias for vector_store."""
+        return self.vector_store
 
     def reset(self):
         """
@@ -427,10 +433,10 @@ class ServiceContainer:
         self._parser_backend = None
         self._archive_backend = None
         self._rag_backend = None
+        self._vector_store = None
         self._gotenberg_client = None
         self._tika_client = None
         self._embedding_client = None
-        self._pgvector_client = None
         self._llm_client = None
         self.logger.debug("Service container reset")
 

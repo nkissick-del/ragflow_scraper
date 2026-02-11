@@ -39,17 +39,17 @@ def main():
     logger = get_logger("main")
     container = get_container()
 
-    # Ensure pgvector schema + AnythingLLM view exist (if configured)
+    # Ensure vector store schema + AnythingLLM view exist (if configured)
     if Config.DATABASE_URL:
         try:
-            pgvector = container.pgvector_client
-            pgvector.ensure_schema()
+            store = container.vector_store
+            store.ensure_ready()
             logger.info(
-                "pgvector schema ensured (table + view '%s')",
+                "Vector store schema ensured (table + view '%s')",
                 Config.ANYTHINGLLM_VIEW_NAME,
             )
         except Exception:
-            logger.exception("Failed to initialize pgvector schema (non-fatal)")
+            logger.exception("Failed to initialize vector store schema (non-fatal)")
 
     # Create Flask app
     app = create_app()

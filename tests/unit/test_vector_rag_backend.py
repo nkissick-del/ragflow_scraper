@@ -1,19 +1,20 @@
-"""Tests for PgVectorRAGBackend adapter."""
+"""Tests for VectorRAGBackend adapter."""
 
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from app.backends.rag.pgvector_adapter import PgVectorRAGBackend
+from app.backends.rag.vector_adapter import VectorRAGBackend
 
 
 @pytest.fixture
-def mock_pgvector():
-    client = MagicMock()
-    client.is_configured.return_value = True
-    client.test_connection.return_value = True
-    client.store_chunks.return_value = 3
-    return client
+def mock_vector_store():
+    store = MagicMock()
+    store.is_configured.return_value = True
+    store.test_connection.return_value = True
+    store.store_chunks.return_value = 3
+    store.name = "pgvector"
+    return store
 
 
 @pytest.fixture
@@ -35,9 +36,9 @@ def mock_embedder():
 
 
 @pytest.fixture
-def backend(mock_pgvector, mock_embedder):
-    return PgVectorRAGBackend(
-        pgvector_client=mock_pgvector,
+def backend(mock_vector_store, mock_embedder):
+    return VectorRAGBackend(
+        vector_store=mock_vector_store,
         embedding_client=mock_embedder,
         chunking_strategy="fixed",
         chunk_max_tokens=100,
@@ -45,34 +46,35 @@ def backend(mock_pgvector, mock_embedder):
     )
 
 
-class TestPgVectorRAGBackendConfig:
+class TestVectorRAGBackendConfig:
     """Test configuration and connectivity."""
 
     def test_name(self, backend):
-        assert backend.name == "pgvector"
+        assert backend.name == "vector:pgvector"
 
     def test_is_configured_both(self, backend):
         assert backend.is_configured() is True
 
-    def test_is_configured_no_pgvector(self, mock_embedder):
-        pg = MagicMock()
-        pg.is_configured.return_value = False
-        b = PgVectorRAGBackend(pg, mock_embedder, chunk_max_tokens=100, chunk_overlap_tokens=0)
+    def test_is_configured_no_store(self, mock_embedder):
+        store = MagicMock()
+        store.is_configured.return_value = False
+        store.name = "pgvector"
+        b = VectorRAGBackend(store, mock_embedder, chunk_max_tokens=100, chunk_overlap_tokens=0)
         assert b.is_configured() is False
 
-    def test_is_configured_no_embedder(self, mock_pgvector):
+    def test_is_configured_no_embedder(self, mock_vector_store):
         emb = MagicMock()
         emb.is_configured.return_value = False
-        b = PgVectorRAGBackend(mock_pgvector, emb, chunk_max_tokens=100, chunk_overlap_tokens=0)
+        b = VectorRAGBackend(mock_vector_store, emb, chunk_max_tokens=100, chunk_overlap_tokens=0)
         assert b.is_configured() is False
 
-    def test_is_available_checks_connections(self, backend, mock_pgvector, mock_embedder):
+    def test_is_available_checks_connections(self, backend, mock_vector_store, mock_embedder):
         assert backend.is_available() is True
-        mock_pgvector.test_connection.assert_called()
+        mock_vector_store.test_connection.assert_called()
         mock_embedder.test_connection.assert_called()
 
-    def test_is_available_pgvector_down(self, backend, mock_pgvector):
-        mock_pgvector.test_connection.return_value = False
+    def test_is_available_store_down(self, backend, mock_vector_store):
+        mock_vector_store.test_connection.return_value = False
         assert backend.is_available() is False
 
     def test_is_available_embedder_down(self, backend, mock_embedder):
@@ -82,16 +84,16 @@ class TestPgVectorRAGBackendConfig:
     def test_test_connection(self, backend):
         assert backend.test_connection() is True
 
-    def test_test_connection_not_configured(self, mock_pgvector, mock_embedder):
-        mock_pgvector.is_configured.return_value = False
-        b = PgVectorRAGBackend(mock_pgvector, mock_embedder, chunk_max_tokens=100, chunk_overlap_tokens=0)
+    def test_test_connection_not_configured(self, mock_vector_store, mock_embedder):
+        mock_vector_store.is_configured.return_value = False
+        b = VectorRAGBackend(mock_vector_store, mock_embedder, chunk_max_tokens=100, chunk_overlap_tokens=0)
         assert b.test_connection() is False
 
 
-class TestPgVectorRAGBackendIngest:
+class TestVectorRAGBackendIngest:
     """Test document ingestion flow."""
 
-    def test_ingest_success(self, backend, mock_pgvector, mock_embedder, tmp_path):
+    def test_ingest_success(self, backend, mock_vector_store, mock_embedder, tmp_path):
         md_file = tmp_path / "test_doc.md"
         md_file.write_text("# Title\nHello world content here.")
 
@@ -104,39 +106,39 @@ class TestPgVectorRAGBackendIngest:
         assert result.success is True
         assert result.document_id == "test_doc.md"
         assert result.collection_id == "aemo"
-        assert result.rag_name == "pgvector"
+        assert result.rag_name == "vector:pgvector"
 
         # Should have called embed and store
         mock_embedder.embed.assert_called_once()
-        mock_pgvector.ensure_schema.assert_called_once()
-        mock_pgvector.store_chunks.assert_called_once()
+        mock_vector_store.ensure_ready.assert_called_once()
+        mock_vector_store.store_chunks.assert_called_once()
 
-    def test_ingest_uses_collection_id_as_source(self, backend, mock_pgvector, tmp_path):
+    def test_ingest_uses_collection_id_as_source(self, backend, mock_vector_store, tmp_path):
         md_file = tmp_path / "test.md"
         md_file.write_text("content")
 
         backend.ingest_document(md_file, {"source": "other"}, collection_id="custom_source")
 
-        assert mock_pgvector.store_chunks.call_args is not None
-        assert mock_pgvector.store_chunks.call_args.kwargs.get("source") == "custom_source"
+        assert mock_vector_store.store_chunks.call_args is not None
+        assert mock_vector_store.store_chunks.call_args.kwargs.get("source") == "custom_source"
 
-    def test_ingest_falls_back_to_metadata_source(self, backend, mock_pgvector, tmp_path):
+    def test_ingest_falls_back_to_metadata_source(self, backend, mock_vector_store, tmp_path):
         md_file = tmp_path / "test.md"
         md_file.write_text("content")
 
         backend.ingest_document(md_file, {"source": "metadata_source"}, collection_id=None)
 
-        assert mock_pgvector.store_chunks.call_args is not None
-        assert mock_pgvector.store_chunks.call_args.kwargs.get("source") == "metadata_source"
+        assert mock_vector_store.store_chunks.call_args is not None
+        assert mock_vector_store.store_chunks.call_args.kwargs.get("source") == "metadata_source"
 
-    def test_ingest_default_source(self, backend, mock_pgvector, tmp_path):
+    def test_ingest_default_source(self, backend, mock_vector_store, tmp_path):
         md_file = tmp_path / "test.md"
         md_file.write_text("content")
 
         backend.ingest_document(md_file, {}, collection_id=None)
 
-        assert mock_pgvector.store_chunks.call_args is not None
-        assert mock_pgvector.store_chunks.call_args.kwargs.get("source") == "default"
+        assert mock_vector_store.store_chunks.call_args is not None
+        assert mock_vector_store.store_chunks.call_args.kwargs.get("source") == "default"
 
     def test_ingest_file_not_found(self, backend):
         result = backend.ingest_document(
@@ -154,12 +156,13 @@ class TestPgVectorRAGBackendIngest:
         assert "empty" in result.error
 
     def test_ingest_not_configured(self, tmp_path):
-        pg = MagicMock()
-        pg.is_configured.return_value = False
+        store = MagicMock()
+        store.is_configured.return_value = False
+        store.name = "pgvector"
         emb = MagicMock()
         emb.is_configured.return_value = False
 
-        b = PgVectorRAGBackend(pg, emb, chunk_max_tokens=100, chunk_overlap_tokens=0)
+        b = VectorRAGBackend(store, emb, chunk_max_tokens=100, chunk_overlap_tokens=0)
         md_file = tmp_path / "test.md"
         md_file.write_text("content")
 
@@ -176,20 +179,20 @@ class TestPgVectorRAGBackendIngest:
         assert result.success is False
         assert "API error" in result.error
 
-    def test_ingest_storage_error(self, backend, mock_pgvector, tmp_path):
+    def test_ingest_storage_error(self, backend, mock_vector_store, tmp_path):
         md_file = tmp_path / "test.md"
         md_file.write_text("content")
-        mock_pgvector.store_chunks.side_effect = Exception("DB error")
+        mock_vector_store.store_chunks.side_effect = Exception("DB error")
 
         result = backend.ingest_document(md_file, {"source": "test"})
         assert result.success is False
         assert "DB error" in result.error
 
-    def test_ingest_passes_document_id(self, backend, mock_pgvector, tmp_path):
+    def test_ingest_passes_document_id(self, backend, mock_vector_store, tmp_path):
         md_file = tmp_path / "test.md"
         md_file.write_text("content")
 
         backend.ingest_document(md_file, {"source": "test", "document_id": "42"})
 
-        assert mock_pgvector.store_chunks.call_args is not None
-        assert mock_pgvector.store_chunks.call_args.kwargs.get("document_id") == "42"
+        assert mock_vector_store.store_chunks.call_args is not None
+        assert mock_vector_store.store_chunks.call_args.kwargs.get("document_id") == "42"

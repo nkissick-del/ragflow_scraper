@@ -10,10 +10,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable, Union
 
 if TYPE_CHECKING:
-    from app.backends import ParserBackend, ArchiveBackend, RAGBackend
+    from app.backends import ParserBackend, ArchiveBackend, RAGBackend, VectorStoreBackend
     from app.services.container import ServiceContainer
 
-BackendInstance = Union["ParserBackend", "ArchiveBackend", "RAGBackend"]
+BackendInstance = Union["ParserBackend", "ArchiveBackend", "RAGBackend", "VectorStoreBackend"]
 BackendFactory = Callable[["ServiceContainer"], BackendInstance]
 
 
@@ -85,6 +85,25 @@ def _create_local_archive(container: ServiceContainer) -> Any:
     raise ValueError("Archive backend 'local' not yet implemented")
 
 
+# --- Vector store factories ---
+
+def _create_pgvector_vector_store(container: "ServiceContainer") -> Any:
+    from app.backends.vectorstores.pgvector_store import PgVectorVectorStore
+
+    db_url = container._get_effective_url("pgvector", "DATABASE_URL")
+    if not db_url:
+        raise ValueError("PgVector configuration missing: DATABASE_URL is required")
+    dims = container._safe_int(container._get_config_attr("EMBEDDING_DIMENSIONS", "768"), 768)
+    view_name = container._get_config_attr("ANYTHINGLLM_VIEW_NAME", "anythingllm_document_view")
+    drop_on_mismatch = container._get_config_attr("PGVECTOR_DROP_ON_MISMATCH", "")
+    return PgVectorVectorStore(
+        database_url=db_url,
+        dimensions=dims,
+        view_name=view_name,
+        drop_on_dimension_mismatch=drop_on_mismatch.strip().lower() in ("true", "1", "yes"),
+    )
+
+
 # --- RAG factories ---
 
 def _create_ragflow_rag(container: ServiceContainer) -> Any:
@@ -115,21 +134,21 @@ def _create_anythingllm_rag(container: ServiceContainer) -> Any:
     )
 
 
-def _create_pgvector_rag(container: "ServiceContainer") -> Any:
-    pgvector_client = container.pgvector_client
+def _create_vector_rag(container: "ServiceContainer") -> Any:
+    vector_store = container.vector_store
     embedding_client = container.embedding_client
-    if not pgvector_client or not embedding_client:
+    if not vector_store or not embedding_client:
         raise ValueError(
-            "PgVector RAG requires both pgvector_client and embedding_client"
+            "Vector RAG requires both vector_store and embedding_client"
         )
     try:
         chunk_max_tokens = int(container._get_config_attr("CHUNK_MAX_TOKENS", "512"))
         chunk_overlap_tokens = int(container._get_config_attr("CHUNK_OVERLAP_TOKENS", "64"))
     except (ValueError, TypeError) as e:
         raise ValueError(f"Invalid chunking configuration: {e}") from e
-    from app.backends.rag.pgvector_adapter import PgVectorRAGBackend
-    return PgVectorRAGBackend(
-        pgvector_client=pgvector_client,
+    from app.backends.rag.vector_adapter import VectorRAGBackend
+    return VectorRAGBackend(
+        vector_store=vector_store,
         embedding_client=embedding_client,
         chunking_strategy=container._get_config_attr("CHUNKING_STRATEGY", "fixed"),
         chunk_max_tokens=chunk_max_tokens,
@@ -152,10 +171,14 @@ _default_registry.register("archive", "paperless", _create_paperless_archive)
 _default_registry.register("archive", "s3", _create_s3_archive)
 _default_registry.register("archive", "local", _create_local_archive)
 
-# RAG
+# Vector stores
+_default_registry.register("vectorstore", "pgvector", _create_pgvector_vector_store)
+
+# RAG — "vector" and "pgvector" both point to the generic vector adapter
 _default_registry.register("rag", "ragflow", _create_ragflow_rag)
 _default_registry.register("rag", "anythingllm", _create_anythingllm_rag)
-_default_registry.register("rag", "pgvector", _create_pgvector_rag)
+_default_registry.register("rag", "pgvector", _create_vector_rag)
+_default_registry.register("rag", "vector", _create_vector_rag)
 
 
 def get_backend_registry() -> BackendRegistry:

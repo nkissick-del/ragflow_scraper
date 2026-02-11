@@ -1,5 +1,4 @@
-"""
-PostgreSQL + pgvector client for vector storage and similarity search.
+"""PostgreSQL + pgvector vector store backend.
 
 Manages schema creation, chunk storage, and cosine similarity search
 using partitioned tables (one partition per source).
@@ -12,6 +11,7 @@ import re
 import threading
 from typing import Any, Optional
 
+from app.backends.vectorstores.base import VectorStoreBackend
 from app.utils import get_logger
 
 _SOURCE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -19,8 +19,8 @@ _SOURCE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 ANYTHINGLLM_VIEW_NAME = "anythingllm_document_view"
 
 
-class PgVectorClient:
-    """Client for storing and searching document chunk embeddings in pgvector.
+class PgVectorVectorStore(VectorStoreBackend):
+    """Vector store using PostgreSQL+pgvector for document chunk embeddings.
 
     Uses psycopg (v3) with connection pooling and lazy partition creation.
     Each source (e.g., scraper name) gets its own table partition with a
@@ -32,12 +32,14 @@ class PgVectorClient:
         database_url: str = "",
         dimensions: int = 768,
         view_name: str = ANYTHINGLLM_VIEW_NAME,
+        drop_on_dimension_mismatch: bool = False,
     ):
         if not isinstance(dimensions, int) or dimensions < 1:
             raise ValueError(f"dimensions must be a positive integer, got {dimensions!r}")
         self._database_url = database_url
         self._dimensions = dimensions
         self._view_name = view_name
+        self._drop_on_mismatch = drop_on_dimension_mismatch
         self._pool = None  # Lazy-initialized ConnectionPool
         self._pool_lock = threading.Lock()
         self._schema_lock = threading.Lock()
@@ -45,6 +47,10 @@ class PgVectorClient:
         self._known_partitions: set[str] = set()
         self._schema_ensured = False
         self.logger = get_logger("pgvector")
+
+    @property
+    def name(self) -> str:
+        return "pgvector"
 
     def _get_pool(self):
         """Get or create the connection pool (lazy init, thread-safe)."""
@@ -84,10 +90,83 @@ class PgVectorClient:
             self.logger.debug(f"Connection test failed: {e}")
             return False
 
-    def ensure_schema(self) -> None:
+    def _get_existing_dimensions(self, cur: Any) -> Optional[int]:
+        """Get the vector dimensions of the existing embedding column.
+
+        Returns the dimension count, or None if the table doesn't exist.
+        Uses pg_attribute.atttypmod which stores dimensions directly for
+        the pgvector ``vector`` type.
+        """
+        cur.execute("""
+            SELECT a.atttypmod
+            FROM pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = 'document_chunks'
+              AND n.nspname = current_schema()
+              AND a.attname = 'embedding'
+              AND a.attnum > 0
+        """)
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return int(row[0])
+
+    def _handle_dimension_mismatch(
+        self, cur: Any, conn: Any, existing_dims: int
+    ) -> None:
+        """Handle a mismatch between existing and configured vector dimensions.
+
+        If the table is empty, drops it automatically (CASCADE removes the
+        AnythingLLM VIEW too).  If the table has data, behaviour depends on
+        ``_drop_on_mismatch``:
+        - True  -> drop anyway (user explicitly opted in)
+        - False -> raise ValueError with clear instructions
+        """
+        cur.execute("SELECT COUNT(*) FROM document_chunks")
+        count: int = cur.fetchone()[0]  # type: ignore[index]
+
+        if count == 0:
+            self.logger.warning(
+                "Embedding dimension mismatch: table has vector(%d), "
+                "configured for %d. Table is empty — dropping and recreating.",
+                existing_dims,
+                self._dimensions,
+            )
+            cur.execute("DROP TABLE document_chunks CASCADE")
+            conn.commit()
+            self._known_partitions.clear()
+            return
+
+        # Table has data
+        if self._drop_on_mismatch:
+            self.logger.warning(
+                "Embedding dimension mismatch: table has vector(%d), "
+                "configured for %d. PGVECTOR_DROP_ON_MISMATCH=true — "
+                "dropping %d rows and recreating.",
+                existing_dims,
+                self._dimensions,
+                count,
+            )
+            cur.execute("DROP TABLE document_chunks CASCADE")
+            conn.commit()
+            self._known_partitions.clear()
+            return
+
+        raise ValueError(
+            f"Embedding dimension mismatch: existing table has vector({existing_dims}), "
+            f"but EMBEDDING_DIMENSIONS is configured as {self._dimensions}. "
+            f"The table contains {count} row(s) which are incompatible with the "
+            f"new model. To drop all data and recreate, set the environment variable "
+            f"PGVECTOR_DROP_ON_MISMATCH=true and restart."
+        )
+
+    def ensure_ready(self) -> None:
         """Create the pgvector extension and parent table if they don't exist.
 
         Idempotent and thread-safe — safe to call on every ingest.
+        Detects embedding dimension mismatches and auto-recovers when safe.
+        Also creates the AnythingLLM-compatible VIEW if view_name is set.
         """
         if self._schema_ensured:
             return
@@ -100,6 +179,12 @@ class PgVectorClient:
             with pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+                    # Check for dimension mismatch on existing table
+                    existing_dims = self._get_existing_dimensions(cur)
+                    if existing_dims is not None and existing_dims != self._dimensions:
+                        self._handle_dimension_mismatch(cur, conn, existing_dims)
+
                     # Dimensions is a validated int — safe for SQL composition
                     dims = self._dimensions
                     create_sql = (
@@ -121,31 +206,20 @@ class PgVectorClient:
                         CREATE INDEX IF NOT EXISTS idx_document_chunks_metadata
                         ON document_chunks USING GIN (metadata)
                     """)
-                    # AnythingLLM-compatible VIEW — adapts our schema
-                    # to what AnythingLLM expects for pgvector queries
+                    # AnythingLLM-compatible VIEW
                     if self._view_name:
-                        if not _SOURCE_NAME_RE.match(self._view_name):
-                            raise ValueError(
-                                f"Invalid view name: {self._view_name!r}. "
-                                "Only alphanumeric, underscore, and hyphen allowed."
-                            )
-                        from psycopg import sql as psql
+                        from app.backends.vectorstores.pgvector_anythingllm_view import (
+                            create_anythingllm_view,
+                        )
 
-                        cur.execute(psql.SQL("""
-                            CREATE OR REPLACE VIEW {} AS
-                            SELECT
-                                md5(source || '/' || filename || '/'
-                                    || chunk_index::text || '/' || id::text)::uuid AS id,
-                                source AS namespace,
-                                embedding,
-                                metadata || jsonb_build_object('text', content) AS metadata,
-                                created_at
-                            FROM document_chunks
-                        """).format(psql.Identifier(self._view_name)))
+                        create_anythingllm_view(cur, self._view_name)
                 conn.commit()
 
             self._schema_ensured = True
             self.logger.debug("Schema ensured (pgvector extension + parent table)")
+
+    # Keep ensure_schema as an alias for backward compatibility during migration
+    ensure_schema = ensure_ready
 
     def _ensure_partition(self, source: str, conn: Any) -> None:
         """Create a partition and HNSW index for a source if not yet known.
@@ -228,7 +302,7 @@ class PgVectorClient:
 
         from pgvector.psycopg import register_vector
 
-        self.ensure_schema()
+        self.ensure_ready()
         pool = self._get_pool()
 
         with pool.connection() as conn:

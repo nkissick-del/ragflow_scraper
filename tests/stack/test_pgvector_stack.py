@@ -3,13 +3,13 @@
 import time
 import pytest
 
-from app.services.pgvector_client import ANYTHINGLLM_VIEW_NAME, PgVectorClient
+from app.backends.vectorstores.pgvector_store import ANYTHINGLLM_VIEW_NAME, PgVectorVectorStore
 
 
 @pytest.fixture
 def pgvector_client(pgvector_url, pgvector_alive):
-    """Create a PgVectorClient connected to the test database."""
-    client = PgVectorClient(database_url=pgvector_url, dimensions=768)
+    """Create a PgVectorVectorStore connected to the test database."""
+    client = PgVectorVectorStore(database_url=pgvector_url, dimensions=768)
     yield client
     client.close()
 
@@ -33,9 +33,9 @@ class TestPgVectorStack:
         assert pgvector_client.test_connection() is True
 
     def test_ensure_schema(self, pgvector_client):
-        pgvector_client.ensure_schema()
+        pgvector_client.ensure_ready()
         # Should be idempotent
-        pgvector_client.ensure_schema()
+        pgvector_client.ensure_ready()
 
     def test_store_and_search(self, pgvector_client, clean_test_source, ollama_url, ollama_alive):
         """Store chunks with real embeddings and search."""
@@ -60,7 +60,7 @@ class TestPgVectorStack:
             for i, (text, emb) in enumerate(zip(texts, result.embeddings))
         ]
 
-        pgvector_client.ensure_schema()
+        pgvector_client.ensure_ready()
         count = pgvector_client.store_chunks(clean_test_source, "test_doc.md", chunks)
         assert count == 3
 
@@ -78,7 +78,7 @@ class TestPgVectorStack:
 
     def test_delete_document(self, pgvector_client, clean_test_source):
         """Store then delete chunks."""
-        pgvector_client.ensure_schema()
+        pgvector_client.ensure_ready()
 
         # Create a minimal fake embedding (all zeros)
         fake_embedding = [0.0] * 768
@@ -95,7 +95,7 @@ class TestPgVectorStack:
         assert deleted == 1
 
     def test_get_stats(self, pgvector_client):
-        pgvector_client.ensure_schema()
+        pgvector_client.ensure_ready()
         stats = pgvector_client.get_stats()
         assert "total_chunks" in stats
         assert "total_documents" in stats
@@ -107,7 +107,7 @@ class TestAnythingLLMViewStack:
 
     def test_anythingllm_view_exists(self, pgvector_client):
         """Verify VIEW exists with correct columns after ensure_schema."""
-        pgvector_client.ensure_schema()
+        pgvector_client.ensure_ready()
 
         pool = pgvector_client._get_pool()
         with pool.connection() as conn:
@@ -136,7 +136,7 @@ class TestAnythingLLMViewStack:
 
     def test_anythingllm_view_returns_data(self, pgvector_client, clean_test_source):
         """Store chunks, query VIEW, verify metadata.text matches content."""
-        pgvector_client.ensure_schema()
+        pgvector_client.ensure_ready()
 
         fake_embedding = [0.0] * 768
         test_content = "Energy policy reform 2030"
