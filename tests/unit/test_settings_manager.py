@@ -124,6 +124,23 @@ class TestSave:
         with pytest.raises(ValidationError):
             mgr._save()
 
+    def test_raises_ioerror_on_permission_denied(self, settings_file, tmp_path):
+        """Propagates IOError when config directory is not writable."""
+        mgr = SettingsManager()
+        # Point to a read-only file
+        readonly_file = tmp_path / "readonly" / "settings.json"
+        readonly_file.parent.mkdir()
+        readonly_file.touch()
+        readonly_file.chmod(0o444)
+        readonly_file.parent.chmod(0o555)
+
+        with patch("app.services.settings_manager.SETTINGS_FILE", readonly_file):
+            with pytest.raises(IOError, match="Cannot write settings file"):
+                mgr._save()
+
+        # Restore permissions for tmp_path cleanup
+        readonly_file.parent.chmod(0o755)
+
 
 # ── TestDotNotationGetSet ───────────────────────────────────────────────
 

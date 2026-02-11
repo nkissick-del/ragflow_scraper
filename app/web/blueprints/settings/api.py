@@ -22,6 +22,18 @@ from app.web.blueprints.settings.helpers import (
 bp = Blueprint("settings_api", __name__)
 
 
+@bp.errorhandler(IOError)
+def handle_io_error(exc):
+    """Return a visible error when settings cannot be written to disk."""
+    log_exception(logger, exc, "settings.save.io_error")
+    return '''
+        <div class="alert alert-danger">
+            Failed to save settings — config directory is not writable.
+            Check container volume permissions for /app/config.
+        </div>
+    '''
+
+
 # --------------- service test routes ---------------
 
 @bp.route("/settings/test-ragflow", methods=["POST"])

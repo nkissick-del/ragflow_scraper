@@ -278,6 +278,7 @@ class SettingsManager:
             self.logger.debug("Settings saved to file")
         except IOError as e:
             self.logger.error(f"Failed to save settings: {e}")
+            raise IOError(f"Cannot write settings file: {e}") from e
 
     def get(self, key: str, default: Any = None) -> Any:
         """

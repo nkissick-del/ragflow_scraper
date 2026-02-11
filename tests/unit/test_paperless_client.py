@@ -442,7 +442,11 @@ class TestFetchCustomFields:
 
     def test_fetch_custom_fields_not_configured(self):
         """Should return empty dict when not configured."""
-        client = PaperlessClient(url=None, token=None)
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_API_URL = ""
+            mock_config.PAPERLESS_API_TOKEN = ""
+            client = PaperlessClient(url=None, token=None)
+        assert not client.is_configured
         result = client._fetch_custom_fields()
         assert result == {}
 
