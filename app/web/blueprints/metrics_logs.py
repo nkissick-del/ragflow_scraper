@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from flask import Blueprint, jsonify, render_template, Response
 from markupsafe import escape
 
@@ -38,18 +40,43 @@ def log_stream():
         with open(log_files[0]) as f:
             lines = f.readlines()[-50:]
 
+        level_to_css = {
+            "CRITICAL": "log-error",
+            "ERROR": "log-error",
+            "WARNING": "log-warning",
+            "DEBUG": "log-debug",
+            "INFO": "log-info",
+        }
+
         html = ""
         for line in lines:
-            css_class = "log-info"
-            # More robust: check log level at expected position (after timestamp/delimiters)
-            if " ERROR" in line or line.startswith("ERROR"):
-                css_class = "log-error"
-            elif " WARNING" in line or line.startswith("WARNING"):
-                css_class = "log-warning"
-            elif " DEBUG" in line or line.startswith("DEBUG"):
-                css_class = "log-debug"
-            # Escape HTML to prevent XSS
-            html += f'<div class="log-entry {css_class}">{escape(line.strip())}</div>'
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                time_str = escape(entry.get("timestamp", ""))
+                level = entry.get("level", "INFO").upper()
+                logger_name = entry.get("logger", "")
+                message = entry.get("message", "")
+                display_msg = f"{logger_name} | {message}" if logger_name else message
+                css_class = level_to_css.get(level, "log-info")
+                html += (
+                    f'<div class="log-entry {css_class}">'
+                    f'<span class="log-time">{time_str}</span> '
+                    f'<span class="log-level">{escape(level)}</span> '
+                    f'<span class="log-message">{escape(display_msg)}</span>'
+                    f"</div>"
+                )
+            except (json.JSONDecodeError, AttributeError):
+                css_class = "log-info"
+                if " ERROR" in line or line.startswith("ERROR"):
+                    css_class = "log-error"
+                elif " WARNING" in line or line.startswith("WARNING"):
+                    css_class = "log-warning"
+                elif " DEBUG" in line or line.startswith("DEBUG"):
+                    css_class = "log-debug"
+                html += f'<div class="log-entry {css_class}">{escape(line)}</div>'
 
         return html
     except Exception as exc:

@@ -12,8 +12,15 @@
     <div class="log-controls">
         <h2>Live Log Viewer</h2>
         <div class="log-filters">
+            <div class="log-level-filters">
+                <button class="btn btn-small btn-filter active" data-level="all" onclick="setLogFilter('all')">All</button>
+                <button class="btn btn-small btn-filter" data-level="error" onclick="setLogFilter('error')">Errors</button>
+                <button class="btn btn-small btn-filter" data-level="warning" onclick="setLogFilter('warning')">Warnings</button>
+                <button class="btn btn-small btn-filter" data-level="info" onclick="setLogFilter('info')">Info</button>
+                <button class="btn btn-small btn-filter" data-level="debug" onclick="setLogFilter('debug')">Debug</button>
+            </div>
             <button id="copy-logs-btn" class="btn btn-small btn-secondary" onclick="handleCopyLogs()" aria-label="Copy all logs to clipboard">
-                📋 Copy Logs
+                Copy Logs
             </button>
             <label>
                 <input type="checkbox" id="auto-scroll" checked> Auto-scroll
@@ -50,19 +57,43 @@
 
 {% block scripts %}
 <script>
+var currentLogFilter = 'all';
+
 document.addEventListener('htmx:afterSwap', function(event) {
     if (document.getElementById('auto-scroll').checked) {
         var container = document.getElementById('log-container');
         container.scrollTop = container.scrollHeight;
     }
+    // Re-apply log filter after HTMX swap
+    if (currentLogFilter !== 'all') {
+        applyLogFilter(currentLogFilter);
+    }
 });
 
+function setLogFilter(level) {
+    currentLogFilter = level;
+    document.querySelectorAll('.btn-filter').forEach(function(b) { b.classList.remove('active'); });
+    var active = document.querySelector('[data-level="' + level + '"]');
+    if (active) active.classList.add('active');
+    applyLogFilter(level);
+}
+
+function applyLogFilter(level) {
+    document.querySelectorAll('.log-entry').forEach(function(entry) {
+        if (level === 'all') {
+            entry.style.display = '';
+        } else {
+            entry.style.display = entry.classList.contains('log-' + level) ? '' : 'none';
+        }
+    });
+}
+
 async function handleCopyLogs() {
-    const logViewer = document.querySelector('.log-viewer');
+    var logViewer = document.querySelector('.log-viewer');
     if (!logViewer) return;
 
     // Get text content (strips HTML tags, preserves newlines)
-    const text = logViewer.innerText;
+    var text = logViewer.innerText;
 
     await copyToClipboard(text);
 }

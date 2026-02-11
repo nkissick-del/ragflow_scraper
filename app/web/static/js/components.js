@@ -31,16 +31,22 @@ function initializeCSRF() {
  */
 function handleScraperActions() {
     document.addEventListener('htmx:beforeRequest', function(event) {
-        const target = event.target;
+        var target = event.target;
         if (target.matches('[hx-post*="/run"]')) {
             target.disabled = true;
             target.dataset.originalText = target.textContent;
             target.textContent = 'Starting...';
         }
+        // Handle test connection buttons
+        if (target.matches('[hx-post*="/test_"]')) {
+            target.disabled = true;
+            target.dataset.originalText = target.textContent;
+            target.textContent = 'Testing...';
+        }
     });
 
     document.addEventListener('htmx:afterRequest', function(event) {
-        const target = event.target;
+        var target = event.target;
         if (target.matches('[hx-post*="/run"]') && target.dataset.originalText) {
             // Button will be replaced by HTMX, but just in case
             target.disabled = false;
@@ -50,10 +56,15 @@ function handleScraperActions() {
             target.classList.remove('htmx-request');
             target.disabled = false;
         }
+        // Handle test connection buttons
+        if (target.matches('[hx-post*="/test_"]') && target.dataset.originalText) {
+            target.disabled = false;
+            target.textContent = target.dataset.originalText;
+        }
     });
 
     document.addEventListener('htmx:requestError', function(event) {
-        const target = event.target;
+        var target = event.target;
         if (target.matches('[hx-post*="/run"]')) {
             target.disabled = false;
             target.textContent = target.dataset.originalText || 'Run Now';
@@ -64,6 +75,12 @@ function handleScraperActions() {
             target.classList.remove('htmx-request');
             target.disabled = false;
             showNotification('Preview failed. Please try again.', 'error');
+        }
+        // Handle test connection button errors
+        if (target.matches('[hx-post*="/test_"]')) {
+            target.disabled = false;
+            target.textContent = target.dataset.originalText || 'Test';
+            showNotification('Test failed. Please try again.', 'error');
         }
     });
 

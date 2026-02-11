@@ -26,6 +26,7 @@
             <li><a href="{{ url_for('scrapers.scrapers_page') }}" {% if request.endpoint == 'scrapers.scrapers_page' %}class="active" aria-current="page"{% endif %}>Scrapers</a></li>
             <li><a href="{{ url_for('metrics_logs.logs') }}" {% if request.endpoint == 'metrics_logs.logs' %}class="active" aria-current="page"{% endif %}>Logs</a></li>
             <li><a href="{{ url_for('settings_ui.settings_page') }}" {% if request.endpoint == 'settings_ui.settings_page' %}class="active" aria-current="page"{% endif %}>Settings</a></li>
+            <li><a href="{{ url_for('search.search_page') }}" {% if request.endpoint == 'search.search_page' %}class="active" aria-current="page"{% endif %}>Search</a></li>
         </ul>
     </nav>
 

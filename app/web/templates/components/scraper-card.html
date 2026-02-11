@@ -10,6 +10,10 @@
     <p class="scraper-description">{{ scraper.description }}</p>
     <div class="scraper-stats">
         <span>Processed: {{ scraper.state.processed_count if scraper.state else 0 }}</span>
+        {% if scraper.state and scraper.state.statistics %}
+        <span>Downloaded: {{ scraper.state.statistics.total_downloaded or 0 }}</span>
+        <span>Failed: {{ scraper.state.statistics.total_failed or 0 }}</span>
+        {% endif %}
         {% if scraper.state and scraper.state.last_updated %}
         <span title="{{ scraper.state.last_updated }}">Last run: <span class="relative-time" data-timestamp="{{ scraper.state.last_updated }}">{{ scraper.state.last_updated[:10] }}</span></span>
         {% endif %}

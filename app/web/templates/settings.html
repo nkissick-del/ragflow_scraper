@@ -429,6 +429,10 @@
     <div class="card">
         <div class="card-header">
             <h2>Service Configuration</h2>
+            <button type="button" class="btn btn-secondary btn-sm" id="test-all-btn"
+                    onclick="testAllServices()">
+                Test All
+            </button>
         </div>
         <form hx-post="{{ url_for('settings_api.save_service_settings') }}"
               hx-target="#services-message"
@@ -933,24 +937,6 @@
 <section class="section">
     <div class="card">
         <div class="card-header">
-            <h2>Selenium Configuration</h2>
-        </div>
-        <div class="card-body">
-            <div class="setting-group">
-                <label>Remote URL</label>
-                <p class="setting-value"><code>{{ config.SELENIUM_REMOTE_URL }}</code></p>
-            </div>
-            <div class="setting-group">
-                <label>Headless Mode</label>
-                <p class="setting-value">{{ 'Enabled' if config.SELENIUM_HEADLESS else 'Disabled' }}</p>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section class="section">
-    <div class="card">
-        <div class="card-header">
             <h2>Directories</h2>
         </div>
         <div class="card-body">
@@ -973,4 +959,33 @@
         </div>
     </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function testAllServices() {
+    var btn = document.getElementById('test-all-btn');
+    btn.disabled = true;
+    btn.textContent = 'Testing...';
+    var testButtons = document.querySelectorAll('[hx-post*="/test_"]');
+    var index = 0;
+
+    function triggerNext() {
+        if (index >= testButtons.length) {
+            btn.disabled = false;
+            btn.textContent = 'Test All';
+            showNotification('All service tests completed', 'info');
+            return;
+        }
+        var testBtn = testButtons[index];
+        index++;
+        if (!testBtn.disabled) {
+            htmx.trigger(testBtn, 'click');
+        }
+        setTimeout(triggerNext, 500);
+    }
+
+    triggerNext();
+}
+</script>
 {% endblock %}

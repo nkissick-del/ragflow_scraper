@@ -222,7 +222,8 @@ code {
 
 .scraper-stats {
     display: flex;
-    gap: 16px;
+    flex-wrap: wrap;
+    gap: 8px 16px;
     font-size: 0.85rem;
     color: var(--text-muted);
     margin-bottom: 16px;
@@ -470,17 +471,57 @@ code {
     color: #6b7280;
 }
 
+.log-time {
+    color: #6b7280;
+    font-family: var(--font-mono);
+    margin-right: 8px;
+}
+
+.log-level {
+    font-weight: 600;
+    margin-right: 8px;
+    min-width: 60px;
+    display: inline-block;
+}
+
+.log-message {
+    color: inherit;
+}
+
 .log-controls {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .log-filters {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
+}
+
+.log-level-filters {
+    display: flex;
+    gap: 4px;
+}
+
+.btn-filter {
+    background: var(--border-color);
+    color: var(--text-muted);
+    border: 1px solid transparent;
+}
+
+.btn-filter:hover:not(:disabled) {
+    background: #cbd5e1;
+}
+
+.btn-filter.active {
+    background: var(--primary-color);
+    color: white;
 }
 
 .log-filters label {
