@@ -16,6 +16,8 @@ from app.utils import get_logger
 
 _SOURCE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
+ANYTHINGLLM_VIEW_NAME = "anythingllm_document_view"
+
 
 class PgVectorClient:
     """Client for storing and searching document chunk embeddings in pgvector.
@@ -25,11 +27,17 @@ class PgVectorClient:
     dedicated HNSW index for fast approximate nearest-neighbor search.
     """
 
-    def __init__(self, database_url: str = "", dimensions: int = 768):
+    def __init__(
+        self,
+        database_url: str = "",
+        dimensions: int = 768,
+        view_name: str = ANYTHINGLLM_VIEW_NAME,
+    ):
         if not isinstance(dimensions, int) or dimensions < 1:
             raise ValueError(f"dimensions must be a positive integer, got {dimensions!r}")
         self._database_url = database_url
         self._dimensions = dimensions
+        self._view_name = view_name
         self._pool = None  # Lazy-initialized ConnectionPool
         self._pool_lock = threading.Lock()
         self._schema_lock = threading.Lock()
@@ -113,6 +121,27 @@ class PgVectorClient:
                         CREATE INDEX IF NOT EXISTS idx_document_chunks_metadata
                         ON document_chunks USING GIN (metadata)
                     """)
+                    # AnythingLLM-compatible VIEW — adapts our schema
+                    # to what AnythingLLM expects for pgvector queries
+                    if self._view_name:
+                        if not _SOURCE_NAME_RE.match(self._view_name):
+                            raise ValueError(
+                                f"Invalid view name: {self._view_name!r}. "
+                                "Only alphanumeric, underscore, and hyphen allowed."
+                            )
+                        from psycopg import sql as psql
+
+                        cur.execute(psql.SQL("""
+                            CREATE OR REPLACE VIEW {} AS
+                            SELECT
+                                md5(source || '/' || filename || '/'
+                                    || chunk_index::text || '/' || id::text)::uuid AS id,
+                                source AS namespace,
+                                embedding,
+                                metadata || jsonb_build_object('text', content) AS metadata,
+                                created_at
+                            FROM document_chunks
+                        """).format(psql.Identifier(self._view_name)))
                 conn.commit()
 
             self._schema_ensured = True
@@ -153,9 +182,11 @@ class PgVectorClient:
                     cur.execute(
                         sql.SQL(
                             "CREATE TABLE {} PARTITION OF document_chunks "
-                            "FOR VALUES IN (%s)"
-                        ).format(sql.Identifier(partition_name)),
-                        (source,),
+                            "FOR VALUES IN ({})"
+                        ).format(
+                            sql.Identifier(partition_name),
+                            sql.Literal(source),
+                        ),
                     )
                     self.logger.info(f"Created partition for source '{source}'")
 

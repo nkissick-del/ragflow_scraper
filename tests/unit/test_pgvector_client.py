@@ -2,7 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
-from app.services.pgvector_client import PgVectorClient
+from app.services.pgvector_client import ANYTHINGLLM_VIEW_NAME, PgVectorClient
 
 
 class TestPgVectorClientConfig:
@@ -63,9 +63,9 @@ class TestPgVectorClientSchema:
         client = PgVectorClient(database_url="postgresql://localhost/test", dimensions=768)
         client.ensure_schema()
 
-        # Should call execute at least twice (CREATE EXTENSION + CREATE TABLE + CREATE INDEX)
+        # CREATE EXTENSION + CREATE TABLE + CREATE INDEX + CREATE VIEW
         calls = mock_cursor.execute.call_args_list
-        assert len(calls) >= 3
+        assert len(calls) >= 4
 
         # Verify CREATE EXTENSION
         assert "CREATE EXTENSION IF NOT EXISTS vector" in str(calls[0])
@@ -355,3 +355,103 @@ class TestPgVectorClientDelete:
 
         assert deleted == 5
         mock_conn.commit.assert_called_once()
+
+
+class TestAnythingLLMView:
+    """Test AnythingLLM VIEW creation in ensure_schema."""
+
+    def test_view_name_constant(self):
+        assert ANYTHINGLLM_VIEW_NAME == "anythingllm_document_view"
+
+    @patch("app.services.pgvector_client.PgVectorClient._get_pool")
+    def test_ensure_schema_creates_view(self, mock_get_pool):
+        mock_cursor = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_pool = MagicMock()
+        mock_pool.connection.return_value = mock_conn
+        mock_get_pool.return_value = mock_pool
+
+        client = PgVectorClient(database_url="postgresql://localhost/test", dimensions=768)
+        client.ensure_schema()
+
+        calls = mock_cursor.execute.call_args_list
+        # Last execute call before commit should be the VIEW creation
+        view_call_sql = str(calls[-1])
+        assert "CREATE OR REPLACE VIEW" in view_call_sql
+        assert ANYTHINGLLM_VIEW_NAME in view_call_sql
+
+    @patch("app.services.pgvector_client.PgVectorClient._get_pool")
+    def test_view_sql_maps_source_to_namespace(self, mock_get_pool):
+        mock_cursor = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_pool = MagicMock()
+        mock_pool.connection.return_value = mock_conn
+        mock_get_pool.return_value = mock_pool
+
+        client = PgVectorClient(database_url="postgresql://localhost/test")
+        client.ensure_schema()
+
+        calls = mock_cursor.execute.call_args_list
+        view_sql = str(calls[-1])
+        assert "source AS namespace" in view_sql
+        assert "jsonb_build_object" in view_sql
+        assert "'text'" in view_sql
+
+    @patch("app.services.pgvector_client.PgVectorClient._get_pool")
+    def test_custom_view_name(self, mock_get_pool):
+        mock_cursor = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_pool = MagicMock()
+        mock_pool.connection.return_value = mock_conn
+        mock_get_pool.return_value = mock_pool
+
+        client = PgVectorClient(
+            database_url="postgresql://localhost/test",
+            view_name="my_custom_view",
+        )
+        client.ensure_schema()
+
+        calls = mock_cursor.execute.call_args_list
+        view_sql = str(calls[-1])
+        assert "my_custom_view" in view_sql
+        assert "CREATE OR REPLACE VIEW" in view_sql
+
+    @patch("app.services.pgvector_client.PgVectorClient._get_pool")
+    def test_empty_view_name_skips_creation(self, mock_get_pool):
+        mock_cursor = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_pool = MagicMock()
+        mock_pool.connection.return_value = mock_conn
+        mock_get_pool.return_value = mock_pool
+
+        client = PgVectorClient(
+            database_url="postgresql://localhost/test",
+            view_name="",
+        )
+        client.ensure_schema()
+
+        # Only 3 calls: CREATE EXTENSION + CREATE TABLE + CREATE INDEX (no VIEW)
+        calls = mock_cursor.execute.call_args_list
+        assert len(calls) == 3
+        for call in calls:
+            assert "CREATE OR REPLACE VIEW" not in str(call)

@@ -239,6 +239,7 @@ class Config:
 
     # pgvector (PostgreSQL vector storage)
     DATABASE_URL = os.getenv("DATABASE_URL", "")
+    ANYTHINGLLM_VIEW_NAME = os.getenv("ANYTHINGLLM_VIEW_NAME", "anythingllm_document_view")
 
     # Valid values for backends and strategies
     VALID_PARSER_BACKENDS = ("docling", "docling_serve", "mineru", "tika")

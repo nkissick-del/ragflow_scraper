@@ -403,9 +403,11 @@ class ServiceContainer:
                     "PgVector configuration missing: DATABASE_URL is required"
                 )
             dims = self._safe_int(self._get_config_attr("EMBEDDING_DIMENSIONS", "768"), 768)
+            view_name = self._get_config_attr("ANYTHINGLLM_VIEW_NAME", "anythingllm_document_view")
             self._pgvector_client = PgVectorClient(
                 database_url=db_url,
                 dimensions=dims,
+                view_name=view_name,
             )
             self.logger.debug("Initialized PgVectorClient")
         return self._pgvector_client

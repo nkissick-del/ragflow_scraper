@@ -3,7 +3,7 @@
 import time
 import pytest
 
-from app.services.pgvector_client import PgVectorClient
+from app.services.pgvector_client import ANYTHINGLLM_VIEW_NAME, PgVectorClient
 
 
 @pytest.fixture
@@ -100,3 +100,77 @@ class TestPgVectorStack:
         assert "total_chunks" in stats
         assert "total_documents" in stats
         assert "total_sources" in stats
+
+
+class TestAnythingLLMViewStack:
+    """Test AnythingLLM VIEW against real PostgreSQL."""
+
+    def test_anythingllm_view_exists(self, pgvector_client):
+        """Verify VIEW exists with correct columns after ensure_schema."""
+        pgvector_client.ensure_schema()
+
+        pool = pgvector_client._get_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT column_name, data_type
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = %s
+                    ORDER BY ordinal_position
+                    """,
+                    (ANYTHINGLLM_VIEW_NAME,),
+                )
+                rows = cur.fetchall()
+
+        columns = {row[0]: row[1] for row in rows}
+        assert "id" in columns
+        assert columns["id"] == "uuid"
+        assert "namespace" in columns
+        assert columns["namespace"] == "text"
+        assert "embedding" in columns
+        assert columns["embedding"] == "USER-DEFINED"
+        assert "metadata" in columns
+        assert columns["metadata"] == "jsonb"
+        assert "created_at" in columns
+
+    def test_anythingllm_view_returns_data(self, pgvector_client, clean_test_source):
+        """Store chunks, query VIEW, verify metadata.text matches content."""
+        pgvector_client.ensure_schema()
+
+        fake_embedding = [0.0] * 768
+        test_content = "Energy policy reform 2030"
+        chunks = [
+            {
+                "content": test_content,
+                "embedding": fake_embedding,
+                "chunk_index": 0,
+                "metadata": {"title": "Test"},
+            }
+        ]
+        pgvector_client.store_chunks(clean_test_source, "test_doc.md", chunks)
+
+        from psycopg import sql
+
+        pool = pgvector_client._get_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL("SELECT id, namespace, metadata FROM {} "
+                            "WHERE namespace = %s").format(
+                        sql.Identifier(ANYTHINGLLM_VIEW_NAME)
+                    ),
+                    (clean_test_source,),
+                )
+                rows = cur.fetchall()
+
+        assert len(rows) >= 1
+        row = rows[0]
+        # id should be a UUID
+        assert row[0] is not None
+        # namespace should match source
+        assert row[1] == clean_test_source
+        # metadata should contain 'text' key with content
+        meta = row[2] if isinstance(row[2], dict) else {}
+        assert meta.get("text") == test_content
+        assert meta.get("title") == "Test"
