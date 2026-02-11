@@ -2,6 +2,7 @@
 .env
 .env.test
 .env.stack
+.mcp.json
 venv/
 .venv/
 env/

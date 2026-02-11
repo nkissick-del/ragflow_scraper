@@ -56,17 +56,25 @@ def dummy_metadata():
     )
 
 
+class _MockSettings:
+    """Stub settings that returns defaults for all .get() calls."""
+
+    def get(self, key: str, default: str = "") -> str:
+        return default
+
+
 class _MockContainer:
     """Lightweight mock container wired to real backends.
 
-    Includes a ragflow_client stub because Pipeline.__init__ accesses it
-    when upload_to_ragflow=True (legacy path).
+    Includes stubs for attributes the pipeline accesses beyond the
+    three core backends (ragflow_client, settings, tika_client, llm_client).
     """
 
     def __init__(self, parser_backend, archive_backend, rag_backend):
         self._parser = parser_backend
         self._archive = archive_backend
         self._rag = rag_backend
+        self._settings = _MockSettings()
 
     @property
     def parser_backend(self):
@@ -83,6 +91,25 @@ class _MockContainer:
     @property
     def ragflow_client(self):
         """Stub — Pipeline.__init__ reads this but _process_document uses rag_backend."""
+        return None
+
+    @property
+    def settings(self):
+        return self._settings
+
+    @property
+    def tika_client(self):
+        """Stub — enrichment step checks settings first and skips if disabled."""
+        return None
+
+    @property
+    def llm_client(self):
+        """Stub — LLM enrichment checks settings first and skips if disabled."""
+        return None
+
+    @property
+    def gotenberg_client(self):
+        """Stub — only used for markdown/office doc types."""
         return None
 
 
