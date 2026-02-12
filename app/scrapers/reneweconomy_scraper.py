@@ -21,6 +21,7 @@ from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.flaresolverr_mixin import FlareSolverrPageFetchMixin
 from app.scrapers.jsonld_mixin import JSONLDDateExtractionMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
+from app.scrapers.pagination_guard import PaginationGuard
 from app.utils import sanitize_filename, ArticleConverter
 
 
@@ -231,7 +232,7 @@ class RenewEconomyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin,
 
         page_num = 1
         max_pages: Optional[int] = None
-        consecutive_empty_pages = 0
+        guard = PaginationGuard()
 
         while True:
             if self.check_cancelled():
@@ -259,8 +260,9 @@ class RenewEconomyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin,
 
                 if not fs_result.success or not fs_result.html:
                     self.logger.warning(f"Failed to fetch {category} page {page_num}")
-                    consecutive_empty_pages += 1
-                    if consecutive_empty_pages >= 2:
+                    should_stop, reason = guard.check_page([])
+                    if should_stop:
+                        self.logger.info(f"Stopping {category}: {reason}")
                         break
                     page_num += 1
                     self._polite_delay()
@@ -291,22 +293,16 @@ class RenewEconomyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin,
 
                 # Parse articles from listing page
                 articles = self.parse_page(page_html)
+                article_urls = [a.url for a in articles]
 
-                if not articles:
-                    consecutive_empty_pages += 1
-                    self.logger.debug(
-                        f"No articles on {category} page {page_num} "
-                        f"({consecutive_empty_pages} consecutive empty)"
+                should_stop, reason = guard.check_page(article_urls)
+                if should_stop:
+                    self.logger.info(
+                        f"Pagination guard stopped {category}: {reason}"
                     )
-                    # Stop after 2 consecutive empty pages
-                    if consecutive_empty_pages >= 2:
-                        self.logger.info(
-                            f"Stopping {category}: {consecutive_empty_pages} "
-                            "consecutive empty pages"
-                        )
-                        break
-                else:
-                    consecutive_empty_pages = 0
+                    break
+
+                if articles:
                     result.scraped_count += len(articles)
                     self.logger.info(
                         f"Found {len(articles)} articles on {category} page {page_num}"
@@ -334,11 +330,11 @@ class RenewEconomyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin,
             except Exception as e:
                 self.logger.error(f"Error on {category} page {page_num}: {e}")
                 result.errors.append(f"{category} page {page_num}: {str(e)}")
-                # Don't stop on error, try next page
-                consecutive_empty_pages += 1
-                if consecutive_empty_pages >= 2:
+                # Errors count as empty pages for guard purposes
+                should_stop, reason = guard.check_page([])
+                if should_stop:
                     self.logger.info(
-                        f"Stopping {category}: too many consecutive failures"
+                        f"Stopping {category}: {reason}"
                     )
                     break
 

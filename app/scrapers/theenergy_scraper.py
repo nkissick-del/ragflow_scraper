@@ -1,47 +1,47 @@
 """
 TheEnergy (theenergy.co) scraper for Australian energy news articles.
 
-Scrapes articles from: https://theenergy.co/articles
+Two-phase approach:
+  Phase 1 — RSS feed (recent articles with full HTML content embedded)
+  Phase 2 — Sitemap backfill (historical articles, fetched via FlareSolverr)
 
-Server-side rendered site (no Cloudflare protection).
-Pagination pattern: /articles/pN (N = 2 to 34+)
-Two-stage scraping: listing page -> article page for JSON-LD dates and content.
-Saves article content as Markdown for RAGFlow indexing.
+Replaces the previous HTML-pagination approach which looped forever because
+theenergy.co echoes the oldest page for any page number beyond the last real one.
 """
 
 from __future__ import annotations
 
+import defusedxml.ElementTree as ET  # type: ignore[import-untyped]
 from typing import Any, Optional
-from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup  # type: ignore[import-untyped]
+import feedparser  # type: ignore[import-untyped]
 
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.flaresolverr_mixin import FlareSolverrPageFetchMixin
 from app.scrapers.jsonld_mixin import JSONLDDateExtractionMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
 from app.utils import sanitize_filename, ArticleConverter
-from app.utils.errors import ScraperError
 
 
 class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, BaseScraper):
     """
-    Scraper for TheEnergy news articles.
+    RSS + Sitemap scraper for TheEnergy news articles.
 
     Key features:
-    - Uses FlareSolverr for rendered page fetching
-    - Server-side rendered (no JS challenge, no Cloudflare)
-    - Path-based pagination: /articles/pN
-    - Two-stage scraping for full ISO 8601 dates from JSON-LD
+    - Phase 1: RSS feed provides ~15 recent articles with full HTML content
+    - Phase 2: Sitemap XML provides ~577 historical article URLs for backfill
+    - Uses FlareSolverr for fetching article pages during sitemap phase
+    - JSON-LD date extraction for accurate publication dates
     - Extracts article content as Markdown
-    - Article types: news, feature, explainer, context
-    - Categories: Policy, Projects, Regulation, Energy Systems, etc.
     """
 
     name = "theenergy"
     display_name = "The Energy"
     description = "Scrapes articles from The Energy (theenergy.co)"
-    base_url = "https://theenergy.co/articles"
+    base_url = "https://theenergy.co"
+
+    RSS_URL = "https://theenergy.co/rss"
+    SITEMAP_URL = "https://theenergy.co/sitemap-articles-1.xml"
 
     skip_webdriver = True  # Use FlareSolverr instead of Selenium
 
@@ -56,60 +56,29 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
     excluded_tags: list[str] = []
     excluded_keywords: list[str] = []
 
-    # Valid article categories and types
-    VALID_CATEGORIES = [
-        "Policy", "Projects", "Regulation", "Energy Systems",
-        "Technology", "Capital", "Climate", "Workforce"
-    ]
-    VALID_TYPES = ["news", "feature", "explainer", "context"]
-
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize scraper with GFM markdown converter."""
         super().__init__(*args, **kwargs)
-
-        # Use shared GFM converter
         self._markdown = ArticleConverter()
 
-    def _build_page_url(self, page_num: int) -> str:
-        """
-        Build URL for a specific page.
+    # ------------------------------------------------------------------
+    # Article limit helper
+    # ------------------------------------------------------------------
 
-        TheEnergy uses path-based pagination:
-        - Page 1: /articles (no suffix)
-        - Page 2+: /articles/pN
+    def _reached_limit(self, result: ScraperResult) -> bool:
+        """Check whether the effective article limit has been reached."""
+        if not self.max_pages:
+            return False
+        limit = self.max_pages * self.articles_per_page
+        return result.downloaded_count + result.skipped_count >= limit
 
-        Args:
-            page_num: 1-indexed page number
-
-        Returns:
-            Full URL for the page
-        """
-        if page_num == 1:
-            return self.base_url
-        return f"{self.base_url}/p{page_num}"
-
-    def _extract_article_content(self, html: str) -> str:
-        """
-        Extract article body content and convert to GFM-compliant Markdown.
-
-        Args:
-            html: HTML content of the article page
-
-        Returns:
-            Article content as GFM Markdown string
-        """
-        # ArticleConverter automatically finds main content
-        return self._markdown.convert(html)
+    # ------------------------------------------------------------------
+    # Main entry point
+    # ------------------------------------------------------------------
 
     def scrape(self) -> ScraperResult:
         """
-        Scrape TheEnergy articles.
-
-        Workflow:
-        1. Iterate through paginated listing pages
-        2. Parse article items from each page
-        3. Visit each article page to extract JSON-LD dates and content
-        4. Save article as Markdown with metadata sidecar
+        Scrape TheEnergy articles via RSS feed + sitemap backfill.
 
         Returns:
             ScraperResult with statistics and article metadata
@@ -119,70 +88,24 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
             scraper=self.name,
         )
 
-        page_num = 1
-        consecutive_empty_pages = 0
+        # Incremental mode support
+        self._from_date = self._get_last_scrape_date()
+        self._newest_article_date: Optional[str] = None
 
         try:
-            while True:
-                if self.check_cancelled():
-                    self.logger.info("Scraper cancelled")
-                    result.status = "cancelled"
-                    break
+            # Phase 1: RSS feed (recent articles with full content)
+            self._scrape_rss(result)
 
-                # Check max_pages limit
-                if self.max_pages and page_num > self.max_pages:
-                    self.logger.info(f"Reached max pages limit ({self.max_pages})")
-                    break
+            # Phase 2: Sitemap backfill (historical articles)
+            if not self.check_cancelled() and not self._reached_limit(result):
+                self._scrape_sitemap(result)
 
-                page_url = self._build_page_url(page_num)
-                self.logger.info(f"Scraping page {page_num}: {page_url}")
-
-                try:
-                    page_html = self.fetch_rendered_page(page_url)
-                    if not page_html:
-                        raise ScraperError(
-                            f"Empty response for page {page_num}",
-                            scraper=self.name,
-                        )
-
-                    # Parse articles from listing page
-                    articles = self.parse_page(page_html)
-
-                    if not articles:
-                        consecutive_empty_pages += 1
-                        self.logger.info(f"No articles on page {page_num}")
-                        # Stop after 2 consecutive empty pages
-                        if consecutive_empty_pages >= 2:
-                            self.logger.info("No more articles found, stopping")
-                            break
-                    else:
-                        consecutive_empty_pages = 0
-                        result.scraped_count += len(articles)
-                        self.logger.info(f"Found {len(articles)} articles on page {page_num}")
-
-                        # Process each article
-                        for article in articles:
-                            if self.check_cancelled():
-                                break
-
-                            self._process_article(article, result)
-                            self._polite_delay()
-
-                except Exception as e:
-                    self.logger.error(f"Error on page {page_num}: {e}")
-                    result.errors.append(f"Page {page_num}: {str(e)}")
-
-                page_num += 1
-                self._polite_delay()
-
-            # Set final status
             if result.status != "cancelled":
-                if result.errors and result.downloaded_count == 0:
-                    result.status = "failed"
-                elif result.errors:
-                    result.status = "partial"
-                else:
-                    result.status = "completed"
+                self._finalize_result(result)
+
+            # Update last scrape date on success
+            if result.status in ("completed", "partial") and not self.dry_run:
+                self._update_last_scrape_date()
 
         except Exception as e:
             self.logger.error(f"Scraper failed: {e}")
@@ -191,195 +114,388 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
 
         return result
 
-    def parse_page(self, page_source: str) -> list[DocumentMetadata]:
-        """
-        Parse listing page and extract article metadata.
+    # ------------------------------------------------------------------
+    # Phase 1 — RSS feed
+    # ------------------------------------------------------------------
 
-        Args:
-            page_source: HTML source of the listing page
+    def _scrape_rss(self, result: ScraperResult) -> None:
+        """Fetch RSS feed and process entries (full HTML content in feed)."""
+        self.logger.info(f"Phase 1: Fetching RSS feed from {self.RSS_URL}")
 
-        Returns:
-            List of DocumentMetadata for articles found
-        """
-        soup = BeautifulSoup(page_source, "lxml")
-        articles: list[DocumentMetadata] = []
-
-        # Find all article elements within main
-        main = soup.find("main")
-        if not main:
-            self.logger.warning("Could not find main element")
-            return articles
-
-        article_elements = main.find_all("article")
-        self.logger.debug(f"Found {len(article_elements)} article elements")
-
-        for article_el in article_elements:
-            try:
-                doc = self._parse_article_item(article_el)
-                if doc:
-                    articles.append(doc)
-            except Exception as e:
-                self.logger.warning(f"Failed to parse article: {e}")
-
-        return articles
-
-    def _parse_article_item(self, article_el: Any) -> Optional[DocumentMetadata]:
-        """
-        Parse a single article element from the listing page.
-
-        Args:
-            article_el: BeautifulSoup article element
-
-        Returns:
-            DocumentMetadata or None if parsing fails
-        """
-        # Find link - use direct child anchor
-        link = article_el.select_one("a")
-        if not link:
-            return None
-
-        href = link.get("href", "")
-        if not href:
-            return None
-
-        # Build full URL
-        if not href.startswith("http"):
-            article_url = urljoin("https://theenergy.co", href)
-        else:
-            article_url = href
-
-        # Title from h3
-        title_el = article_el.find("h3")
-        title = title_el.get_text(strip=True) if title_el else ""
-        if not title:
-            self.logger.debug(f"No title found for article: {href}")
-            return None
-
-        # Metadata spans
-        metadata_container = article_el.select_one(".metadata")
-        category = ""
-        article_type = ""
-        display_date = ""
-
-        if metadata_container:
-            spans = metadata_container.find_all("span", recursive=False)
-            if len(spans) >= 1:
-                category = spans[0].get_text(strip=True)
-            if len(spans) >= 2:
-                article_type = spans[1].get_text(strip=True).lower()
-
-            date_el = metadata_container.select_one(".date")
-            if date_el:
-                display_date = date_el.get_text(strip=True)
-
-        # Abstract
-        abstract_el = article_el.select_one(".abstract")
-        abstract = abstract_el.get_text(strip=True) if abstract_el else ""
-
-        # Build tags
-        tags = ["TheEnergy"]
-        if category:
-            tags.append(category)
-        if article_type:
-            tags.append(article_type)
-
-        # Create filename from title (for metadata file)
-        safe_title = sanitize_filename(title)
-        filename = f"{safe_title[:100]}.md"
-
-        return DocumentMetadata(
-            url=article_url,
-            title=title,
-            filename=filename,
-            publication_date=None,  # Will be filled from JSON-LD
-            tags=tags,
-            source_page=self.base_url,
-            organization="The Energy",
-            document_type="Article",
-            extra={
-                "category": category,
-                "article_type": article_type,
-                "display_date": display_date,
-                "abstract": abstract,
-                "content_type": "article",
-            },
-        )
-
-    def _process_article(self, article: DocumentMetadata, result: ScraperResult) -> None:
-        """
-        Process a single article: fetch full dates and content, save as Markdown.
-
-        Args:
-            article: DocumentMetadata from listing page
-            result: ScraperResult to update
-        """
-        # Check exclusion
-        exclusion_reason = self.should_exclude_document(article)
-        if exclusion_reason:
-            self.logger.debug(f"Excluded: {article.title} ({exclusion_reason})")
-            result.excluded_count += 1
-            result.excluded.append(
-                ExcludedDocument(
-                    title=article.title,
-                    url=article.url,
-                    reason=exclusion_reason,
-                ).to_dict()
-            )
+        try:
+            feed_entries = self._fetch_rss_feed()
+        except Exception as e:
+            self.logger.error(f"RSS feed fetch failed: {e}")
+            result.errors.append(f"RSS feed: {str(e)}")
             return
 
-        # Check if already processed
-        if self._is_processed(article.url):
-            self.logger.debug(f"Already processed: {article.title}")
+        if not feed_entries:
+            self.logger.info("RSS feed returned no entries")
+            return
+
+        self.logger.info(f"RSS feed: {len(feed_entries)} entries")
+
+        for entry in feed_entries:
+            if self.check_cancelled():
+                result.status = "cancelled"
+                break
+            if self._reached_limit(result):
+                self.logger.info("Reached article limit during RSS phase")
+                break
+
+            self._process_rss_entry(entry, result)
+
+    def _fetch_rss_feed(self) -> list[Any]:
+        """Fetch and parse the RSS feed.
+
+        Returns:
+            List of feedparser entry objects.
+        """
+        if not self._session:
+            raise RuntimeError("HTTP session not initialized")
+
+        response = self._request_with_retry(
+            self._session, "get", self.RSS_URL, timeout=30
+        )
+        if response is None:
+            raise RuntimeError("RSS feed request returned None")
+
+        feed = feedparser.parse(response.content)
+
+        if feed.bozo and not feed.entries:
+            raise RuntimeError(f"RSS feed parse error: {feed.bozo_exception}")
+
+        return feed.entries
+
+    def _process_rss_entry(self, entry: Any, result: ScraperResult) -> None:
+        """Process a single RSS feed entry.
+
+        RSS entries contain full HTML content in the description/summary,
+        so no extra HTTP request is needed per article.
+        """
+        url = entry.get("link", "")
+        if not url:
+            return
+
+        # Cross-phase deduplication
+        if url in self._session_processed_urls:
+            return
+        self._session_processed_urls.add(url)
+        result.scraped_count += 1
+
+        # Persistent state check
+        if self._is_processed(url):
+            self.logger.debug(f"Already processed: {url}")
             result.skipped_count += 1
             return
 
-        # Stage 2: Fetch article page for JSON-LD dates and content
+        # Extract metadata
+        title = entry.get("title", "")
+        if not title:
+            return
+
+        pub_date = self._parse_feedparser_date(entry.get("published_parsed"))
+        self._track_article_date(pub_date)
+
+        # Incremental mode: skip old articles
+        if self._from_date and pub_date and pub_date < self._from_date:
+            self.logger.debug(f"Skipping old article: {pub_date} < {self._from_date}")
+            result.skipped_count += 1
+            return
+
+        # Build tags
+        tags = ["TheEnergy"]
+        categories = [t.get("term", "") for t in entry.get("tags", [])]
+        for cat in categories:
+            if cat and cat not in tags:
+                tags.append(cat)
+
+        safe_title = sanitize_filename(title)[:100]
+        filename = f"{safe_title}.md"
+
+        metadata = DocumentMetadata(
+            url=url,
+            title=title,
+            filename=filename,
+            publication_date=pub_date,
+            tags=tags,
+            source_page=self.RSS_URL,
+            organization="The Energy",
+            document_type="Article",
+            extra={
+                "content_type": "article",
+                "source": "rss",
+            },
+        )
+
+        # Exclusion check
+        exclusion_reason = self.should_exclude_document(metadata)
+        if exclusion_reason:
+            self.logger.debug(f"Excluded: {title} ({exclusion_reason})")
+            result.excluded_count += 1
+            result.excluded.append(
+                ExcludedDocument(title=title, url=url, reason=exclusion_reason).to_dict()
+            )
+            return
+
+        # Extract HTML content from RSS entry
+        content_html = self._extract_rss_content(entry)
+        if not content_html:
+            self.logger.warning(f"No content in RSS entry: {title}")
+            result.failed_count += 1
+            return
+
+        # Convert to Markdown
+        content_md = self._convert_html_to_markdown(content_html)
+
+        if self.dry_run:
+            self.logger.info(f"[DRY RUN] Would save: {title}")
+            result.downloaded_count += 1
+            result.documents.append(metadata.to_dict())
+        else:
+            saved_path = self._save_article(metadata, content_md, html_content=content_html)
+            if saved_path:
+                result.downloaded_count += 1
+                result.documents.append(metadata.to_dict())
+                self._mark_processed(url, {"title": title})
+            else:
+                result.failed_count += 1
+
+    def _extract_rss_content(self, entry: Any) -> str:
+        """Extract HTML content from an RSS feed entry.
+
+        TheEnergy RSS uses ``<description>`` with full HTML in CDATA.
+        feedparser exposes this as ``entry.summary`` or ``entry.content``.
+        """
+        # Try content list first (some feeds use this)
+        if entry.get("content"):
+            for item in entry["content"]:
+                value = item.get("value", "")
+                if value:
+                    return value
+
+        # Fall back to summary/description
+        return entry.get("summary", "")
+
+    def _parse_feedparser_date(self, time_struct: Any) -> Optional[str]:
+        """Convert feedparser time struct to YYYY-MM-DD string."""
+        if not time_struct:
+            return None
         try:
-            self.logger.debug(f"Fetching article: {article.url}")
-            article_html = self.fetch_rendered_page(article.url)
+            from time import strftime
+            return strftime("%Y-%m-%d", time_struct)
+        except (ValueError, TypeError):
+            return None
+
+    # ------------------------------------------------------------------
+    # Phase 2 — Sitemap backfill
+    # ------------------------------------------------------------------
+
+    def _scrape_sitemap(self, result: ScraperResult) -> None:
+        """Parse sitemap XML and fetch article pages for unprocessed URLs."""
+        self.logger.info(f"Phase 2: Fetching sitemap from {self.SITEMAP_URL}")
+
+        try:
+            sitemap_entries = self._parse_sitemap()
+        except Exception as e:
+            self.logger.error(f"Sitemap fetch failed: {e}")
+            result.errors.append(f"Sitemap: {str(e)}")
+            return
+
+        if not sitemap_entries:
+            self.logger.info("Sitemap returned no entries")
+            return
+
+        self.logger.info(f"Sitemap: {len(sitemap_entries)} article URLs")
+
+        for url, lastmod in sitemap_entries:
+            if self.check_cancelled():
+                result.status = "cancelled"
+                break
+            if self._reached_limit(result):
+                self.logger.info("Reached article limit during sitemap phase")
+                break
+
+            self._process_sitemap_article(url, lastmod, result)
+            self._polite_delay()
+
+    def _parse_sitemap(self) -> list[tuple[str, Optional[str]]]:
+        """Fetch and parse the sitemap XML.
+
+        Returns:
+            List of ``(url, lastmod)`` tuples. *lastmod* may be ``None``.
+        """
+        if not self._session:
+            raise RuntimeError("HTTP session not initialized")
+
+        response = self._request_with_retry(
+            self._session, "get", self.SITEMAP_URL, timeout=30
+        )
+        if response is None:
+            raise RuntimeError("Sitemap request returned None")
+
+        root = ET.fromstring(response.content)
+
+        # Sitemap XML uses a namespace
+        ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+
+        entries: list[tuple[str, Optional[str]]] = []
+        for url_el in root.findall("sm:url", ns):
+            loc_el = url_el.find("sm:loc", ns)
+            if loc_el is None or not loc_el.text:
+                continue
+
+            loc = loc_el.text.strip()
+
+            # Filter to article URLs only
+            if "/article/" not in loc:
+                continue
+
+            lastmod_el = url_el.find("sm:lastmod", ns)
+            lastmod = lastmod_el.text.strip() if lastmod_el is not None and lastmod_el.text else None
+
+            entries.append((loc, lastmod))
+
+        return entries
+
+    def _process_sitemap_article(
+        self, url: str, lastmod: Optional[str], result: ScraperResult
+    ) -> None:
+        """Fetch an article page from the sitemap and process it."""
+        # Cross-phase deduplication (may have been processed via RSS)
+        if url in self._session_processed_urls:
+            return
+        self._session_processed_urls.add(url)
+        result.scraped_count += 1
+
+        # Persistent state check
+        if self._is_processed(url):
+            self.logger.debug(f"Already processed (sitemap): {url}")
+            result.skipped_count += 1
+            return
+
+        # Incremental mode: skip by lastmod date
+        if self._from_date and lastmod:
+            lastmod_date = lastmod[:10]  # YYYY-MM-DD prefix
+            if lastmod_date < self._from_date:
+                self.logger.debug(
+                    f"Skipping old sitemap article: {lastmod_date} < {self._from_date}"
+                )
+                result.skipped_count += 1
+                return
+
+        # Fetch article page via FlareSolverr
+        try:
+            self.logger.debug(f"Fetching sitemap article: {url}")
+            article_html = self.fetch_rendered_page(url)
             if not article_html:
-                self.logger.warning(f"Empty response for article: {article.url}")
+                self.logger.warning(f"Empty response for sitemap article: {url}")
                 result.failed_count += 1
                 return
 
             # Extract JSON-LD dates
             dates = self._extract_jsonld_dates(article_html)
+            pub_date = dates["date_published"]
+            self._track_article_date(pub_date)
 
-            # Update article metadata with full dates
-            if dates["date_published"]:
-                article.publication_date = dates["date_published"]
-                article.extra["date_published_iso"] = dates["date_published"]
-            if dates["date_created"]:
-                article.extra["date_created"] = dates["date_created"]
-            if dates["date_modified"]:
-                article.extra["date_modified"] = dates["date_modified"]
+            # Extract title from HTML
+            title = self._extract_title(article_html)
+            if not title:
+                self.logger.warning(f"No title for sitemap article: {url}")
+                result.failed_count += 1
+                return
 
-            self.logger.debug(
-                f"Extracted dates for '{article.title}': "
-                f"published={dates['date_published']}"
+            # Build tags
+            tags = ["TheEnergy"]
+
+            safe_title = sanitize_filename(title)[:100]
+            filename = f"{safe_title}.md"
+
+            metadata = DocumentMetadata(
+                url=url,
+                title=title,
+                filename=filename,
+                publication_date=pub_date,
+                tags=tags,
+                source_page=self.SITEMAP_URL,
+                organization="The Energy",
+                document_type="Article",
+                extra={
+                    "content_type": "article",
+                    "source": "sitemap",
+                    "date_published_iso": dates["date_published"],
+                    "date_created": dates["date_created"],
+                    "date_modified": dates["date_modified"],
+                    "lastmod": lastmod,
+                },
             )
+
+            # Exclusion check
+            exclusion_reason = self.should_exclude_document(metadata)
+            if exclusion_reason:
+                self.logger.debug(f"Excluded: {title} ({exclusion_reason})")
+                result.excluded_count += 1
+                result.excluded.append(
+                    ExcludedDocument(
+                        title=title, url=url, reason=exclusion_reason
+                    ).to_dict()
+                )
+                return
 
             # Extract article content as Markdown
             content = self._extract_article_content(article_html)
 
             if self.dry_run:
-                self.logger.info(f"[DRY RUN] Would save: {article.title}")
+                self.logger.info(f"[DRY RUN] Would save: {title}")
                 result.downloaded_count += 1
-                result.documents.append(article.to_dict())
+                result.documents.append(metadata.to_dict())
             else:
-                # Set filename before calling base method
-                article.filename = sanitize_filename(article.title)[:100]
-
-                # Save article as Markdown with metadata (uses base class method)
-                saved_path = self._save_article(article, content)
-
+                saved_path = self._save_article(metadata, content)
                 if saved_path:
                     result.downloaded_count += 1
-                    result.documents.append(article.to_dict())
-                    self._mark_processed(article.url, {"title": article.title})
+                    result.documents.append(metadata.to_dict())
+                    self._mark_processed(url, {"title": title})
                 else:
                     result.failed_count += 1
 
         except Exception as e:
-            self.logger.warning(f"Failed to process article {article.url}: {e}")
+            self.logger.warning(f"Failed to process sitemap article {url}: {e}")
             result.failed_count += 1
+
+    # ------------------------------------------------------------------
+    # Content extraction helpers
+    # ------------------------------------------------------------------
+
+    def _extract_article_content(self, html: str) -> str:
+        """Extract article body content and convert to GFM Markdown."""
+        return self._markdown.convert(html)
+
+    def _convert_html_to_markdown(self, html: str) -> str:
+        """Convert HTML snippet (from RSS) to GFM Markdown."""
+        full_html = f"<article>{html}</article>"
+        return self._markdown.convert(full_html)
+
+    def _extract_title(self, html: str) -> str:
+        """Extract page title from HTML ``<title>`` or ``<h1>``."""
+        from bs4 import BeautifulSoup  # type: ignore[import-untyped]
+
+        soup = BeautifulSoup(html, "lxml")
+
+        # Try h1 first (more specific)
+        h1 = soup.find("h1")
+        if h1:
+            text = h1.get_text(strip=True)
+            if text:
+                return text
+
+        # Fall back to <title>
+        title_el = soup.find("title")
+        if title_el:
+            text = title_el.get_text(strip=True)
+            # Strip site name suffix (e.g. " - The Energy")
+            if " - " in text:
+                text = text.rsplit(" - ", 1)[0].strip()
+            if text:
+                return text
+
+        return ""

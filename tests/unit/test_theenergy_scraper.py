@@ -1,4 +1,4 @@
-"""Unit tests for TheEnergyScraper parse_page and helpers."""
+"""Unit tests for TheEnergyScraper helpers (JSON-LD, title extraction, etc.)."""
 
 from __future__ import annotations
 
@@ -21,66 +21,6 @@ def scraper():
 
 
 # -- Minimal HTML fixtures --------------------------------------------------
-
-LISTING_HTML = """
-<html><body>
-<main>
-  <article>
-    <a href="/article/energy-policy-update">
-      <h3>Energy Policy Update</h3>
-    </a>
-    <div class="metadata">
-      <span>Policy</span>
-      <span>news</span>
-      <span class="date">24 Dec 2025</span>
-    </div>
-    <div class="abstract">Summary of the energy policy changes.</div>
-  </article>
-  <article>
-    <a href="https://theenergy.co/article/grid-battery-project">
-      <h3>Grid Battery Project Announced</h3>
-    </a>
-    <div class="metadata">
-      <span>Projects</span>
-      <span>feature</span>
-      <span class="date">20 Dec 2025</span>
-    </div>
-    <div class="abstract">New battery project for grid stability.</div>
-  </article>
-</main>
-</body></html>
-"""
-
-SINGLE_ARTICLE_HTML = """
-<html><body>
-<main>
-  <article>
-    <a href="/article/hydrogen-hub">
-      <h3>Hydrogen Hub Launch</h3>
-    </a>
-    <div class="metadata">
-      <span>Technology</span>
-      <span>explainer</span>
-    </div>
-  </article>
-</main>
-</body></html>
-"""
-
-NO_MAIN_HTML = """<html><body><div class="content">No main element.</div></body></html>"""
-
-EMPTY_MAIN_HTML = """<html><body><main></main></body></html>"""
-
-ARTICLE_NO_TITLE_HTML = """
-<html><body>
-<main>
-  <article>
-    <a href="/article/no-title"></a>
-    <div class="metadata"><span>Policy</span></div>
-  </article>
-</main>
-</body></html>
-"""
 
 JSONLD_HTML = """
 <html><body>
@@ -114,62 +54,20 @@ JSONLD_GRAPH_HTML = """
 </body></html>
 """
 
+NO_JSONLD_HTML = """<html><body><div>No JSON-LD here.</div></body></html>"""
+
+TITLE_H1_HTML = """
+<html><body><h1>Energy Policy Update</h1><p>Content here.</p></body></html>
+"""
+
+TITLE_TAG_HTML = """
+<html><head><title>Grid Battery Project - The Energy</title></head><body></body></html>
+"""
+
+NO_TITLE_HTML = """<html><body><p>No title element.</p></body></html>"""
+
 
 # -- Tests -------------------------------------------------------------------
-
-
-class TestParsePage:
-    """parse_page extracts articles from <article> within <main>."""
-
-    def test_extracts_two_articles(self, scraper):
-        docs = scraper.parse_page(LISTING_HTML)
-        assert len(docs) == 2
-
-    def test_first_article_fields(self, scraper):
-        docs = scraper.parse_page(LISTING_HTML)
-        doc = docs[0]
-        assert doc.title == "Energy Policy Update"
-        assert doc.url == "https://theenergy.co/article/energy-policy-update"
-        assert doc.organization == "The Energy"
-        assert doc.document_type == "Article"
-
-    def test_second_article_absolute_url(self, scraper):
-        docs = scraper.parse_page(LISTING_HTML)
-        assert docs[1].url == "https://theenergy.co/article/grid-battery-project"
-
-    def test_no_main_returns_empty(self, scraper):
-        docs = scraper.parse_page(NO_MAIN_HTML)
-        assert docs == []
-
-    def test_empty_main_returns_empty(self, scraper):
-        docs = scraper.parse_page(EMPTY_MAIN_HTML)
-        assert docs == []
-
-
-class TestParseArticleItem:
-    """_parse_article_item extracts metadata from an article element."""
-
-    def test_extracts_category(self, scraper):
-        docs = scraper.parse_page(LISTING_HTML)
-        assert docs[0].extra["category"] == "Policy"
-
-    def test_extracts_article_type(self, scraper):
-        docs = scraper.parse_page(LISTING_HTML)
-        assert docs[0].extra["article_type"] == "news"
-
-    def test_extracts_abstract(self, scraper):
-        docs = scraper.parse_page(LISTING_HTML)
-        assert docs[0].extra["abstract"] == "Summary of the energy policy changes."
-
-    def test_tags_include_category_and_type(self, scraper):
-        docs = scraper.parse_page(SINGLE_ARTICLE_HTML)
-        assert "TheEnergy" in docs[0].tags
-        assert "Technology" in docs[0].tags
-        assert "explainer" in docs[0].tags
-
-    def test_article_without_title_skipped(self, scraper):
-        docs = scraper.parse_page(ARTICLE_NO_TITLE_HTML)
-        assert docs == []
 
 
 class TestExtractJsonLDDatesTE:
@@ -186,7 +84,7 @@ class TestExtractJsonLDDatesTE:
         assert dates["date_published"] == "2024-01-15"
 
     def test_no_jsonld(self, scraper):
-        dates = scraper._extract_jsonld_dates(NO_MAIN_HTML)
+        dates = scraper._extract_jsonld_dates(NO_JSONLD_HTML)
         assert dates["date_published"] is None
         assert dates["date_created"] is None
         assert dates["date_modified"] is None
@@ -211,17 +109,88 @@ class TestParseIsoDateTE:
         assert scraper._parse_iso_date("not-a-date") is None
 
 
-class TestBuildPageURL:
-    """_build_page_url constructs correct URLs."""
+class TestExtractTitle:
+    """_extract_title extracts title from H1 or <title> tag."""
 
-    def test_page_1(self, scraper):
-        url = scraper._build_page_url(1)
-        assert url == "https://theenergy.co/articles"
+    def test_extracts_h1(self, scraper):
+        title = scraper._extract_title(TITLE_H1_HTML)
+        assert title == "Energy Policy Update"
 
-    def test_page_2(self, scraper):
-        url = scraper._build_page_url(2)
-        assert url == "https://theenergy.co/articles/p2"
+    def test_extracts_title_tag_strips_suffix(self, scraper):
+        title = scraper._extract_title(TITLE_TAG_HTML)
+        assert title == "Grid Battery Project"
 
-    def test_page_34(self, scraper):
-        url = scraper._build_page_url(34)
-        assert url == "https://theenergy.co/articles/p34"
+    def test_no_title_returns_empty(self, scraper):
+        title = scraper._extract_title(NO_TITLE_HTML)
+        assert title == ""
+
+
+class TestParseFeedparserDateTE:
+    """_parse_feedparser_date converts struct_time to YYYY-MM-DD."""
+
+    def test_valid_struct(self, scraper):
+        import time
+        ts = time.strptime("2025-06-15", "%Y-%m-%d")
+        assert scraper._parse_feedparser_date(ts) == "2025-06-15"
+
+    def test_none_returns_none(self, scraper):
+        assert scraper._parse_feedparser_date(None) is None
+
+    def test_invalid_returns_none(self, scraper):
+        assert scraper._parse_feedparser_date("not-a-struct") is None
+
+
+class TestExtractRSSContent:
+    """_extract_rss_content extracts HTML from feedparser entry."""
+
+    def test_content_list(self, scraper):
+        entry = {"content": [{"type": "text/html", "value": "<p>Article body.</p>"}]}
+        assert scraper._extract_rss_content(entry) == "<p>Article body.</p>"
+
+    def test_summary_fallback(self, scraper):
+        entry = {"summary": "<p>Summary content.</p>"}
+        assert scraper._extract_rss_content(entry) == "<p>Summary content.</p>"
+
+    def test_empty_entry(self, scraper):
+        assert scraper._extract_rss_content({}) == ""
+
+
+class TestReachedLimit:
+    """_reached_limit checks article limit based on max_pages."""
+
+    def test_no_max_pages(self, scraper):
+        scraper.max_pages = None
+        result = Mock()
+        result.downloaded_count = 100
+        result.skipped_count = 50
+        assert scraper._reached_limit(result) is False
+
+    def test_below_limit(self, scraper):
+        scraper.max_pages = 2
+        result = Mock()
+        result.downloaded_count = 10
+        result.skipped_count = 5
+        assert scraper._reached_limit(result) is False
+
+    def test_at_limit(self, scraper):
+        scraper.max_pages = 2  # limit = 20
+        result = Mock()
+        result.downloaded_count = 15
+        result.skipped_count = 5
+        assert scraper._reached_limit(result) is True
+
+
+class TestScraperConfig:
+    """Basic configuration checks."""
+
+    def test_skip_webdriver(self, scraper):
+        assert scraper.skip_webdriver is True
+
+    def test_rss_url(self, scraper):
+        assert scraper.RSS_URL == "https://theenergy.co/rss"
+
+    def test_sitemap_url(self, scraper):
+        assert scraper.SITEMAP_URL == "https://theenergy.co/sitemap-articles-1.xml"
+
+    def test_session_processed_urls_initialized(self, scraper):
+        assert isinstance(scraper._session_processed_urls, set)
