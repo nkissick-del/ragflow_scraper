@@ -68,6 +68,30 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courie
 """
 
 
+# Global cleaner instance (reused for performance)
+# We start with the default safe attributes and add 'style' (needed for PDF rendering)
+# This allows us to use safe_attrs_only=True for stricter security.
+_SAFE_ATTRS = set(Cleaner().safe_attrs) | {"style"}
+
+_HTML_CLEANER = Cleaner(
+    scripts=True,
+    javascript=True,
+    comments=True,
+    style=False,  # Allow <style> tags
+    links=False,  # Allow <link> tags (CSS)
+    meta=False,   # Allow <meta> tags
+    page_structure=False,
+    processing_instructions=True,
+    embedded=True,  # Removes object, embed, applet
+    frames=True,    # Removes frame, iframe
+    forms=True,     # Removes form
+    annoying_tags=False,
+    remove_unknown_tags=False,
+    safe_attrs_only=True,  # Strict attribute allowlist
+    safe_attrs=_SAFE_ATTRS,
+)
+
+
 class GotenbergClient:
     """Client for Gotenberg document conversion API."""
 
@@ -120,23 +144,7 @@ class GotenbergClient:
             return ""
 
         try:
-            cleaner = Cleaner(
-                scripts=True,
-                javascript=True,
-                comments=True,
-                style=False,  # Allow styles for PDF rendering
-                links=False,  # Allow links (CSS, etc.)
-                meta=False,   # Allow meta tags
-                page_structure=False,
-                processing_instructions=True,
-                embedded=True,  # Removes object, embed, applet
-                frames=True,    # Removes frame, iframe
-                forms=True,     # Removes form
-                annoying_tags=False,
-                remove_unknown_tags=False,
-                safe_attrs_only=False,  # Allow id, class, style, etc.
-            )
-            return cleaner.clean_html(html_content)
+            return _HTML_CLEANER.clean_html(html_content)
         except Exception as e:
             self.logger.error(f"HTML sanitization failed: {e}")
             raise ValueError(f"Failed to sanitize HTML: {e}") from e
