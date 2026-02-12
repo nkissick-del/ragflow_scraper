@@ -89,18 +89,19 @@ def _create_local_archive(container: ServiceContainer) -> Any:
 
 def _create_pgvector_vector_store(container: "ServiceContainer") -> Any:
     from app.backends.vectorstores.pgvector_store import PgVectorVectorStore
+    from app.config import Config
 
     db_url = container._get_effective_url("pgvector", "DATABASE_URL")
     if not db_url:
         raise ValueError("PgVector configuration missing: DATABASE_URL is required")
     dims = container._safe_int(container._get_config_attr("EMBEDDING_DIMENSIONS", "768"), 768)
     view_name = container._get_config_attr("ANYTHINGLLM_VIEW_NAME", "anythingllm_document_view")
-    drop_on_mismatch = container._get_config_attr("PGVECTOR_DROP_ON_MISMATCH", "")
+    drop_on_mismatch = getattr(Config, "PGVECTOR_DROP_ON_MISMATCH", False)
     return PgVectorVectorStore(
         database_url=db_url,
         dimensions=dims,
         view_name=view_name,
-        drop_on_dimension_mismatch=drop_on_mismatch.strip().lower() in ("true", "1", "yes"),
+        drop_on_dimension_mismatch=bool(drop_on_mismatch),
     )
 
 
