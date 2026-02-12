@@ -55,6 +55,33 @@ def scrapers_page():
     )
 
 
+@bp.route("/scrapers/cards/bulk")
+def bulk_scraper_cards():
+    """Return all scraper cards with OOB attributes for bulk dashboard polling."""
+    scrapers = ScraperRegistry.list_scrapers()
+    for scraper in scrapers:
+        state = container.state_tracker(scraper["name"])
+        scraper["state"] = state.get_last_run_info()
+        scraper["status"] = get_scraper_status(scraper["name"])
+    return render_template("components/bulk-cards.html", scrapers=scrapers, oob=True)
+
+
+@bp.route("/scrapers/status/bulk")
+def bulk_scraper_status():
+    """Return all status badges with OOB attributes for bulk scrapers page polling."""
+    scrapers = ScraperRegistry.list_scrapers()
+    badges = []
+    for scraper in scrapers:
+        name = scraper["name"]
+        status = get_scraper_status(name)
+        badges.append({
+            "scraper_name": name,
+            "status": status,
+            "status_text": status.replace("_", " ").title(),
+        })
+    return render_template("components/bulk-status-badges.html", badges=badges, oob=True)
+
+
 @bp.route("/scrapers/<name>/status")
 def scraper_status(name):
     if not re.match(r'^[a-zA-Z0-9_-]+$', name):

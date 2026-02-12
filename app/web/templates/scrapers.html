@@ -13,10 +13,8 @@
     <div class="card scraper-detail" id="scraper-{{ scraper.name }}">
         <div class="card-header">
             <h3>{{ scraper.name }}</h3>
-            <span class="status-badge status-{{ scraper.status }}"
-                  hx-get="{{ url_for('scrapers.scraper_status', name=scraper.name) }}"
-                  hx-trigger="every 5s"
-                  hx-swap="outerHTML">
+            <span id="status-badge-{{ scraper.name }}"
+                  class="status-badge status-{{ scraper.status }}">
                 {{ scraper.status }}
             </span>
         </div>
@@ -277,6 +275,13 @@
         <p>Scrapers should inherit from <code>BaseScraper</code> and will be automatically discovered.</p>
     </div>
     {% endfor %}
+    {% if scrapers %}
+    <div id="status-poller"
+         hx-get="{{ url_for('scrapers.bulk_scraper_status') }}"
+         hx-trigger="every 5s"
+         hx-swap="none"
+         style="display:none"></div>
+    {% endif %}
 </section>
 
 <style>

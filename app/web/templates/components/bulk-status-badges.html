@@ -1,0 +1,5 @@
+{% for badge in badges %}
+{% with scraper_name=badge.scraper_name, status=badge.status, status_text=badge.status_text, oob=oob %}
+{% include "components/status-badge.html" %}
+{% endwith %}
+{% endfor %}

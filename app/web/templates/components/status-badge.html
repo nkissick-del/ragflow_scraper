@@ -1,8 +1,5 @@
-<span class="status-badge status-{{ status }}" role="status" aria-live="polite"
-      {% if scraper_name %}
-      hx-get="{{ url_for('scrapers.scraper_status', name=scraper_name) }}"
-      hx-trigger="every 5s"
-      hx-swap="outerHTML"
-      {% endif %}>
+<span {% if scraper_name %}id="status-badge-{{ scraper_name }}"{% endif %}
+      class="status-badge status-{{ status }}" role="status" aria-live="polite"
+      {% if oob and scraper_name %}hx-swap-oob="true"{% endif %}>
     {{ status_text or status }}
 </span>

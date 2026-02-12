@@ -1,8 +1,6 @@
 <div class="scraper-card"
      id="scraper-{{ scraper.name }}"
-     hx-get="{{ url_for('scrapers.scraper_card', name=scraper.name) }}"
-     hx-trigger="every 5s"
-     hx-swap="outerHTML">
+     {% if oob %}hx-swap-oob="true"{% endif %}>
     <div class="scraper-header">
         <h3>{{ scraper.name }}</h3>
         <span class="status-badge status-{{ scraper.status }}">{{ scraper.status }}</span>

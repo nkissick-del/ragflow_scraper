@@ -19,6 +19,13 @@
         </div>
         {% endfor %}
     </div>
+    {% if scrapers %}
+    <div id="card-poller"
+         hx-get="{{ url_for('scrapers.bulk_scraper_cards') }}"
+         hx-trigger="every 5s"
+         hx-swap="none"
+         style="display:none"></div>
+    {% endif %}
 </section>
 
 <section class="section">
