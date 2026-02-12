@@ -14,4 +14,5 @@ ignore = [
 [lint.per-file-ignores]
 "app/scrapers/scraper_registry.py" = ["F821"]
 "app/services/pgvector_client.py" = ["S608"]  # parameterized query with code-generated WHERE clause
+"app/backends/vectorstores/pgvector_store.py" = ["S608"]  # parameterized query with code-generated WHERE clause
 "tests/**/*.py" = ["S101", "S105", "S106", "S107", "S108", "S603"]
