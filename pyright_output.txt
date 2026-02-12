@@ -1,0 +1,4 @@
+/app/app/services/gotenberg_client.py
+  /app/app/services/gotenberg_client.py:74:29 - error: Cannot access attribute "safe_attrs" for class "Cleaner"
+    Attribute "safe_attrs" is unknown (reportAttributeAccessIssue)
+1 error, 0 warnings, 0 informations

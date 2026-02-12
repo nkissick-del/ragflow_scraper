@@ -71,7 +71,9 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courie
 # Global cleaner instance (reused for performance)
 # We start with the default safe attributes and add 'style' (needed for PDF rendering)
 # This allows us to use safe_attrs_only=True for stricter security.
-_SAFE_ATTRS = set(Cleaner().safe_attrs) | {"style"}
+# Note: getattr() is used because 'safe_attrs' is dynamically defined in some lxml versions
+# or typed stub files may be missing it, causing type checker errors.
+_SAFE_ATTRS = set(getattr(Cleaner(), "safe_attrs", set())) | {"style"}
 
 _HTML_CLEANER = Cleaner(
     scripts=True,
