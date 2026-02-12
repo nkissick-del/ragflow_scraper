@@ -59,7 +59,7 @@ Thumbs.db
 coverage.xml
 htmlcov/
 
-# Random
+# Misc
 /docs/TODO.md
 docs/TODO.md
-docs/plans/websites_to_add.md
+test_output/
