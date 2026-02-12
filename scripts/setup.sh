@@ -59,10 +59,10 @@ if [ "$IN_DOCKER" = false ]; then
     fi
 
     # Create virtual environment if it doesn't exist
-    if [ ! -d "venv" ]; then
+    if [ ! -d ".venv" ]; then
         echo
         echo "Creating virtual environment..."
-        python3 -m venv venv
+        python3 -m venv .venv
         echo "  ✓ Virtual environment created"
     else
         echo "  ✓ Virtual environment already exists"
@@ -71,7 +71,7 @@ if [ "$IN_DOCKER" = false ]; then
     # Activate and install dependencies
     echo
     echo "Installing dependencies..."
-    source venv/bin/activate
+    source .venv/bin/activate
     pip install -q --upgrade pip
     pip install -q -r requirements.txt
     echo "  ✓ Dependencies installed"
@@ -83,13 +83,10 @@ if [ "$IN_DOCKER" = false ]; then
     echo
     echo "To start the application:"
     echo "  1. Activate virtual environment:"
-    echo "     source venv/bin/activate"
+    echo "     source .venv/bin/activate"
     echo
-    echo "  2. Start Selenium Chrome container:"
-    echo "     docker run -d -p 4444:4444 --shm-size=2g selenium/standalone-chrome:latest"
-    echo
-    echo "  3. Run the web interface:"
-    echo "     python app/main.py"
+    echo "  2. Start with Docker Compose (includes FlareSolverr):"
+    echo "     make dev-up"
     echo
     echo "  OR run a scraper directly:"
     echo "     python scripts/run_scraper.py --scraper aemo"
