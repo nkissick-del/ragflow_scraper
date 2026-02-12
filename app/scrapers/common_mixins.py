@@ -10,11 +10,9 @@ from typing import Optional, TYPE_CHECKING, Any, List, Dict, cast
 try:
     from selenium import webdriver  # type: ignore[import]
     from selenium.webdriver.chrome.options import Options  # type: ignore[import]
-    from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import]
 except ImportError:  # Selenium is optional since FlareSolverr migration
     webdriver = None  # type: ignore[assignment]
     Options = None  # type: ignore[assignment,misc]
-    WebDriver = None  # type: ignore[assignment,misc]
 
 from app.config import Config
 from app.utils import (
@@ -26,6 +24,8 @@ from app.utils.errors import ScraperError
 from app.scrapers.download_mixin import HttpDownloadMixin
 
 if TYPE_CHECKING:
+    from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import-not-found]
+
     from app.scrapers.models import DocumentMetadata
 
 

@@ -125,12 +125,10 @@ def ensure_job_queue_shutdown():
 
 def pytest_sessionfinish(session, exitstatus):
     """Hook that runs after the entire test session ends.
-    
-    Forcefully exit pytest to prevent hanging from background threads or
-    Docker containers waiting for stdin closure.
+
+    Shut down any lingering daemon threads that could prevent a clean exit.
+    The ensure_job_queue_shutdown fixture handles per-test cleanup; this
+    is a final safety net for anything that slipped through.
     """
-    # Flush all output before exiting
     sys.stdout.flush()
     sys.stderr.flush()
-    # Force immediate exit - don't wait for any cleanup
-    sys.exit(exitstatus)

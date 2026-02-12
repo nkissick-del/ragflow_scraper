@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import Mock, patch
 
+import pytest
+
+from app.scrapers import common_mixins as _cm
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import ScraperResult
 from app.services.state_tracker import StateTracker
+
+_HAS_SELENIUM = _cm.webdriver is not None
 
 
 class TestIncrementalStateMixin:
@@ -199,6 +204,7 @@ class TestWebDriverLifecycleMixin:
         self.state_tracker.get_state.return_value = {}
         self.scraper.state_tracker = self.state_tracker
 
+    @pytest.mark.skipif(not _HAS_SELENIUM, reason="selenium not installed")
     @patch("app.scrapers.common_mixins.webdriver.Remote")
     def test_init_driver_creates_driver(self, mock_remote):
         """Should create a Selenium WebDriver."""

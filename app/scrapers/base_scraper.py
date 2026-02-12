@@ -7,13 +7,11 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 import requests
 
-try:
-    from selenium.webdriver.remote.webdriver import WebDriver
-except ImportError:  # Selenium is optional since FlareSolverr migration
-    WebDriver = None  # type: ignore[assignment,misc]
+if TYPE_CHECKING:
+    from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import-not-found]
 
 from app.config import Config
 from app.scrapers.mixins import (
