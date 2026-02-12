@@ -39,15 +39,10 @@ docker compose up -d
 open http://localhost:5000
 ```
 
-**Docker Compose Profiles:**
+**Docker Compose** starts the scraper, FlareSolverr, and Gotenberg:
 
 ```bash
-# Default: All services (scraper + Chrome)
 docker compose up -d
-
-# Future profiles (when implemented):
-# docker compose --profile full up -d      # Include RAGFlow/FlareSolverr
-# docker compose --profile minimal up -d   # Scraper only
 ```
 
 See [DEPLOYMENT_GUIDE.md](docs/operations/DEPLOYMENT_GUIDE.md) for:
@@ -110,8 +105,8 @@ Notes:
 
 ```bash
 # Create virtual environment
-python -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -120,10 +115,10 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your settings
 
-# Start Selenium Chrome container
-docker run -d -p 4444:4444 --shm-size=2g selenium/standalone-chrome:latest
+# Option A: Use Docker Compose for FlareSolverr + Gotenberg
+make dev-up   # starts all services, web UI at http://localhost:5001
 
-# Run the web interface
+# Option B: Run just the web interface (no rendered-page scraping)
 python app/main.py
 
 # Or run a scraper directly
@@ -177,8 +172,9 @@ python scripts/run_scraper.py config migrate --write
 ```tree
 scraper/
 ├── app/
+│   ├── backends/       # Swappable parser, archive, RAG, vectorstore backends
 │   ├── scrapers/       # Scraper modules
-│   ├── services/       # External integrations (RAGFlow, FlareSolverr)
+│   ├── services/       # External integrations (RAGFlow, FlareSolverr, Paperless)
 │   ├── orchestrator/   # Scheduling and pipelines
 │   ├── web/            # Flask web interface (blueprints-based)
 │   └── utils/          # Shared utilities
@@ -202,7 +198,7 @@ scraper/
 
 ## Adding a New Scraper
 
-For detailed instructions, see **[DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)**.
+For detailed instructions, see **[DEVELOPER_GUIDE.md](docs/development/DEVELOPER_GUIDE.md)**.
 
 **Quick start:**
 
@@ -315,7 +311,7 @@ pip install -r requirements-dev.txt
 pytest tests/unit -v --cov=app
 ```
 
-Integration tests are skipped by default; set `RUN_INTEGRATION_TESTS=1` to enable them. Integration runs may require network access and Selenium services.
+Integration tests are skipped by default; set `RUN_INTEGRATION_TESTS=1` to enable them. Integration runs may require network access and FlareSolverr.
 
 Security scan:
 

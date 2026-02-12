@@ -268,12 +268,6 @@ class Config:
         os.getenv("METADATA_MERGE_STRATEGY", "smart").strip().lower()
     )  # smart, parser_wins, scraper_wins
 
-    # Selenium
-    SELENIUM_REMOTE_URL = os.getenv(
-        "SELENIUM_REMOTE_URL", "http://localhost:4444/wd/hub"
-    )
-    SELENIUM_HEADLESS = os.getenv("SELENIUM_HEADLESS", "true").lower() == "true"
-
     # FlareSolverr (enabled/disabled is controlled via UI settings, not env)
     FLARESOLVERR_URL = os.getenv("FLARESOLVERR_URL", "")
     FLARESOLVERR_TIMEOUT = _parse_timeout(

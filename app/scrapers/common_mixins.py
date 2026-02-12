@@ -7,9 +7,14 @@ import time
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING, Any, List, Dict, cast
 
-from selenium import webdriver  # type: ignore[import]
-from selenium.webdriver.chrome.options import Options  # type: ignore[import]
-from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import]
+try:
+    from selenium import webdriver  # type: ignore[import]
+    from selenium.webdriver.chrome.options import Options  # type: ignore[import]
+    from selenium.webdriver.remote.webdriver import WebDriver  # type: ignore[import]
+except ImportError:  # Selenium is optional since FlareSolverr migration
+    webdriver = None  # type: ignore[assignment]
+    Options = None  # type: ignore[assignment,misc]
+    WebDriver = None  # type: ignore[assignment,misc]
 
 from app.config import Config
 from app.utils import (
@@ -212,17 +217,21 @@ class WebDriverLifecycleMixin:
     logger: Any = None
 
     def _init_driver(self) -> WebDriver:
+        if webdriver is None or Options is None:
+            raise ImportError("selenium is not installed — use FlareSolverr instead")
+        selenium_url = getattr(Config, "SELENIUM_REMOTE_URL", "http://localhost:4444/wd/hub")
+        headless = getattr(Config, "SELENIUM_HEADLESS", True)
         options = Options()
-        if Config.SELENIUM_HEADLESS:
+        if headless:
             options.add_argument("--headless")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
 
-        self.logger.info(f"Connecting to Selenium at {Config.SELENIUM_REMOTE_URL}")
+        self.logger.info(f"Connecting to Selenium at {selenium_url}")
         driver = webdriver.Remote(
-            command_executor=Config.SELENIUM_REMOTE_URL,
+            command_executor=selenium_url,
             options=options,
         )
         driver.implicitly_wait(10)

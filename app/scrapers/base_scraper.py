@@ -10,7 +10,10 @@ from datetime import datetime
 from typing import Optional
 import requests
 
-from selenium.webdriver.remote.webdriver import WebDriver
+try:
+    from selenium.webdriver.remote.webdriver import WebDriver
+except ImportError:  # Selenium is optional since FlareSolverr migration
+    WebDriver = None  # type: ignore[assignment,misc]
 
 from app.config import Config
 from app.scrapers.mixins import (

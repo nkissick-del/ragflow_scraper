@@ -9,8 +9,7 @@
 **Stack:**
 
 - Flask backend with HTMX web interface (Pure JS, NO Alpine.js)
-- Selenium + BeautifulSoup4 for scraping
-- FlareSolverr for Cloudflare bypass
+- FlareSolverr + BeautifulSoup4 for scraping (Cloudflare bypass built-in)
 - RAGFlow integration for document ingestion
 - Docker Compose orchestration (macOS, Linux, or Unraid)
 
@@ -42,7 +41,7 @@ Stuck or encountering a failure? First re-read this file. If the answer isn’t 
 - Shell/logs: `make shell`, `make logs`.
 - Tests: `make test`, `make test-unit`, `make test-int`, `make test-file FILE=...`.
 - Dev UI: <http://localhost:5001> (container listens on 5000).
-- Chrome: Selenium on 4444; VNC on 7900.
+- FlareSolverr: <http://localhost:8191> (rendered page fetching).
 
 Notes:
 
@@ -73,7 +72,7 @@ Notes:
 **Configuration (ENV vars):**
 - `PARSER_BACKEND=docling` (docling, mineru, tika)
 - `ARCHIVE_BACKEND=paperless` (paperless, s3, local)
-- `RAG_BACKEND=ragflow` (ragflow, anythingllm)
+- `RAG_BACKEND=ragflow` (ragflow, anythingllm, pgvector)
 - `METADATA_MERGE_STRATEGY=smart` (smart, parser_wins, scraper_wins)
 
 **ServiceContainer access:**
@@ -119,7 +118,7 @@ rag = container.rag_backend  # RAGBackend instance
 - Dev stack running: `make dev-up`.
 - Health endpoints reachable (optional):
   - App: `curl -sS --fail http://localhost:5001/ | head -5`.
-  - Selenium: `curl -sS --fail http://localhost:4444/wd/hub/status`.
+  - FlareSolverr: `curl -sS --fail http://localhost:8191/health`.
 
 ## Common Tasks for AI Assistants
 
@@ -145,7 +144,7 @@ cat data/state/{scraper_name}_state.json | jq
 # Run in dry-run mode (no downloads)
 docker exec scraper-app python -m scripts.run_scraper --scraper {name} --dry-run
 
-# Access Chrome via VNC at http://localhost:7900 (password: secret)
+# FlareSolverr handles rendered page fetching automatically
 ```
 
 ### Task 3: Modifying Web UI
@@ -183,4 +182,4 @@ docker exec scraper-app python -m scripts.run_scraper --scraper {name} --dry-run
 
 ---
 
-Last Updated: 2026-01-08
+Last Updated: 2026-02-13
