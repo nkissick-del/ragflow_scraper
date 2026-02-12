@@ -259,7 +259,7 @@ class Config:
         os.getenv("ARCHIVE_BACKEND", "paperless").strip().lower()
     )  # paperless, s3, local
     RAG_BACKEND = (
-        os.getenv("RAG_BACKEND", "ragflow").strip().lower()
+        os.getenv("RAG_BACKEND", "anythingllm").strip().lower()
     )  # ragflow, anythingllm, pgvector
     VECTOR_BACKEND = (
         os.getenv("VECTOR_BACKEND", "pgvector").strip().lower()
