@@ -233,7 +233,7 @@ class Config:
 
     # Chunking
     VALID_CHUNKING_STRATEGIES = ("fixed", "hybrid")
-    CHUNKING_STRATEGY = os.getenv("CHUNKING_STRATEGY", "fixed").strip().lower()
+    CHUNKING_STRATEGY = os.getenv("CHUNKING_STRATEGY", "hybrid").strip().lower()
     CHUNK_MAX_TOKENS = _parse_int(os.getenv("CHUNK_MAX_TOKENS", "512"), "CHUNK_MAX_TOKENS")
     CHUNK_OVERLAP_TOKENS = _parse_int(os.getenv("CHUNK_OVERLAP_TOKENS", "64"), "CHUNK_OVERLAP_TOKENS")
 

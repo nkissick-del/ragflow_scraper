@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
 
+import requests
+
 from app.utils import get_logger
 
 
@@ -160,15 +162,23 @@ class FixedChunker(ChunkingStrategy):
 
 
 class HybridDoclingChunker(ChunkingStrategy):
-    """Wrapper around Docling's HybridChunker.
+    """Structure-aware chunker using docling-serve's HybridChunker endpoint.
 
-    Falls back to FixedChunker if docling is not available.
-    Note: This requires a DoclingDocument object which means re-parsing
-    markdown. Start with FixedChunker; evaluate this later.
+    Sends markdown to docling-serve POST /v1/chunk/hybrid/file, which returns
+    chunks that respect headings, tables, and document structure.
+    Falls back to FixedChunker when docling-serve is unreachable.
     """
 
-    def __init__(self, max_tokens: int = 512, overlap_tokens: int = 64):
+    def __init__(
+        self,
+        max_tokens: int = 512,
+        overlap_tokens: int = 64,
+        docling_serve_url: str = "",
+        docling_serve_timeout: int = 120,
+    ):
         self._max_tokens = max_tokens
+        self._docling_url = docling_serve_url.rstrip("/") if docling_serve_url else ""
+        self._timeout = docling_serve_timeout
         self._fallback = FixedChunker(max_tokens=max_tokens, overlap_tokens=overlap_tokens)
         self.logger = get_logger("chunking.hybrid")
 
@@ -177,16 +187,90 @@ class HybridDoclingChunker(ChunkingStrategy):
         return "hybrid"
 
     def chunk(self, text: str, metadata: Optional[dict] = None) -> list[Chunk]:
-        # For now, always use the fallback FixedChunker.
-        # Docling's HybridChunker needs a DoclingDocument, not raw text.
-        self.logger.debug("Using FixedChunker fallback (HybridChunker needs DoclingDocument)")
+        if not text or not text.strip():
+            return []
+
+        # Try docling-serve first
+        if self._docling_url:
+            try:
+                return self._chunk_via_docling(text, metadata)
+            except Exception as e:
+                self.logger.warning(
+                    f"docling-serve chunking failed, using fallback: {e}"
+                )
+
+        # Fallback to FixedChunker
         return self._fallback.chunk(text, metadata)
+
+    def _chunk_via_docling(
+        self, text: str, metadata: Optional[dict] = None
+    ) -> list[Chunk]:
+        """Send markdown to docling-serve and parse chunked response."""
+
+        # Build a filename for the upload
+        filename = (metadata or {}).get("filename", "document.md")
+        if not filename.endswith(".md"):
+            filename = (
+                filename.rsplit(".", 1)[0] + ".md" if "." in filename else filename + ".md"
+            )
+
+        params = {
+            "chunking_max_tokens": self._max_tokens,
+            "chunking_include_raw_text": True,
+        }
+
+        response = requests.post(
+            f"{self._docling_url}/v1/chunk/hybrid/file",
+            files={"files": (filename, text.encode("utf-8"), "text/markdown")},
+            params=params,
+            timeout=self._timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Parse response into Chunk objects
+        raw_chunks = data.get("chunks", [])
+        if not raw_chunks:
+            self.logger.warning("docling-serve returned 0 chunks, falling back")
+            return self._fallback.chunk(text, metadata)
+
+        base_metadata = dict(metadata or {})
+        chunks: list[Chunk] = []
+        output_index = 0
+        for item in raw_chunks:
+            content = item.get("text", item.get("raw_text", ""))
+            if not content or not content.strip():
+                continue
+
+            chunk_index = item.get("chunk_index", output_index)
+            chunk_meta = dict(base_metadata)
+            chunk_meta["chunk_index"] = chunk_index
+            chunk_meta["num_tokens"] = item.get("num_tokens", 0)
+            chunk_meta["chunker"] = "docling_hybrid"
+
+            headings = item.get("headings", [])
+            if headings:
+                chunk_meta["heading_context"] = headings[-1]
+                chunk_meta["headings"] = headings
+
+            chunks.append(
+                Chunk(
+                    content=content,
+                    index=chunk_index,
+                    metadata=chunk_meta,
+                )
+            )
+            output_index += 1
+
+        return chunks
 
 
 def create_chunker(
-    strategy: str = "fixed",
+    strategy: str = "hybrid",
     max_tokens: int = 512,
     overlap_tokens: int = 64,
+    docling_serve_url: str = "",
+    docling_serve_timeout: int = 120,
 ) -> ChunkingStrategy:
     """Factory function to create a chunking strategy.
 
@@ -194,6 +278,8 @@ def create_chunker(
         strategy: Strategy name ("fixed" or "hybrid")
         max_tokens: Maximum tokens (words) per chunk
         overlap_tokens: Number of overlapping tokens between chunks
+        docling_serve_url: URL for docling-serve (hybrid strategy)
+        docling_serve_timeout: Request timeout for docling-serve
 
     Returns:
         ChunkingStrategy instance
@@ -204,6 +290,11 @@ def create_chunker(
     if strategy == "fixed":
         return FixedChunker(max_tokens=max_tokens, overlap_tokens=overlap_tokens)
     elif strategy == "hybrid":
-        return HybridDoclingChunker(max_tokens=max_tokens, overlap_tokens=overlap_tokens)
+        return HybridDoclingChunker(
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
+            docling_serve_url=docling_serve_url,
+            docling_serve_timeout=docling_serve_timeout,
+        )
     else:
         raise ValueError(f"Unknown chunking strategy: {strategy}")

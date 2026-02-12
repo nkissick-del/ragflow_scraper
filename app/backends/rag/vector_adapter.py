@@ -19,9 +19,11 @@ class VectorRAGBackend(RAGBackend):
         self,
         vector_store: VectorStoreBackend,
         embedding_client: Any,
-        chunking_strategy: str = "fixed",
+        chunking_strategy: str = "hybrid",
         chunk_max_tokens: int = 512,
         chunk_overlap_tokens: int = 64,
+        docling_serve_url: str = "",
+        docling_serve_timeout: int = 120,
     ):
         self._store = vector_store
         self._embedder = embedding_client
@@ -31,6 +33,8 @@ class VectorRAGBackend(RAGBackend):
             strategy=chunking_strategy,
             max_tokens=chunk_max_tokens,
             overlap_tokens=chunk_overlap_tokens,
+            docling_serve_url=docling_serve_url,
+            docling_serve_timeout=docling_serve_timeout,
         )
         self.logger = get_logger("backends.rag.vector")
 

@@ -151,9 +151,11 @@ def _create_vector_rag(container: "ServiceContainer") -> Any:
     return VectorRAGBackend(
         vector_store=vector_store,
         embedding_client=embedding_client,
-        chunking_strategy=container._get_config_attr("CHUNKING_STRATEGY", "fixed"),
+        chunking_strategy=container._get_config_attr("CHUNKING_STRATEGY", "hybrid"),
         chunk_max_tokens=chunk_max_tokens,
         chunk_overlap_tokens=chunk_overlap_tokens,
+        docling_serve_url=container._get_effective_url("docling_serve", "DOCLING_SERVE_URL"),
+        docling_serve_timeout=container._get_effective_timeout("docling_serve", "DOCLING_SERVE_TIMEOUT"),
     )
 
 
