@@ -14,7 +14,7 @@ The `ragflow_scraper` repository is a well-architected, modular web scraping sys
 
 **Strengths:**
 - Excellent modular architecture with auto-discovery
-- Comprehensive documentation (README, CLAUDE.md, instructions.md)
+- Comprehensive documentation (README, .claude/instructions.md, instructions.md)
 - Strong separation between PDF and article scrapers
 - Robust state management and metadata handling
 - Docker-ready with proper volume mounting
@@ -710,7 +710,7 @@ def run_scraper(args):
 
 ### 7.4 Markdown Converter ❓
 
-**Referenced in CLAUDE.md:**
+**Referenced in .claude/instructions.md:**
 - `app/utils/markdown_converter.py`
 - GFMConverter for articles
 
@@ -824,7 +824,7 @@ chrome:
 - Docker deployment steps
 - CLI usage examples
 
-**CLAUDE.md** provides:
+**.claude/instructions.md** provides:
 - Detailed operational instructions
 - Container rebuild triggers
 - Troubleshooting guide
@@ -868,7 +868,7 @@ chrome:
 4. Add FAQ
 5. Link to comprehensive docs
 
-### 9.2 CLAUDE.md ✅⭐
+### 9.2 .claude/instructions.md ✅⭐
 
 **Purpose:** AI agent instructions
 
@@ -1844,7 +1844,7 @@ def scraper_card(name):
 | **Configuration Management** | Split between multiple sources | B |
 | **Error Handling** | Inconsistent patterns | B- |
 | **Logging** | Good structure, needs improvement | B+ |
-| **Documentation** | Excellent (CLAUDE.md outstanding) | A+ |
+| **Documentation** | Excellent (.claude/instructions.md outstanding) | A+ |
 | **Testing** | Minimal to none | D |
 | **Security** | Basic, needs authentication | C |
 | **Performance** | Not optimized, sequential | C+ |
@@ -2007,7 +2007,7 @@ def scraper_card(name):
 
 ### 19.2 Documentation Excellence ⭐⭐⭐
 
-**CLAUDE.md is Outstanding:**
+**.claude/instructions.md is Outstanding:**
 - Serves multiple audiences (AI agents, developers, operators)
 - Comprehensive troubleshooting
 - Clear examples and patterns
@@ -2179,7 +2179,7 @@ The `ragflow_scraper` repository demonstrates **strong architectural foundations
 
 **Key Strengths:**
 - Outstanding scraper plugin architecture with auto-discovery
-- Comprehensive, multi-audience documentation (especially CLAUDE.md)
+- Comprehensive, multi-audience documentation (especially .claude/instructions.md)
 - Clean modular design with proper separation
 - Good Docker practices
 
