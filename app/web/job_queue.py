@@ -222,13 +222,12 @@ class JobQueue:
                 job = self._queue.get(timeout=1.0)
             except queue.Empty:
                 continue
-            
+
             job.execute()
-            # Drop completed non-preview jobs immediately; previews are cleaned up by callers
-            with job._lock:
-                if not job.preview and job.is_finished:
-                    with self._lock:
-                        self._jobs.pop(job.scraper_name, None)
+            # Keep finished jobs in _jobs so the UI/API can poll the
+            # result.  They are evicted lazily: either when the same
+            # scraper is re-enqueued (the existing check in enqueue),
+            # or via explicit drop() calls from preview_status.
             self._queue.task_done()
 
     def shutdown(self, wait: bool = True, timeout: Optional[float] = None) -> None:

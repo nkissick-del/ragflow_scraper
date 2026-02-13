@@ -238,7 +238,7 @@ class TestJobQueueEdgeCases:
         assert self.queue.get("nonexistent") is None
 
     def test_status_completed_after_execution(self):
-        """Job should be 'completed' after successful execution."""
+        """Job should persist with 'completed' status after execution."""
         import time
 
         scraper = Mock()
@@ -250,11 +250,11 @@ class TestJobQueueEdgeCases:
         # Wait for execution
         time.sleep(1.0)
 
-        # Non-preview jobs are auto-dropped after completion
-        # but we can check the job's state was correct
+        # Finished jobs persist so the UI/API can poll the result
         job = self.queue.get("fast_scraper")
-        # Auto-dropped non-preview job
-        assert job is None
+        assert job is not None
+        assert job.status == "completed"
+        assert job.result == {"docs": 5}
 
     def test_preview_job_not_auto_dropped(self):
         """Preview jobs should NOT be auto-dropped after completion."""
