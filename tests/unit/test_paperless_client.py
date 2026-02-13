@@ -765,9 +765,9 @@ class TestSetCustomFieldsEdgeCases:
             mock_config.PAPERLESS_API_URL = ""
             mock_config.PAPERLESS_API_TOKEN = ""
             client = PaperlessClient(url=None, token=None)
-        assert not client.is_configured
-        result = client.set_custom_fields(123, {"url": "https://example.com"})
-        assert result is False
+            assert not client.is_configured
+            result = client.set_custom_fields(123, {"url": "https://example.com"})
+            assert result is False
 
     def test_integer_coercion_skips_invalid(self, client):
         """Should skip integer fields with None values."""
