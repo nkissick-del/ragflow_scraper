@@ -103,16 +103,15 @@ class ScraperJob:
 
 class JobQueue:
     """Single-worker job queue with per-scraper exclusivity.
-    
+
+    Worker threads are lazily started on the first enqueue() call to avoid
+    the "fork after thread" problem with gunicorn: threads created before
+    fork are lost in the child process. Lazy init ensures threads always
+    run in the process that actually handles HTTP requests.
+
     IMPORTANT: This queue uses a non-daemon worker thread. The process will
     block at exit until the queue is explicitly shut down (via shutdown() or
     the atexit handler). If shutdown() is never called, the process may hang.
-    
-    The atexit handler provides automatic cleanup for most code paths, but
-    explicit shutdown() calls are still recommended for:
-    - Web applications (call during app shutdown/teardown)
-    - Scripts that need predictable exit timing
-    - Testing (via conftest.py fixture)
     """
 
     def __init__(self, daemon: bool = False, max_workers: int = 1):
@@ -121,22 +120,39 @@ class JobQueue:
         self._lock = threading.Lock()
         self._shutdown = threading.Event()
         self._workers: list[threading.Thread] = []
-
-        # Worker thread daemon setting:
-        # - daemon=False (default): Process blocks at exit waiting for this thread
-        #   Best for production (ensures orderly shutdown via shutdown() or atexit)
-        # - daemon=True: Thread is killed when main thread exits
-        #   Best for testing (tests cleanup themselves)
-        for i in range(max_workers):
-            t = threading.Thread(target=self._worker_loop, daemon=daemon, name=f"ScraperWorker-{i}")
-            t.start()
-            self._workers.append(t)
+        self._daemon = daemon
+        self._max_workers = max_workers
+        self._started = False
 
         try:
             _instances.add(self)
         except Exception:
             # If _instances isn't available for some reason (unlikely), ignore
             pass
+
+    def _ensure_workers_started(self) -> None:
+        """Lazily start worker threads on first use.
+
+        Worker threads are NOT started in __init__ because gunicorn forks
+        after module import — threads created before the fork are lost in
+        the child process. By deferring thread creation to the first
+        enqueue() call, the threads are guaranteed to run in the actual
+        worker process that handles HTTP requests.
+        """
+        if self._started:
+            return
+        with self._lock:
+            if self._started:
+                return
+            for i in range(self._max_workers):
+                t = threading.Thread(
+                    target=self._worker_loop,
+                    daemon=self._daemon,
+                    name=f"ScraperWorker-{i}",
+                )
+                t.start()
+                self._workers.append(t)
+            self._started = True
 
     def enqueue(
         self,
@@ -148,6 +164,8 @@ class JobQueue:
         max_pages: Optional[int] = None,
     ) -> ScraperJob:
         """Queue a scraper job; refuses if one is already active for that scraper."""
+        self._ensure_workers_started()
+
         # Validate that scraper has a callable run attribute
         run_callable = getattr(scraper, "run", None)
         if not callable(run_callable):
