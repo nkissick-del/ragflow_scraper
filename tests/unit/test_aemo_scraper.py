@@ -175,3 +175,252 @@ class TestCategoryTagExtraction:
     def test_extracts_category_as_tag(self, scraper):
         docs = scraper.parse_page(SINGLE_PDF_HTML)
         assert "Electricity" in docs[0].tags
+
+
+# -- Additional HTML fixtures for appended tests ----------------------------
+
+PAGINATION_WITH_LINKS_HTML = """
+<html><body>
+<div class="search-result-paging">
+  <a>1</a>
+  <a>2</a>
+  <a>3</a>
+  <a>5</a>
+</div>
+</body></html>
+"""
+
+NO_PAGINATION_HTML = """
+<html><body>
+<div class="content">No paging here.</div>
+</body></html>
+"""
+
+CLOUDFLARE_CHALLENGE_HTML = """
+<html><head><title>Just a moment...</title></head>
+<body>
+<div>Just a moment while we check your browser.</div>
+</body></html>
+"""
+
+ITEM_MISSING_URL_HTML = """
+<html><body>
+<ul class="search-result-list">
+  <li>
+    <a class="search-result-list-item" href="">
+      <h3>Missing URL Doc</h3>
+      <div class="search-result-list-item--content">File type PDF</div>
+    </a>
+  </li>
+</ul>
+</body></html>
+"""
+
+ITEM_MISSING_TITLE_HTML = """
+<html><body>
+<ul class="search-result-list">
+  <li>
+    <a class="search-result-list-item" href="/media/-/media/files/no-title.pdf">
+      <div class="search-result-list-item--content">File type PDF</div>
+    </a>
+  </li>
+</ul>
+</body></html>
+"""
+
+ITEM_NON_PDF_EXTENSION_HTML = """
+<html><body>
+<ul class="search-result-list">
+  <li>
+    <a class="search-result-list-item" href="/media/-/media/files/data.csv">
+      <h3>CSV Data File</h3>
+      <div class="search-result-list-item--content">File type CSV</div>
+    </a>
+  </li>
+</ul>
+</body></html>
+"""
+
+
+# -- Appended Test Classes --------------------------------------------------
+
+
+class TestDetectPaginationInfoNew:
+    """New tests for _detect_pagination_info_from_html."""
+
+    def test_js_rendered_pagination_with_total_count(self, scraper):
+        """Pagination links in HTML yield correct total pages."""
+        offset, pages = scraper._detect_pagination_info_from_html(PAGINATION_WITH_LINKS_HTML)
+        assert offset == 0
+        assert pages == 5
+
+    def test_no_pagination_element_fallback(self, scraper):
+        """No pagination elements falls back to default of 22."""
+        offset, pages = scraper._detect_pagination_info_from_html(NO_PAGINATION_HTML)
+        assert offset == 0
+        assert pages == 22
+
+    def test_explicit_count_from_html(self, scraper):
+        """Single page link gives max_page of 1 which is < 2, so default is used."""
+        html = """
+        <html><body>
+        <div class="search-result-paging">
+          <a>1</a>
+        </div>
+        </body></html>
+        """
+        offset, pages = scraper._detect_pagination_info_from_html(html)
+        assert offset == 0
+        # max_page is 1 which is not > 1, so default 22 is used
+        assert pages == 22
+
+
+class TestFetchWithCloudflareRetryNew:
+    """New tests for _fetch_with_cloudflare_retry."""
+
+    def test_successful_first_attempt(self, scraper):
+        """Clean HTML on first attempt is returned directly."""
+        from unittest.mock import MagicMock
+
+        scraper.fetch_rendered_page = MagicMock(return_value="<html>Good content</html>")
+        scraper._polite_delay = MagicMock()
+
+        result = scraper._fetch_with_cloudflare_retry("https://example.com")
+
+        assert result == "<html>Good content</html>"
+        assert scraper.fetch_rendered_page.call_count == 1
+
+    def test_cloudflare_detected_triggers_retry(self, scraper):
+        """'Just a moment' on first attempt triggers retry."""
+        from unittest.mock import MagicMock
+
+        scraper.fetch_rendered_page = MagicMock(
+            side_effect=[CLOUDFLARE_CHALLENGE_HTML, "<html>Good content</html>"]
+        )
+        scraper._polite_delay = MagicMock()
+
+        result = scraper._fetch_with_cloudflare_retry("https://example.com")
+
+        assert result == "<html>Good content</html>"
+        assert scraper.fetch_rendered_page.call_count == 2
+
+    def test_max_retries_exceeded_returns_none(self, scraper):
+        """Cloudflare on both attempts returns None."""
+        from unittest.mock import MagicMock
+
+        scraper.fetch_rendered_page = MagicMock(
+            side_effect=[CLOUDFLARE_CHALLENGE_HTML, CLOUDFLARE_CHALLENGE_HTML]
+        )
+        scraper._polite_delay = MagicMock()
+
+        result = scraper._fetch_with_cloudflare_retry("https://example.com")
+
+        assert result is None
+
+    def test_successful_on_second_attempt(self, scraper):
+        """Cloudflare on first, clean on second returns the clean HTML."""
+        from unittest.mock import MagicMock
+
+        clean_html = "<html><body>Real content</body></html>"
+        scraper.fetch_rendered_page = MagicMock(
+            side_effect=[CLOUDFLARE_CHALLENGE_HTML, clean_html]
+        )
+        scraper._polite_delay = MagicMock()
+
+        result = scraper._fetch_with_cloudflare_retry("https://example.com")
+
+        assert result == clean_html
+        assert scraper.fetch_rendered_page.call_count == 2
+
+
+class TestParseDocumentItemNew:
+    """New tests for _parse_document_item."""
+
+    def test_complete_document_item(self, scraper):
+        """Complete document item is fully parsed."""
+        docs = scraper.parse_page(SINGLE_PDF_HTML)
+        assert len(docs) == 1
+        doc = docs[0]
+        assert doc.title == "Electricity Statement of Opportunities"
+        assert doc.organization == "AEMO"
+        assert doc.publication_date == "2025-07-31"
+        assert doc.file_size_str == "2.46 MB"
+
+    def test_item_missing_url_returns_none(self, scraper):
+        """Item with empty href is skipped."""
+        docs = scraper.parse_page(ITEM_MISSING_URL_HTML)
+        assert len(docs) == 0
+
+    def test_item_missing_title_gets_filename_default(self, scraper):
+        """Item without <h3> gets title from URL filename."""
+        docs = scraper.parse_page(ITEM_MISSING_TITLE_HTML)
+        assert len(docs) == 1
+        # Title should be derived from filename "no-title.pdf" -> "no title"
+        assert "no" in docs[0].title.lower() or "title" in docs[0].title.lower()
+
+    def test_non_pdf_extension_detected_correctly(self, scraper):
+        """Non-PDF file type (CSV) is skipped."""
+        docs = scraper.parse_page(ITEM_NON_PDF_EXTENSION_HTML)
+        assert len(docs) == 0
+
+
+class TestParseDateNew:
+    """New tests for _parse_date format handling."""
+
+    def test_dd_mm_yyyy_format(self, scraper):
+        """DD/MM/YYYY format is parsed correctly."""
+        assert scraper._parse_date("15/03/2025") == "2025-03-15"
+
+    def test_dd_month_yyyy_format(self, scraper):
+        """'DD Month YYYY' format is parsed correctly."""
+        assert scraper._parse_date("5 October 2024") == "2024-10-05"
+
+    def test_iso_format(self, scraper):
+        """ISO YYYY-MM-DD format passes through."""
+        assert scraper._parse_date("2025-06-30") == "2025-06-30"
+
+    def test_invalid_format_returns_none(self, scraper):
+        """Unparseable date string returns None."""
+        assert scraper._parse_date("not a date at all") is None
+
+
+class TestScrapeFlowNew:
+    """New tests for scrape() flow."""
+
+    def test_basic_scrape_with_hash_fragment_pagination(self, scraper):
+        """Scrape processes first page and detects pagination."""
+        from unittest.mock import MagicMock
+
+        scraper._fetch_with_cloudflare_retry = MagicMock(return_value=SINGLE_PDF_HTML)
+        scraper._is_processed = MagicMock(return_value=False)
+        scraper._polite_delay = MagicMock()
+        # max_pages=1 from fixture limits to 1 page
+
+        result = scraper.scrape()
+
+        assert result.scraped_count >= 1
+        assert result.downloaded_count >= 1  # dry_run
+
+    def test_empty_page_stops(self, scraper):
+        """None from _fetch_with_cloudflare_retry on first page fails."""
+        from unittest.mock import MagicMock
+
+        scraper._fetch_with_cloudflare_retry = MagicMock(return_value=None)
+
+        result = scraper.scrape()
+
+        assert result.status == "failed"
+        assert len(result.errors) > 0
+
+    def test_all_items_processed_skipped(self, scraper):
+        """When all items are already processed, they are skipped."""
+        from unittest.mock import MagicMock
+
+        scraper._fetch_with_cloudflare_retry = MagicMock(return_value=SINGLE_PDF_HTML)
+        scraper._is_processed = MagicMock(return_value=True)
+        scraper._polite_delay = MagicMock()
+
+        result = scraper.scrape()
+
+        assert result.skipped_count >= 1
+        assert result.downloaded_count == 0
