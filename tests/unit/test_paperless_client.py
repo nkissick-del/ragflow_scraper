@@ -845,7 +845,6 @@ class TestGetOrCreateTagsMixed:
         client._tag_cache = {"Good": 1}
         client._tag_cache_populated = True
 
-        create_fail = Mock(side_effect=Exception("fail"))
         create_ok = Mock()
         create_ok.raise_for_status = Mock()
         create_ok.json.return_value = {"id": 99, "name": "AlsoGood"}

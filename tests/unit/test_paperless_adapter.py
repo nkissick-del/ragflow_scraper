@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 from app.backends.archives.paperless_adapter import PaperlessArchiveBackend
 
@@ -48,7 +48,7 @@ class TestInitialization:
         """Should create default PaperlessClient when none provided."""
         with patch("app.backends.archives.paperless_adapter.PaperlessClient") as mock_cls:
             mock_cls.return_value = MagicMock()
-            backend = PaperlessArchiveBackend()
+            PaperlessArchiveBackend()
             mock_cls.assert_called_once()
 
     def test_name_property(self, backend):

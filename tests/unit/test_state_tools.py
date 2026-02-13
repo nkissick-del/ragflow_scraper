@@ -1,10 +1,8 @@
 """Tests for app.utils.state_tools — state validation, repair, and reporting."""
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from app.utils.state_tools import (
     STATE_TEMPLATE,

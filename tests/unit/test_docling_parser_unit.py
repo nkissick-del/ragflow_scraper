@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 from queue import Empty
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 from app.backends.parsers.docling_parser import DoclingParser
 from app.scrapers.models import DocumentMetadata

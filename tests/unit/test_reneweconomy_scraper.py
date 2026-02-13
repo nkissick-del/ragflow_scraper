@@ -638,7 +638,7 @@ class TestScrapeCategoryBehavior:
 
     def test_empty_page_stops_early(self, scraper):
         """Category with no articles on the page triggers pagination guard."""
-        from unittest.mock import MagicMock, PropertyMock
+        from unittest.mock import MagicMock
         from app.scrapers.models import ScraperResult
 
         result = ScraperResult(status="in_progress", scraper="reneweconomy")

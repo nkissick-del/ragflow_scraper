@@ -49,7 +49,7 @@ class TestInitialization:
         """Should create default RAGFlowClient when none provided."""
         with patch("app.backends.rag.ragflow_adapter.RAGFlowClient") as mock_cls:
             mock_cls.return_value = MagicMock()
-            backend = RAGFlowBackend()
+            RAGFlowBackend()
             mock_cls.assert_called_once()
 
     def test_name_property(self, backend):

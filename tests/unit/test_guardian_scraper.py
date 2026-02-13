@@ -600,7 +600,7 @@ class TestScrapeFlowNew:
 
     def test_searches_multiple_tags(self, scraper):
         """Scrape iterates through SUBJECT_TAGS."""
-        from unittest.mock import MagicMock, call
+        from unittest.mock import MagicMock
 
         # Limit to 2 tags for simplicity
         scraper.SUBJECT_TAGS = ["tag-a", "tag-b"]

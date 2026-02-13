@@ -1,11 +1,9 @@
 """Unit tests for CardListPaginationMixin."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from app.scrapers.card_pagination_mixin import CardListPaginationMixin
-from app.utils.errors import ScraperError
 
 
 def _make_mixin():

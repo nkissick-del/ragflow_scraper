@@ -6,7 +6,6 @@ import pytest
 
 from app.utils.config_validation import (
     DEFAULT_SETTINGS,
-    SCRAPER_SCHEMA,
     SETTINGS_SCHEMA,
     _collect_errors,
     load_json,

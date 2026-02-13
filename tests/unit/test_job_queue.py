@@ -291,7 +291,6 @@ class TestJobQueueEdgeCases:
 
     def test_shutdown_waits_for_completion(self):
         """Shutdown with wait=True should drain the queue."""
-        import time
 
         scraper = Mock()
         scraper.name = "shutdown_test"

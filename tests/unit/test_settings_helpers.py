@@ -4,7 +4,6 @@ Most tests call helper functions directly (no Flask app needed).
 Only tests that need `container.settings` require patching.
 """
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 from app.config import Config

@@ -5,7 +5,6 @@ and build_scraper_metadata.
 """
 
 import json
-import pytest
 from unittest.mock import patch, MagicMock
 
 from app.config import Config

@@ -430,7 +430,7 @@ class TestUploadDocumentEdgeCases:
         mock_session.request.return_value = mock_response
         client.session = mock_session
 
-        result = client.upload_document(test_file)
+        client.upload_document(test_file)
 
         args, kwargs = mock_session.request.call_args
         assert kwargs["data"]["addToWorkspaces"] == "test-workspace"
