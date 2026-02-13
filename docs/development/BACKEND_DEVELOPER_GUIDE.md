@@ -242,9 +242,9 @@ my-pdf-library>=1.0.0
 
 ### Step 7: Update Documentation
 
-- Add to `docs/BACKEND_MIGRATION_GUIDE.md` parser table
+- Add to `docs/operations/BACKEND_MIGRATION_GUIDE.md` parser table
 - Add example configuration to `.env.example`
-- Update `CLAUDE.md` if necessary
+- Update `.claude/instructions.md` if necessary
 
 ## Adding a New Archive Backend
 

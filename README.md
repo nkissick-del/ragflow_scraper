@@ -235,24 +235,36 @@ See [DEVELOPER_GUIDE.md](docs/development/DEVELOPER_GUIDE.md) for:
 
 ## Documentation
 
+**Complete documentation index**: [docs/README.md](docs/README.md)
+
+### Getting Started
+
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
+- **[Security Policy](SECURITY.md)** - Security reporting and best practices
+
 ### Operations
 
 - **[Deployment Guide](docs/operations/DEPLOYMENT_GUIDE.md)** - Production deployment, Docker setup, service configuration
 - **[Runbook - Common Operations](docs/operations/RUNBOOK_COMMON_OPERATIONS.md)** - Daily operations, troubleshooting, maintenance tasks
+- **[Backend Migration Guide](docs/operations/BACKEND_MIGRATION_GUIDE.md)** - Switching between parser/archive/RAG backends
 - **[Migration & State Repair](docs/operations/MIGRATION_AND_STATE_REPAIR.md)** - State file management, recovery procedures
+- **[Secrets Rotation](docs/operations/SECRETS_ROTATION.md)** - Credential management and rotation procedures
 - **[Troubleshooting: RAGFlow](docs/operations/troubleshooting/ragflow_scraper_audit.md)** - RAGFlow integration issues and fixes
 
 ### Development
 
 - **[Developer Guide](docs/development/DEVELOPER_GUIDE.md)** - Development setup, scraper architecture, best practices
 - **[Example Scraper Walkthrough](docs/development/EXAMPLE_SCRAPER_WALKTHROUGH.md)** - Step-by-step guide to creating a new scraper
+- **[Backend Developer Guide](docs/development/BACKEND_DEVELOPER_GUIDE.md)** - Creating new parser/archive/RAG backends
 - **[Configuration & Services](docs/development/CONFIG_AND_SERVICES.md)** - Configuration system, service integration patterns
-- **[Error Handling & Logging](docs/development/ERROR_HANDLING.md)** - Exception hierarchy, retry patterns, logging standards
+- **[Error Handling](docs/development/ERROR_HANDLING.md)** - Exception hierarchy, retry patterns
+- **[Logging & Error Standards](docs/development/LOGGING_AND_ERROR_STANDARDS.md)** - Logging best practices
 
 ### Reference
 
 - **[Metadata Schema](docs/reference/METADATA_SCHEMA.md)** - Document metadata structure and validation
 - **[Changelog](docs/CHANGELOG.md)** - Version history and release notes
+- **[TODO/Roadmap](docs/TODO.md)** - Planned features and improvements
 
 ## Environment Variables
 

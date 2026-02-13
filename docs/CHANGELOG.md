@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-02-13 – Documentation Refactoring (COMPLETE)
+
+**Documentation Organization:**
+
+- Created standard open source files:
+  - `CONTRIBUTING.md`: Comprehensive contribution guidelines with development workflow, coding standards, testing requirements, and PR process
+  - `SECURITY.md`: Security policy with vulnerability reporting, deployment best practices, and security checklist
+  
+- Reorganized documentation structure:
+  - Moved `CLAUDE.md` → `.claude/instructions.md` (AI-specific location)
+  - Moved `docs/BACKEND_MIGRATION_GUIDE.md` → `docs/operations/BACKEND_MIGRATION_GUIDE.md` (better categorization)
+  - Moved `docs/LOGGING_AND_ERROR_STANDARDS.md` → `docs/development/LOGGING_AND_ERROR_STANDARDS.md` (developer-focused)
+  - Created `docs/README.md`: Comprehensive documentation index with navigation by role and topic
+  - Created `docs/archive/README.md`: Explanation of archived content with links to current docs
+
+- Updated cross-references:
+  - Updated all references to moved files in documentation
+  - Fixed incorrect links in SECURITY.md
+  - Verified no broken links in code, tests, or configuration
+
+**Documentation Structure:**
+```
+Root: README.md, CONTRIBUTING.md, SECURITY.md, LICENSE
+├── docs/README.md (index)
+├── docs/development/ (developer guides)
+├── docs/operations/ (deployment & ops)
+├── docs/reference/ (technical specs)
+└── docs/archive/ (historical docs)
+```
+
+**Outcome:**
+
+- Documentation now follows open source best practices with clear navigation and proper categorization
+- Archived content is preserved but clearly marked as historical
+- All cross-references updated and verified
+
 ## 2026-01-07 – Phase 4.2 Metadata Schema & Logging Standards (COMPLETE)
 
 **Documentation:**
