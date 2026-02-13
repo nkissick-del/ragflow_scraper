@@ -40,7 +40,7 @@ class DummyScraperResult:
 
 
 class DummyScraper:
-    """Mock scraper."""
+    """Mock scraper that yields documents as a generator."""
 
     def __init__(self, doc_count=1, tmp_path=None):
         if tmp_path is None:
@@ -49,7 +49,15 @@ class DummyScraper:
         self.tmp_path = tmp_path
 
     def run(self):
-        return DummyScraperResult(self.doc_count, self.tmp_path)
+        result = DummyScraperResult(self.doc_count, self.tmp_path)
+        yield from result.documents
+        return result
+
+
+def _scraper_gen(scraper_result):
+    """Create a generator from a DummyScraperResult."""
+    yield from scraper_result.documents
+    return scraper_result
 
 
 @pytest.fixture
@@ -319,7 +327,7 @@ class TestE2EPipelineErrorHandling:
         scraper_result.status = "failed"
         scraper_result.errors = ["Scraper connection failed"]
         scraper = Mock()
-        scraper.run.return_value = scraper_result
+        scraper.run.return_value = _scraper_gen(scraper_result)
 
         # Execute
         with patch.object(ScraperRegistry, "get_scraper", return_value=scraper):
@@ -342,7 +350,7 @@ class TestE2EPipelineErrorHandling:
         scraper_result.downloaded_count = 0
         scraper_result.documents = []
         scraper = Mock()
-        scraper.run.return_value = scraper_result
+        scraper.run.return_value = _scraper_gen(scraper_result)
 
         # Execute
         with patch.object(ScraperRegistry, "get_scraper", return_value=scraper):
@@ -448,7 +456,7 @@ class TestE2EPipelineFormatRouting:
         scraper_result.documents[0]["pdf_path"] = None
         scraper_result.documents[0]["local_path"] = str(md_file)
         scraper = Mock()
-        scraper.run.return_value = scraper_result
+        scraper.run.return_value = _scraper_gen(scraper_result)
 
         # Mock archive backend
         mock_container.archive_backend.archive_document.return_value = ArchiveResult(
@@ -494,7 +502,7 @@ class TestE2EPipelineFormatRouting:
         scraper_result.documents[0]["pdf_path"] = None
         scraper_result.documents[0]["local_path"] = str(md_file)
         scraper = Mock()
-        scraper.run.return_value = scraper_result
+        scraper.run.return_value = _scraper_gen(scraper_result)
 
         # Mock Gotenberg client
         mock_gotenberg = Mock()
@@ -549,7 +557,7 @@ class TestE2EPipelineFormatRouting:
         scraper_result.documents[0]["pdf_path"] = None
         scraper_result.documents[0]["local_path"] = str(docx_file)
         scraper = Mock()
-        scraper.run.return_value = scraper_result
+        scraper.run.return_value = _scraper_gen(scraper_result)
 
         # Mock Tika client
         mock_tika = Mock()

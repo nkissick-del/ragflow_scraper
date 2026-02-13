@@ -140,128 +140,57 @@ class Pipeline:
                         f"Pre-flight reconciliation failed (non-fatal): {e}"
                     )
 
-            # Step 1: Run scraper
+            # Step 1+2: Run scraper as generator, process each doc immediately
             log_event(
                 self.logger, "info", "pipeline.scrape.start", scraper=self.scraper_name
             )
             step_start = time.perf_counter()
-            scraper_result = self._run_scraper()
-            step_times["scrape"] = time.perf_counter() - step_start
-            self._step_times = step_times
 
-            result.scraped_count = scraper_result.scraped_count
-            result.downloaded_count = scraper_result.downloaded_count
-            result.errors.extend(scraper_result.errors)
-
-            if scraper_result.status == "failed":
-                result.status = "failed"
-                result.errors.append("Scraper failed")
-                return self._finalize_result(result, start_time)
-
-            if result.downloaded_count == 0:
-                self.logger.info("No new documents downloaded, skipping processing")
-                result.status = "completed"
-                return self._finalize_result(result, start_time)
-
-            # Step 2: Process documents through modular pipeline
-            process_start = time.perf_counter()
-            log_event(
-                self.logger,
-                "info",
-                "pipeline.process.start",
-                scraper=self.scraper_name,
-                document_count=len(scraper_result.documents),
-            )
-
+            scraper_gen = self._create_scraper_generator()
+            scraper_result = None
             known_fields = {f.name for f in dataclass_fields(DocumentMetadata)}
 
-            for doc_dict in scraper_result.documents:
-                try:
-                    # Reconstruct DocumentMetadata from dict
-                    doc_keys = set(doc_dict.keys())
-                    dropped_fields = (
-                        doc_keys - known_fields - {"pdf_path", "local_path"}
-                    )
-                    if dropped_fields:
-                        self.logger.debug(
-                            f"Dropped fields from DocumentMetadata for {doc_dict.get('title', 'unknown')}: "
-                            f"{', '.join(sorted(dropped_fields))}"
-                        )
-
-                    filtered_dict = {
-                        k: v for k, v in doc_dict.items() if k in known_fields
-                    }
-
+            try:
+                while True:
                     try:
-                        doc_metadata = DocumentMetadata(**filtered_dict)
-                    except TypeError as e:
-                        self.logger.error(f"Failed to construct DocumentMetadata: {e}")
-                        result.failed_count += 1
-                        continue
+                        doc_dict = next(scraper_gen)
+                    except StopIteration as e:
+                        scraper_result = e.value
+                        break
 
-                    # Get file path (may be PDF, markdown, or other format)
-                    file_path_str = doc_dict.get("pdf_path") or doc_dict.get("local_path")
-                    if not file_path_str:
-                        self.logger.warning(
-                            f"Skipping document (no file path): {doc_dict.get('title')}"
-                        )
-                        result.failed_count += 1
-                        continue
-
-                    file_path = Path(file_path_str)
-                    if not file_path.exists():
-                        self.logger.warning(
-                            f"Skipping document (file not found): {file_path}"
-                        )
-                        result.failed_count += 1
-                        continue
-
-                    # Process document through modular pipeline
-                    process_result = self._process_document(
-                        doc_metadata, file_path, doc_dict
+                    # Process this document immediately
+                    result.downloaded_count += 1
+                    self._process_single_document(
+                        doc_dict, known_fields, result
                     )
+            except Exception as e:
+                self.logger.error(f"Error during streaming pipeline: {e}")
+                result.errors.append(str(e))
 
-                    # Update counters
-                    if process_result["parsed"]:
-                        result.parsed_count += 1
-                    if process_result["archived"]:
-                        result.archived_count += 1
-                    if process_result["verified"]:
-                        result.verified_count += 1
-                    if process_result["rag_indexed"]:
-                        result.rag_indexed_count += 1
-
-                except (ParserBackendError, ArchiveError) as e:
-                    # document-level fatal errors
-                    self.logger.error(
-                        f"Document processing failed: {doc_dict.get('title')} - {e}"
-                    )
-                    result.failed_count += 1
-                    result.errors.append(
-                        f"{doc_dict.get('title', 'Unknown')}: {str(e)}"
-                    )
-                    # Continue processing other documents instead of stopping pipeline
-
-                except Exception as e:
-                    # Unexpected errors
-                    self.logger.error(
-                        f"Unexpected error processing document: {doc_dict.get('title')} - {e}"
-                    )
-                    result.failed_count += 1
-                    result.errors.append(
-                        f"{doc_dict.get('title', 'Unknown')}: {str(e)}"
-                    )
-
-            step_times["process"] = time.perf_counter() - process_start
+            step_times["scrape_and_process"] = time.perf_counter() - step_start
             self._step_times = step_times
+
+            # Merge scraper stats
+            if scraper_result:
+                result.scraped_count = scraper_result.scraped_count
+                result.errors.extend(scraper_result.errors)
+                if scraper_result.status == "failed" and result.downloaded_count == 0:
+                    result.status = "failed"
+                    result.errors.append("Scraper failed")
+                    return self._finalize_result(result, start_time)
+
             self.logger.info(
-                f"Document processing completed in {step_times['process']:.2f}s: "
+                f"Streaming pipeline completed: "
                 f"{result.parsed_count} parsed, {result.archived_count} archived, "
                 f"{result.verified_count} verified, {result.rag_indexed_count} indexed"
             )
 
             # Determine final status
-            if result.failed_count > 0:
+            if result.downloaded_count == 0 and result.errors:
+                result.status = "failed"
+            elif result.downloaded_count == 0:
+                result.status = "completed"
+            elif result.failed_count > 0:
                 result.status = "partial"
             else:
                 result.status = "completed"
@@ -279,7 +208,7 @@ class Pipeline:
         return self._finalize_result(result, start_time)
 
     def _run_scraper(self):
-        """Run the scraper."""
+        """Run the scraper (returns a generator)."""
         scraper = ScraperRegistry.get_scraper(
             self.scraper_name,
             max_pages=self.max_pages,
@@ -289,6 +218,97 @@ class Pipeline:
             raise ValueError(f"Scraper not found: {self.scraper_name}")
 
         return scraper.run()
+
+    def _create_scraper_generator(self):
+        """Create and return the scraper generator."""
+        return self._run_scraper()
+
+    def _process_single_document(
+        self,
+        doc_dict: dict,
+        known_fields: set[str],
+        result: PipelineResult,
+    ) -> None:
+        """
+        Process a single document through the pipeline (parse, archive, RAG).
+
+        Args:
+            doc_dict: Document metadata dict yielded from scraper
+            known_fields: Set of valid DocumentMetadata field names
+            result: PipelineResult to update counters on
+        """
+        try:
+            # Reconstruct DocumentMetadata from dict
+            doc_keys = set(doc_dict.keys())
+            dropped_fields = (
+                doc_keys - known_fields - {"pdf_path", "local_path"}
+            )
+            if dropped_fields:
+                self.logger.debug(
+                    f"Dropped fields from DocumentMetadata for {doc_dict.get('title', 'unknown')}: "
+                    f"{', '.join(sorted(dropped_fields))}"
+                )
+
+            filtered_dict = {
+                k: v for k, v in doc_dict.items() if k in known_fields
+            }
+
+            try:
+                doc_metadata = DocumentMetadata(**filtered_dict)
+            except TypeError as e:
+                self.logger.error(f"Failed to construct DocumentMetadata: {e}")
+                result.failed_count += 1
+                return
+
+            # Get file path (may be PDF, markdown, or other format)
+            file_path_str = doc_dict.get("pdf_path") or doc_dict.get("local_path")
+            if not file_path_str:
+                self.logger.warning(
+                    f"Skipping document (no file path): {doc_dict.get('title')}"
+                )
+                result.failed_count += 1
+                return
+
+            file_path = Path(file_path_str)
+            if not file_path.exists():
+                self.logger.warning(
+                    f"Skipping document (file not found): {file_path}"
+                )
+                result.failed_count += 1
+                return
+
+            # Process document through modular pipeline
+            process_result = self._process_document(
+                doc_metadata, file_path, doc_dict
+            )
+
+            # Update counters
+            if process_result["parsed"]:
+                result.parsed_count += 1
+            if process_result["archived"]:
+                result.archived_count += 1
+            if process_result["verified"]:
+                result.verified_count += 1
+            if process_result["rag_indexed"]:
+                result.rag_indexed_count += 1
+
+        except (ParserBackendError, ArchiveError) as e:
+            self.logger.error(
+                f"Document processing failed: {doc_dict.get('title')} - {e}"
+            )
+            result.failed_count += 1
+            result.errors.append(
+                f"{doc_dict.get('title', 'Unknown')}: {str(e)}"
+            )
+
+        except Exception as e:
+            self.logger.error(
+                f"Unexpected error processing document: {doc_dict.get('title')} - {e}"
+            )
+            result.failed_count += 1
+            result.errors.append(
+                f"{doc_dict.get('title', 'Unknown')}: {str(e)}"
+            )
 
     # Format classification constants
     _MARKDOWN_FORMATS = {".md", ".markdown"}

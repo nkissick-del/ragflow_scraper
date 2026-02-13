@@ -1,15 +1,31 @@
 """Unit tests for BaseScraper abstract class.
 
 Uses a concrete test subclass to test lifecycle, cancellation, and status finalization.
+scrape() and run() are Python generators — scrape() yields documents and returns
+ScraperResult; run() uses ``yield from self.scrape()`` and returns the result.
+To obtain the ScraperResult the caller must exhaust the generator and read
+``StopIteration.value``.
 """
 
 from __future__ import annotations
+
+from collections.abc import Generator
 
 import pytest
 from unittest.mock import Mock, patch
 
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import ScraperResult
+
+
+def _exhaust_run(scraper) -> ScraperResult:
+    """Exhaust the run() generator and return its ScraperResult."""
+    gen = scraper.run()
+    try:
+        while True:
+            next(gen)
+    except StopIteration as exc:
+        return exc.value
 
 
 class ConcreteScraper(BaseScraper):
@@ -25,9 +41,10 @@ class ConcreteScraper(BaseScraper):
         super().__init__(**kwargs)
         self._scrape_fn = scrape_fn
 
-    def scrape(self) -> ScraperResult:
+    def scrape(self) -> Generator[dict, None, ScraperResult]:
         if self._scrape_fn:
-            return self._scrape_fn(self)
+            return (yield from self._scrape_fn(self))
+        yield from ()
         return ScraperResult(status="completed", scraper=self.name)
 
 
@@ -49,7 +66,7 @@ class TestRunLifecycle:
     """Tests for BaseScraper.run() lifecycle."""
 
     def test_calls_setup_scrape_teardown(self, scraper):
-        """run() calls setup → scrape → teardown in order."""
+        """run() calls setup -> scrape -> teardown in order."""
         call_order = []
 
         original_setup = scraper.setup
@@ -63,14 +80,16 @@ class TestRunLifecycle:
             call_order.append("teardown")
             original_teardown()
 
+        def scrape_gen(self):
+            call_order.append("scrape")
+            yield from ()
+            return ScraperResult(status="completed", scraper=self.name)
+
         scraper.setup = mock_setup
         scraper.teardown = mock_teardown
-        scraper._scrape_fn = lambda self: (
-            call_order.append("scrape") or
-            ScraperResult(status="completed", scraper=self.name)
-        )
+        scraper._scrape_fn = scrape_gen
 
-        scraper.run()
+        _exhaust_run(scraper)
 
         assert call_order == ["setup", "scrape", "teardown"]
 
@@ -86,11 +105,14 @@ class TestRunLifecycle:
 
         def raising_scrape(self):
             raise RuntimeError("boom")
+            # Need yield to make this a generator; unreachable but makes
+            # the function a generator function for the type system.
+            yield  # pragma: no cover
 
         scraper.teardown = mock_teardown
         scraper._scrape_fn = raising_scrape
 
-        result = scraper.run()
+        result = _exhaust_run(scraper)
 
         assert teardown_called == [True]
         # Error is captured in errors list
@@ -98,7 +120,7 @@ class TestRunLifecycle:
 
     def test_duration_and_completed_at_set(self, scraper):
         """run() sets duration_seconds and completed_at on result."""
-        result = scraper.run()
+        result = _exhaust_run(scraper)
 
         assert result.duration_seconds >= 0
         assert result.completed_at is not None
@@ -124,11 +146,12 @@ class TestCancellation:
         """run() sets 'cancelled' status when cancelled during scrape."""
         def cancelling_scrape(self):
             self.cancel()
+            yield from ()
             return ScraperResult(status="completed", scraper=self.name)
 
         scraper._scrape_fn = cancelling_scrape
 
-        result = scraper.run()
+        result = _exhaust_run(scraper)
 
         assert result.status == "cancelled"
 
@@ -140,7 +163,7 @@ class TestFinalizeResult:
     """Tests for _finalize_result() status determination."""
 
     def test_all_errors_failed(self, scraper):
-        """All errors with no downloads → 'failed'."""
+        """All errors with no downloads -> 'failed'."""
         result = ScraperResult(
             status="running", scraper="test",
             errors=["err1", "err2"], downloaded_count=0
@@ -149,7 +172,7 @@ class TestFinalizeResult:
         assert result.status == "failed"
 
     def test_mixed_partial(self, scraper):
-        """Errors with some downloads → 'partial'."""
+        """Errors with some downloads -> 'partial'."""
         result = ScraperResult(
             status="running", scraper="test",
             errors=["err1"], downloaded_count=3
@@ -158,7 +181,7 @@ class TestFinalizeResult:
         assert result.status == "partial"
 
     def test_no_errors_completed(self, scraper):
-        """No errors → 'completed'."""
+        """No errors -> 'completed'."""
         result = ScraperResult(
             status="running", scraper="test",
             errors=[], downloaded_count=5

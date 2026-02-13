@@ -11,6 +11,26 @@ from app.scrapers.theenergy_scraper import TheEnergyScraper
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _consume_scrape(scraper):
+    """Consume scraper.scrape() generator and return (docs, result).
+
+    scrape() is a generator that yields document dicts and returns a
+    ScraperResult via ``return result`` (accessible as StopIteration.value).
+    """
+    gen = scraper.scrape()
+    docs = []
+    try:
+        while True:
+            docs.append(next(gen))
+    except StopIteration as e:
+        result = e.value
+    return docs, result
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -105,7 +125,7 @@ class TestScrapeRSS:
             scraper._session.get = Mock(return_value=mock_resp)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.downloaded_count == 2
         assert result.scraped_count >= 2
@@ -124,7 +144,7 @@ class TestScrapeRSS:
             mock_fp.parse.return_value = Mock(entries=entries, bozo=False)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.downloaded_count == 1
 
@@ -139,7 +159,7 @@ class TestScrapeRSS:
             mock_fp.parse.return_value = Mock(entries=entries, bozo=False)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.skipped_count == 1
         assert result.downloaded_count == 0
@@ -155,10 +175,10 @@ class TestScrapeRSS:
             mock_fp.parse.return_value = Mock(entries=entries, bozo=False)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.downloaded_count == 1
-        doc = result.documents[0]
+        doc = docs[0]
         assert doc["publication_date"] == "2025-12-24"
 
     def test_rss_extracts_tags_from_entry(self, scraper):
@@ -171,10 +191,10 @@ class TestScrapeRSS:
             mock_fp.parse.return_value = Mock(entries=entries, bozo=False)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.downloaded_count == 1
-        doc = result.documents[0]
+        doc = docs[0]
         assert "TheEnergy" in doc["tags"]
         assert "Policy" in doc["tags"]
         assert "Solar" in doc["tags"]
@@ -183,7 +203,7 @@ class TestScrapeRSS:
         """RSS fetch failure is recorded but scraper continues to sitemap."""
         scraper._request_with_retry = Mock(return_value=None)
         # Sitemap also fails so we get a clean test
-        result = scraper.scrape()
+        docs, result = _consume_scrape(scraper)
 
         assert any("RSS" in e for e in result.errors)
 
@@ -197,7 +217,7 @@ class TestScrapeRSS:
             mock_fp.parse.return_value = Mock(entries=entries, bozo=False)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.failed_count == 1
 
@@ -273,7 +293,7 @@ class TestScrapeSitemap:
         with patch("app.scrapers.theenergy_scraper.feedparser") as mock_fp:
             mock_fp.parse.return_value = Mock(entries=[], bozo=False)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         # 2 article URLs in sitemap (dry_run mode)
         assert result.downloaded_count == 2
@@ -302,7 +322,7 @@ class TestScrapeSitemap:
         with patch("app.scrapers.theenergy_scraper.feedparser") as mock_fp:
             mock_fp.parse.return_value = Mock(entries=rss_entries, bozo=False)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         # 1 from RSS + 1 from sitemap (the other sitemap URL is deduped)
         assert result.downloaded_count == 2
@@ -328,7 +348,7 @@ class TestScrapeSitemap:
         with patch("app.scrapers.theenergy_scraper.feedparser") as mock_fp:
             mock_fp.parse.return_value = Mock(entries=[], bozo=False)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.skipped_count == 2
         assert result.downloaded_count == 0
@@ -348,7 +368,7 @@ class TestScrapeSitemap:
         with patch("app.scrapers.theenergy_scraper.feedparser") as mock_fp:
             mock_fp.parse.return_value = Mock(entries=[], bozo=False)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert any("Sitemap" in e for e in result.errors)
 
@@ -375,7 +395,7 @@ class TestMaxPages:
             mock_fp.parse.return_value = Mock(entries=entries, bozo=False)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.downloaded_count == 10
 
@@ -393,7 +413,7 @@ class TestMaxPages:
             mock_fp.parse.return_value = Mock(entries=entries, bozo=False)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.downloaded_count == 15
 
@@ -415,7 +435,7 @@ class TestDryRun:
             mock_fp.parse.return_value = Mock(entries=entries, bozo=False)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.downloaded_count == 1
         scraper.state_tracker.mark_processed.assert_not_called()
@@ -449,7 +469,7 @@ class TestIncrementalMode:
             mock_fp.parse.return_value = Mock(entries=entries, bozo=False)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.skipped_count == 1
         assert result.downloaded_count == 0
@@ -492,7 +512,7 @@ class TestIncrementalMode:
         with patch("app.scrapers.theenergy_scraper.feedparser") as mock_fp:
             mock_fp.parse.return_value = Mock(entries=[], bozo=False)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.downloaded_count == 1  # only the new one
         assert result.skipped_count == 1  # old one skipped
@@ -519,6 +539,6 @@ class TestCancellation:
             mock_fp.parse.return_value = Mock(entries=entries, bozo=False)
             scraper._request_with_retry = Mock(return_value=mock_resp)
 
-            result = scraper.scrape()
+            docs, result = _consume_scrape(scraper)
 
         assert result.status == "cancelled"

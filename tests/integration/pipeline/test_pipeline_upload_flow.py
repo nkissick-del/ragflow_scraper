@@ -33,7 +33,9 @@ def test_pipeline_uploads_and_marks_parsed(monkeypatch, tmp_path):
 
     class DummyScraper:
         def run(self):
-            return DummyScraperResult()
+            result = DummyScraperResult()
+            yield from result.documents
+            return result
 
     monkeypatch.setattr(
         ScraperRegistry, "get_scraper", lambda *_, **__: DummyScraper()

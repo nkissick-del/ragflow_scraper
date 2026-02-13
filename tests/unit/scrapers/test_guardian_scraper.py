@@ -89,7 +89,7 @@ class TestProcessApiResult:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_api_item()
 
-        scraper._process_api_result(item, "environment/renewableenergy", result)
+        list(scraper._process_api_result(item, "environment/renewableenergy", result))
 
         assert result.scraped_count == 1
         assert result.downloaded_count == 1  # dry_run counts as downloaded
@@ -99,8 +99,8 @@ class TestProcessApiResult:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_api_item()
 
-        scraper._process_api_result(item, "tag-1", result)
-        scraper._process_api_result(item, "tag-2", result)
+        list(scraper._process_api_result(item, "tag-1", result))
+        list(scraper._process_api_result(item, "tag-2", result))
 
         # Second call should be silently skipped
         assert result.scraped_count == 1
@@ -111,7 +111,7 @@ class TestProcessApiResult:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_api_item(body="")
 
-        scraper._process_api_result(item, "tag-1", result)
+        list(scraper._process_api_result(item, "tag-1", result))
 
         assert result.failed_count == 1
 
@@ -120,10 +120,10 @@ class TestProcessApiResult:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_api_item(byline="John Doe")
 
-        scraper._process_api_result(item, "tag-1", result)
+        docs = list(scraper._process_api_result(item, "tag-1", result))
 
         assert result.downloaded_count == 1
-        doc = result.documents[0]
+        doc = docs[0]
         assert doc["extra"]["author"] == "John Doe"
 
 
@@ -169,7 +169,7 @@ class TestCrossTagDedup:
             },
             "tags": [],
         }
-        scraper._process_api_result(item, "tag-a", result)
+        list(scraper._process_api_result(item, "tag-a", result))
         assert "https://www.theguardian.com/unique" in scraper._session_processed_urls
 
 
@@ -239,12 +239,12 @@ class TestProcessApiResultExtended:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_api_item()
 
-        scraper._process_api_result(item, "environment/renewableenergy", result)
+        docs = list(scraper._process_api_result(item, "environment/renewableenergy", result))
 
         assert result.scraped_count == 1
         assert result.downloaded_count == 1
-        assert len(result.documents) == 1
-        doc = result.documents[0]
+        assert len(docs) == 1
+        doc = docs[0]
         assert doc["title"] == "Test Article"
 
     def test_missing_title_no_headline(self, scraper):
@@ -255,7 +255,7 @@ class TestProcessApiResultExtended:
         item["fields"]["headline"] = ""
         item["webTitle"] = ""
 
-        scraper._process_api_result(item, "tag-1", result)
+        list(scraper._process_api_result(item, "tag-1", result))
 
         assert result.downloaded_count == 0
         assert result.scraped_count == 1
@@ -266,7 +266,7 @@ class TestProcessApiResultExtended:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_api_item(body="")
 
-        scraper._process_api_result(item, "tag-1", result)
+        list(scraper._process_api_result(item, "tag-1", result))
 
         assert result.failed_count == 1
 
@@ -276,10 +276,10 @@ class TestProcessApiResultExtended:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_api_item(pub_date="")
 
-        scraper._process_api_result(item, "tag-1", result)
+        docs = list(scraper._process_api_result(item, "tag-1", result))
 
         assert result.downloaded_count == 1
-        doc = result.documents[0]
+        doc = docs[0]
         assert doc.get("publication_date") is None
 
     def test_tags_extracted(self, scraper):
@@ -288,9 +288,9 @@ class TestProcessApiResultExtended:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_api_item()
 
-        scraper._process_api_result(item, "tag-1", result)
+        docs = list(scraper._process_api_result(item, "tag-1", result))
 
-        doc = result.documents[0]
+        doc = docs[0]
         assert "The Guardian Australia" in doc["tags"]
         assert "Renewable energy" in doc["tags"]
 
@@ -456,10 +456,10 @@ class TestProcessApiResultNew:
 
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_item()
-        scraper._process_api_result(item, "environment/solarpower", result)
+        docs = list(scraper._process_api_result(item, "environment/solarpower", result))
 
         assert result.downloaded_count == 1
-        doc = result.documents[0]
+        doc = docs[0]
         assert doc["title"] == "New Test Article"
         assert doc["extra"]["author"] == "Alice Reporter"
         assert "Solar power" in doc["tags"]
@@ -474,9 +474,9 @@ class TestProcessApiResultNew:
         item = self._make_item()
         item["webTitle"] = ""
         # headline is still set
-        scraper._process_api_result(item, "tag", result)
+        docs = list(scraper._process_api_result(item, "tag", result))
         assert result.downloaded_count == 1
-        assert result.documents[0]["title"] == "New Test Article"
+        assert docs[0]["title"] == "New Test Article"
 
     def test_missing_web_publication_date(self, scraper):
         """Missing webPublicationDate still processes article."""
@@ -485,9 +485,9 @@ class TestProcessApiResultNew:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_item()
         item["webPublicationDate"] = ""
-        scraper._process_api_result(item, "tag", result)
+        docs = list(scraper._process_api_result(item, "tag", result))
         assert result.downloaded_count == 1
-        assert result.documents[0].get("publication_date") is None
+        assert docs[0].get("publication_date") is None
 
     def test_missing_fields_body_returns_empty_markdown(self, scraper):
         """Empty body increments failed_count."""
@@ -496,7 +496,7 @@ class TestProcessApiResultNew:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_item()
         item["fields"]["body"] = ""
-        scraper._process_api_result(item, "tag", result)
+        list(scraper._process_api_result(item, "tag", result))
         assert result.failed_count == 1
 
     def test_item_with_pillar_name(self, scraper):
@@ -506,9 +506,9 @@ class TestProcessApiResultNew:
         result = ScraperResult(status="in_progress", scraper="guardian")
         item = self._make_item()
         item["sectionName"] = "News"
-        scraper._process_api_result(item, "tag", result)
+        docs = list(scraper._process_api_result(item, "tag", result))
         assert result.downloaded_count == 1
-        assert result.documents[0]["extra"]["section"] == "News"
+        assert docs[0]["extra"]["section"] == "News"
 
 
 class TestConvertBodyToMarkdownNew:
@@ -610,7 +610,13 @@ class TestScrapeFlowNew:
         empty_response = {"response": {"pages": 1, "total": 0, "results": []}}
         scraper._api_request = MagicMock(return_value=empty_response)
 
-        result = scraper.scrape()
+        gen = scraper.scrape()
+        docs = []
+        try:
+            while True:
+                docs.append(next(gen))
+        except StopIteration as e:
+            result = e.value
 
         assert result.status == "completed"
         assert scraper._api_request.call_count == 2
@@ -633,7 +639,13 @@ class TestScrapeFlowNew:
         }
         scraper._api_request = MagicMock(return_value=page1_response)
 
-        result = scraper.scrape()
+        gen = scraper.scrape()
+        docs = []
+        try:
+            while True:
+                docs.append(next(gen))
+        except StopIteration as e:
+            result = e.value
 
         assert result.status == "completed"
         # Only 1 page should be fetched due to max_pages=1
@@ -650,7 +662,13 @@ class TestScrapeFlowNew:
         empty_response = {"response": {"pages": 1, "total": 0, "results": []}}
         scraper._api_request = MagicMock(return_value=empty_response)
 
-        result = scraper.scrape()
+        gen = scraper.scrape()
+        docs = []
+        try:
+            while True:
+                docs.append(next(gen))
+        except StopIteration as e:
+            result = e.value
 
         assert result.status == "completed"
         assert result.scraped_count == 0

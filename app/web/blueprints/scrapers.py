@@ -319,6 +319,38 @@ def save_scraper_ragflow_settings(name):
     '''
 
 
+@bp.route("/scrapers/<name>/purge", methods=["POST"])
+@limiter.limit("5/minute")
+def purge_scraper(name):
+    """Purge all local data for a scraper and return refreshed card."""
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return jsonify({"error": "Invalid scraper name format"}), 400
+
+    scraper_class = ScraperRegistry.get_scraper_class(name)
+    if not scraper_class:
+        return jsonify({"error": f"Scraper not found: {escape(name)}"}), 404
+
+    # Refuse if scraper is running
+    job = job_queue.get(name)
+    if job and job.is_active:
+        metadata = scraper_class.get_metadata()
+        state = container.state_tracker(name)
+        metadata["state"] = state.get_last_run_info()
+        metadata["status"] = job_queue.status(name)
+        return render_template(
+            "components/scraper-card.html",
+            scraper=metadata,
+            message="Cannot purge while running",
+        )
+
+    state = container.state_tracker(name)
+    counts = state.purge()
+    log_event(logger, "warning", "scraper.purge", scraper=name, **counts)
+
+    metadata = build_scraper_metadata(name)
+    return render_template("components/scraper-card.html", scraper=metadata)
+
+
 @bp.route("/scrapers/<name>/cloudflare", methods=["POST"])
 def toggle_scraper_cloudflare(name):
     """Toggle FlareSolverr/Cloudflare bypass for a specific scraper."""

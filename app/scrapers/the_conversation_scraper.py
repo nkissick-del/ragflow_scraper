@@ -10,6 +10,7 @@ Saves article content as Markdown for RAGFlow indexing.
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from typing import Any, Optional
 
 import feedparser  # type: ignore[import-untyped]
@@ -71,7 +72,7 @@ class TheConversationScraper(BaseScraper):
         # Article converter for feed HTML
         self._markdown = ArticleConverter()
 
-    def scrape(self) -> ScraperResult:
+    def scrape(self) -> Generator[dict, None, ScraperResult]:
         """
         Scrape The Conversation energy articles via Atom feed.
 
@@ -82,6 +83,12 @@ class TheConversationScraper(BaseScraper):
         4. Extract HTML content and convert to Markdown
         5. Save as .md with frontmatter + .json sidecar
         6. Update last scrape date on success
+
+        Yields:
+            dict — document metadata for each downloaded article
+
+        Returns:
+            ScraperResult with statistics
         """
         result = ScraperResult(
             status="in_progress",
@@ -127,7 +134,7 @@ class TheConversationScraper(BaseScraper):
                 for entry in entries:
                     if self.check_cancelled():
                         break
-                    self._process_feed_entry(entry, result)
+                    yield from self._process_feed_entry(entry, result)
 
                 page += 1
                 self._polite_delay()
@@ -187,13 +194,16 @@ class TheConversationScraper(BaseScraper):
 
         return feed.entries
 
-    def _process_feed_entry(self, entry: Any, result: ScraperResult) -> None:
+    def _process_feed_entry(self, entry: Any, result: ScraperResult) -> Generator[dict, None, None]:
         """
         Process a single feed entry.
 
         Args:
             entry: feedparser entry object
             result: ScraperResult to update
+
+        Yields:
+            dict — document metadata if article is downloaded
         """
         # Extract URL
         url = entry.get("link", "")
@@ -301,15 +311,15 @@ class TheConversationScraper(BaseScraper):
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1
-            result.documents.append(metadata.to_dict())
+            yield metadata.to_dict()
         else:
             saved_path = self._save_article(
                 metadata, content_md, html_content=content_html
             )
             if saved_path:
-                result.downloaded_count += 1
-                result.documents.append(metadata.to_dict())
                 self._mark_processed(url, {"title": title})
+                result.downloaded_count += 1
+                yield metadata.to_dict()
             else:
                 result.failed_count += 1
 

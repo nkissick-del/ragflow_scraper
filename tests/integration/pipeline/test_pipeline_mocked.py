@@ -17,7 +17,9 @@ class DummyScraperResult:
 
 class DummyScraper:
     def run(self):
-        return DummyScraperResult()
+        result = DummyScraperResult()
+        yield from result.documents
+        return result
 
 
 def test_pipeline_with_mocked_dependencies(monkeypatch):
@@ -42,8 +44,9 @@ def test_pipeline_with_mocked_dependencies(monkeypatch):
 
     result = pipeline.run()
     assert isinstance(result, PipelineResult)
-    # No documents in list → downloaded_count reported from scraper but 0 processed
+    # No documents yielded → downloaded_count is 0, scraped_count from scraper
     assert result.status == "completed"
-    assert result.downloaded_count == 1
+    assert result.downloaded_count == 0
+    assert result.scraped_count == 2
     assert result.parsed_count == 0
     assert result.failed_count == 0

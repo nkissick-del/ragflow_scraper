@@ -29,6 +29,7 @@ class TestIncrementalStateMixin:
             skip_webdriver = True
 
             def scrape(self):
+                yield from ()
                 return ScraperResult(
                     status="completed",
                     scraper=self.name,
@@ -112,6 +113,7 @@ class TestExclusionRulesMixin:
             required_tags = ["Electricity"]
 
             def scrape(self):
+                yield from ()
                 return ScraperResult(
                     status="completed",
                     scraper=self.name,
@@ -195,6 +197,7 @@ class TestWebDriverLifecycleMixin:
             base_url = "http://example.com"
 
             def scrape(self):
+                yield from ()
                 return ScraperResult(
                     status="completed",
                     scraper=self.name,
@@ -253,6 +256,7 @@ class TestBaseScrapeTemplate:
                 self.setup_called = True
 
             def scrape(self):
+                yield from ()
                 return ScraperResult(
                     status="completed",
                     scraper=self.name,
@@ -288,7 +292,12 @@ class TestBaseScrapeTemplate:
         self.scraper.setup_called = False
         self.scraper.teardown_called = False
 
-        result = self.scraper.run()
+        gen = self.scraper.run()
+        try:
+            while True:
+                next(gen)
+        except StopIteration as e:
+            result = e.value
 
         assert self.scraper.setup_called is True
         assert self.scraper.teardown_called is True

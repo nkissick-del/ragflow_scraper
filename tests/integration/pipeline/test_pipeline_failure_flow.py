@@ -30,7 +30,9 @@ def test_pipeline_marks_partial_on_failed_upload(monkeypatch, tmp_path):
 
     class DummyScraper:
         def run(self):
-            return DummyScraperResult()
+            result = DummyScraperResult()
+            yield from result.documents
+            return result
 
     monkeypatch.setattr(
         ScraperRegistry, "get_scraper", lambda *_, **__: DummyScraper()

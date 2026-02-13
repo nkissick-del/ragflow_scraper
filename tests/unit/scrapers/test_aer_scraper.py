@@ -525,7 +525,13 @@ class TestScrapeFlowNew:
         )
         scraper._is_processed = MagicMock(return_value=False)
 
-        result = scraper.scrape()
+        gen = scraper.scrape()
+        docs = []
+        try:
+            while True:
+                docs.append(next(gen))
+        except StopIteration as e:
+            result = e.value
 
         assert result.status == "completed"
         assert result.downloaded_count >= 0  # dry_run
@@ -536,7 +542,12 @@ class TestScrapeFlowNew:
 
         scraper.fetch_rendered_page = MagicMock(return_value=None)
 
-        result = scraper.scrape()
+        gen = scraper.scrape()
+        try:
+            while True:
+                next(gen)
+        except StopIteration as e:
+            result = e.value
 
         assert result.status == "failed"
         assert len(result.errors) > 0
@@ -558,6 +569,11 @@ class TestScrapeFlowNew:
         scraper.check_cancelled = cancel_after_first
         scraper._find_pdf_on_detail_page = MagicMock(return_value=None)
 
-        result = scraper.scrape()
+        gen = scraper.scrape()
+        try:
+            while True:
+                next(gen)
+        except StopIteration as e:
+            result = e.value
         # Should have been cancelled after processing started
         assert result.status in ("completed", "cancelled")

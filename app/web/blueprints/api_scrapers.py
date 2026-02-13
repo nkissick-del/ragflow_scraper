@@ -9,7 +9,7 @@ from app.scrapers import ScraperRegistry
 from app.utils import get_logger
 from app.utils.errors import ScraperAlreadyRunningError
 from app.web.limiter import limiter
-from app.web.runtime import job_queue
+from app.web.runtime import container, job_queue
 
 bp = Blueprint("api_scrapers", __name__)
 logger = get_logger("web.api_scrapers")
@@ -134,3 +134,35 @@ def api_scraper_status(name):
     except Exception as exc:
         logger.error(f"Error getting status for {name}: {exc}", exc_info=True)
         return jsonify({"error": "Failed to retrieve job status"}), 500
+
+
+@bp.route("/api/scrapers/<name>/purge", methods=["POST"])
+@limiter.limit("5/minute")
+def api_purge_scraper(name):
+    """
+    Purge all local data for a scraper (state, downloads, metadata).
+
+    Returns 409 if the scraper is currently running.
+    """
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return jsonify({"error": "Invalid scraper name format"}), 400
+
+    if not ScraperRegistry.get_scraper_class(name):
+        return jsonify({"error": f"Scraper not found: {name}"}), 404
+
+    # Refuse if scraper is running
+    job = job_queue.get(name)
+    if job and job.is_active:
+        return jsonify({
+            "error": f"Scraper {name} is currently running",
+            "status": job.status,
+        }), 409
+
+    try:
+        state = container.state_tracker(name)
+        counts = state.purge()
+        logger.warning(f"API: Purged scraper {name}: {counts}")
+        return jsonify({"success": True, **counts}), 200
+    except Exception as exc:
+        logger.error(f"Error purging scraper {name}: {exc}", exc_info=True)
+        return jsonify({"error": "Failed to purge scraper data"}), 500

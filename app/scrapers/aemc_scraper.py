@@ -10,6 +10,7 @@ Each review links to a detail page where PDFs are found.
 from __future__ import annotations
 
 import re
+from collections.abc import Generator
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -80,7 +81,7 @@ class AEMCScraper(BaseScraper):
         text = re.sub(r"\s+", " ", text)
         return text.strip()
 
-    def scrape(self) -> ScraperResult:
+    def scrape(self) -> Generator[dict, None, ScraperResult]:
         """
         Scrape AEMC Market Reviews and Advice.
 
@@ -90,8 +91,11 @@ class AEMCScraper(BaseScraper):
         3. Visit each review page to find PDFs
         4. Download PDFs with metadata
 
+        Yields:
+            dict — document metadata for each downloaded document
+
         Returns:
-            ScraperResult with statistics and document list
+            ScraperResult with statistics
         """
         result = ScraperResult(
             status="in_progress",
@@ -174,7 +178,7 @@ class AEMCScraper(BaseScraper):
                         if self.dry_run:
                             self.logger.info(f"[DRY RUN] Would download: {pdf.title}")
                             result.downloaded_count += 1
-                            result.documents.append(pdf.to_dict())
+                            yield pdf.to_dict()
                         else:
                             downloaded_path = self._download_file(
                                 pdf.url,
@@ -183,9 +187,9 @@ class AEMCScraper(BaseScraper):
                             )
 
                             if downloaded_path:
-                                result.downloaded_count += 1
-                                result.documents.append(pdf.to_dict())
                                 self._mark_processed(pdf.url, {"title": pdf.title})
+                                result.downloaded_count += 1
+                                yield pdf.to_dict()
                             else:
                                 result.failed_count += 1
 

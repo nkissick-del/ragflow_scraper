@@ -12,6 +12,7 @@ theenergy.co echoes the oldest page for any page number beyond the last real one
 from __future__ import annotations
 
 import defusedxml.ElementTree as ET  # type: ignore[import-untyped]
+from collections.abc import Generator
 from typing import Any, Optional
 
 import feedparser  # type: ignore[import-untyped]
@@ -76,12 +77,15 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
     # Main entry point
     # ------------------------------------------------------------------
 
-    def scrape(self) -> ScraperResult:
+    def scrape(self) -> Generator[dict, None, ScraperResult]:
         """
         Scrape TheEnergy articles via RSS feed + sitemap backfill.
 
+        Yields:
+            dict — document metadata for each downloaded article
+
         Returns:
-            ScraperResult with statistics and article metadata
+            ScraperResult with statistics
         """
         result = ScraperResult(
             status="in_progress",
@@ -94,11 +98,11 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
 
         try:
             # Phase 1: RSS feed (recent articles with full content)
-            self._scrape_rss(result)
+            yield from self._scrape_rss(result)
 
             # Phase 2: Sitemap backfill (historical articles)
             if not self.check_cancelled() and not self._reached_limit(result):
-                self._scrape_sitemap(result)
+                yield from self._scrape_sitemap(result)
 
             if result.status != "cancelled":
                 self._finalize_result(result)
@@ -118,7 +122,7 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
     # Phase 1 — RSS feed
     # ------------------------------------------------------------------
 
-    def _scrape_rss(self, result: ScraperResult) -> None:
+    def _scrape_rss(self, result: ScraperResult) -> Generator[dict, None, None]:
         """Fetch RSS feed and process entries (full HTML content in feed)."""
         self.logger.info(f"Phase 1: Fetching RSS feed from {self.RSS_URL}")
 
@@ -143,7 +147,7 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
                 self.logger.info("Reached article limit during RSS phase")
                 break
 
-            self._process_rss_entry(entry, result)
+            yield from self._process_rss_entry(entry, result)
 
     def _fetch_rss_feed(self) -> list[Any]:
         """Fetch and parse the RSS feed.
@@ -167,7 +171,7 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
 
         return feed.entries
 
-    def _process_rss_entry(self, entry: Any, result: ScraperResult) -> None:
+    def _process_rss_entry(self, entry: Any, result: ScraperResult) -> Generator[dict, None, None]:
         """Process a single RSS feed entry.
 
         RSS entries contain full HTML content in the description/summary,
@@ -251,13 +255,13 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1
-            result.documents.append(metadata.to_dict())
+            yield metadata.to_dict()
         else:
             saved_path = self._save_article(metadata, content_md, html_content=content_html)
             if saved_path:
-                result.downloaded_count += 1
-                result.documents.append(metadata.to_dict())
                 self._mark_processed(url, {"title": title})
+                result.downloaded_count += 1
+                yield metadata.to_dict()
             else:
                 result.failed_count += 1
 
@@ -291,7 +295,7 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
     # Phase 2 — Sitemap backfill
     # ------------------------------------------------------------------
 
-    def _scrape_sitemap(self, result: ScraperResult) -> None:
+    def _scrape_sitemap(self, result: ScraperResult) -> Generator[dict, None, None]:
         """Parse sitemap XML and fetch article pages for unprocessed URLs."""
         self.logger.info(f"Phase 2: Fetching sitemap from {self.SITEMAP_URL}")
 
@@ -316,7 +320,7 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
                 self.logger.info("Reached article limit during sitemap phase")
                 break
 
-            self._process_sitemap_article(url, lastmod, result)
+            yield from self._process_sitemap_article(url, lastmod, result)
             self._polite_delay()
 
     def _parse_sitemap(self) -> list[tuple[str, Optional[str]]]:
@@ -360,7 +364,7 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
 
     def _process_sitemap_article(
         self, url: str, lastmod: Optional[str], result: ScraperResult
-    ) -> None:
+    ) -> Generator[dict, None, None]:
         """Fetch an article page from the sitemap and process it."""
         # Cross-phase deduplication (may have been processed via RSS)
         if url in self._session_processed_urls:
@@ -448,13 +452,13 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
             if self.dry_run:
                 self.logger.info(f"[DRY RUN] Would save: {title}")
                 result.downloaded_count += 1
-                result.documents.append(metadata.to_dict())
+                yield metadata.to_dict()
             else:
                 saved_path = self._save_article(metadata, content)
                 if saved_path:
-                    result.downloaded_count += 1
-                    result.documents.append(metadata.to_dict())
                     self._mark_processed(url, {"title": title})
+                    result.downloaded_count += 1
+                    yield metadata.to_dict()
                 else:
                     result.failed_count += 1
 

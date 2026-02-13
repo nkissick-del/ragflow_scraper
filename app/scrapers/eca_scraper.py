@@ -14,6 +14,7 @@ Supports multiple document types: PDF, Word, Excel.
 from __future__ import annotations
 
 import re
+from collections.abc import Generator
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -125,7 +126,7 @@ class ECAScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
 
         return 1  # Default to single page
 
-    def scrape(self) -> ScraperResult:
+    def scrape(self) -> Generator[dict, None, ScraperResult]:
         """
         Scrape ECA Research and Submissions.
 
@@ -137,8 +138,11 @@ class ECAScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
            d. Visit each detail page to find documents
            e. Download documents with metadata
 
+        Yields:
+            dict — document metadata for each downloaded document
+
         Returns:
-            ScraperResult with statistics and document list
+            ScraperResult with statistics
         """
         result = ScraperResult(
             status="in_progress",
@@ -179,7 +183,7 @@ class ECAScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
                     self.logger.info(f"Limited to {pages_to_scrape} pages")
 
                 # Step 3: Process first page
-                self._process_page(page_html, result, section_category)
+                yield from self._process_page(page_html, result, section_category)
 
                 # Step 4: Process remaining pages
                 for page_num in range(1, pages_to_scrape):
@@ -198,7 +202,7 @@ class ECAScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
                         if not page_html:
                             self.logger.warning(f"Empty response for page {page_num}")
                             continue
-                        self._process_page(page_html, result, section_category)
+                        yield from self._process_page(page_html, result, section_category)
                     except Exception as e:
                         self.logger.warning(f"Failed to fetch page {page_num}: {e}")
                         result.errors.append(f"Page {page_num}: {str(e)}")
@@ -219,7 +223,7 @@ class ECAScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
 
         return result
 
-    def _process_page(self, html: str, result: ScraperResult, section_category: str) -> None:
+    def _process_page(self, html: str, result: ScraperResult, section_category: str) -> Generator[dict, None, None]:
         """
         Process a single listing page.
 
@@ -227,6 +231,9 @@ class ECAScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
             html: HTML content of the page
             result: ScraperResult to update
             section_category: Category name for this section (Research/Submissions)
+
+        Yields:
+            dict — document metadata for each downloaded document
         """
         documents = self.parse_page(html, section_category)
         result.scraped_count += len(documents)
@@ -292,7 +299,7 @@ class ECAScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
                 if self.dry_run:
                     self.logger.info(f"[DRY RUN] Would download: {doc.title} - {doc_filename}")
                     result.downloaded_count += 1
-                    result.documents.append(doc_metadata.to_dict())
+                    yield doc_metadata.to_dict()
                 else:
                     downloaded_path = self._download_file(
                         doc_url,
@@ -301,9 +308,9 @@ class ECAScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
                     )
 
                     if downloaded_path:
-                        result.downloaded_count += 1
-                        result.documents.append(doc_metadata.to_dict())
                         self._mark_processed(doc_url, {"title": doc.title})
+                        result.downloaded_count += 1
+                        yield doc_metadata.to_dict()
                     else:
                         result.failed_count += 1
 

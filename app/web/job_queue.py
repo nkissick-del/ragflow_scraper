@@ -15,6 +15,7 @@ from typing import Any, Callable, Optional
 import atexit
 import sys
 import traceback
+import types
 import weakref
 
 
@@ -61,7 +62,20 @@ class ScraperJob:
             self.started_at = datetime.now().isoformat()
 
         try:
-            self.result = self.run_callable()
+            # run_callable() may return a generator (streaming scrapers)
+            # or a plain value (pipeline). Consume generators to extract
+            # the final ScraperResult from StopIteration.value.
+            result_or_gen = self.run_callable()
+            if isinstance(result_or_gen, types.GeneratorType):
+                # It's a generator — consume it, discard yielded docs
+                try:
+                    while True:
+                        next(result_or_gen)
+                except StopIteration as e:
+                    self.result = e.value
+            else:
+                self.result = result_or_gen
+
             with self._lock:
                 # If cancellation was requested mid-run, mark accordingly
                 if self._cancel_requested.is_set():

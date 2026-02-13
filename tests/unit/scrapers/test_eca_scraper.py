@@ -498,6 +498,15 @@ class TestGetExtensionFromUrlNew:
 class TestScrapeFlowNew:
     """New tests for scrape() flow."""
 
+    def _exhaust(self, gen):
+        """Helper to exhaust a scrape() generator, returning (ScraperResult, yielded_docs)."""
+        docs = []
+        try:
+            while True:
+                docs.append(next(gen))
+        except StopIteration as e:
+            return e.value, docs
+
     def test_processes_research_section(self, scraper):
         """Scrape processes the research section."""
         from unittest.mock import MagicMock
@@ -508,7 +517,7 @@ class TestScrapeFlowNew:
         )
         scraper._is_processed = MagicMock(return_value=False)
 
-        result = scraper.scrape()
+        result, docs = self._exhaust(scraper.scrape())
 
         # Should process at least the research section
         assert result.scraped_count > 0
@@ -524,7 +533,7 @@ class TestScrapeFlowNew:
         # First call not processed, second call already processed
         scraper._is_processed = MagicMock(side_effect=[False, True])
 
-        result = scraper.scrape()
+        result, docs = self._exhaust(scraper.scrape())
 
         # At least one download and one skip
         assert result.downloaded_count >= 1 or result.skipped_count >= 1
@@ -535,7 +544,7 @@ class TestScrapeFlowNew:
 
         scraper.fetch_rendered_page = MagicMock(return_value=None)
 
-        result = scraper.scrape()
+        result, docs = self._exhaust(scraper.scrape())
 
         assert result.status == "failed"
 
@@ -547,7 +556,7 @@ class TestScrapeFlowNew:
         scraper.fetch_rendered_page = MagicMock(return_value=EMPTY_PAGE_HTML)
         scraper._find_documents_on_detail_page = MagicMock(return_value=[])
 
-        result = scraper.scrape()
+        result, docs = self._exhaust(scraper.scrape())
 
         # With max_pages=1, only first page of each section is scraped
         assert result.status in ("completed", "failed")
@@ -567,6 +576,6 @@ class TestScrapeFlowNew:
         scraper.fetch_rendered_page = MagicMock(return_value=SINGLE_CARD_HTML)
         scraper._find_documents_on_detail_page = MagicMock(return_value=[])
 
-        result = scraper.scrape()
+        result, docs = self._exhaust(scraper.scrape())
 
         assert result.status == "cancelled"

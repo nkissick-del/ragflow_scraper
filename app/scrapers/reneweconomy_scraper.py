@@ -9,6 +9,7 @@ Saves article content as Markdown for RAGFlow indexing.
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from datetime import datetime
 from typing import Any, Optional
 
@@ -182,7 +183,7 @@ class RenewEconomyScraper(BaseScraper):
 
         return params
 
-    def scrape(self) -> ScraperResult:
+    def scrape(self) -> Generator[dict, None, ScraperResult]:
         """
         Scrape RenewEconomy articles via WordPress REST API.
 
@@ -195,8 +196,11 @@ class RenewEconomyScraper(BaseScraper):
         6. Save article as Markdown with metadata sidecar
         7. Update last scrape date on success
 
+        Yields:
+            dict — document metadata for each downloaded article
+
         Returns:
-            ScraperResult with statistics and article metadata
+            ScraperResult with statistics
         """
         result = ScraperResult(
             status="in_progress",
@@ -214,7 +218,7 @@ class RenewEconomyScraper(BaseScraper):
             self._categories = self._fetch_categories()
 
             # Paginate through posts
-            self._scrape_posts(result)
+            yield from self._scrape_posts(result)
 
             # Set final status
             if result.status != "cancelled":
@@ -240,12 +244,15 @@ class RenewEconomyScraper(BaseScraper):
 
         return result
 
-    def _scrape_posts(self, result: ScraperResult) -> None:
+    def _scrape_posts(self, result: ScraperResult) -> Generator[dict, None, None]:
         """
         Paginate through WordPress posts API.
 
         Args:
             result: ScraperResult to update
+
+        Yields:
+            dict — document metadata for each downloaded article
         """
         from_date_str = f" (from {self._from_date})" if self._from_date else ""
         self.logger.info(f"Scraping posts via API{from_date_str}")
@@ -297,7 +304,7 @@ class RenewEconomyScraper(BaseScraper):
                     if self.check_cancelled():
                         result.status = "cancelled"
                         break
-                    self._process_post(post, result)
+                    yield from self._process_post(post, result)
 
                 page += 1
                 self._polite_delay()
@@ -311,13 +318,16 @@ class RenewEconomyScraper(BaseScraper):
         self,
         post: dict[str, Any],
         result: ScraperResult,
-    ) -> None:
+    ) -> Generator[dict, None, None]:
         """
         Process a single WordPress post from the API.
 
         Args:
             post: WordPress post dict from API
             result: ScraperResult to update
+
+        Yields:
+            dict — document metadata if article is downloaded
         """
         url = post.get("link", "")
 
@@ -412,13 +422,13 @@ class RenewEconomyScraper(BaseScraper):
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1
-            result.documents.append(metadata.to_dict())
+            yield metadata.to_dict()
         else:
             saved_path = self._save_article(metadata, content)
             if saved_path:
-                result.downloaded_count += 1
-                result.documents.append(metadata.to_dict())
                 self._mark_processed(url, {"title": title})
+                result.downloaded_count += 1
+                yield metadata.to_dict()
             else:
                 result.failed_count += 1
 

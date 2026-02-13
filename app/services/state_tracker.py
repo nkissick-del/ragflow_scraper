@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 import threading
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 
 from app.config import Config
@@ -152,6 +154,62 @@ class StateTracker:
                 "total_failed": 0,
             }
             self.save()
+
+    def purge(self) -> dict[str, int]:
+        """
+        Full local reset: clear state and delete downloaded/metadata files.
+
+        Returns:
+            Dict with counts: urls_cleared, files_deleted, metadata_deleted
+        """
+        with self._lock:
+            urls_cleared = len(self._state.get("processed_urls", {}))
+            self.clear()
+
+        files_deleted = self._delete_directory_contents(
+            Config.DOWNLOAD_DIR / self.scraper_name
+        )
+        metadata_deleted = self._delete_directory_contents(
+            Config.METADATA_DIR / self.scraper_name
+        )
+
+        self.logger.warning(
+            f"Purged: {urls_cleared} URLs cleared, "
+            f"{files_deleted} files deleted, "
+            f"{metadata_deleted} metadata files deleted"
+        )
+
+        return {
+            "urls_cleared": urls_cleared,
+            "files_deleted": files_deleted,
+            "metadata_deleted": metadata_deleted,
+        }
+
+    @staticmethod
+    def _delete_directory_contents(directory: Path) -> int:
+        """Delete all files in a directory (non-recursive into subdirs).
+
+        Args:
+            directory: Path to the directory.
+
+        Returns:
+            Number of files deleted.
+        """
+        if not directory.is_dir():
+            return 0
+
+        count = 0
+        for item in directory.iterdir():
+            try:
+                if item.is_file():
+                    item.unlink()
+                    count += 1
+                elif item.is_dir():
+                    shutil.rmtree(item)
+                    count += 1
+            except OSError:
+                pass
+        return count
 
     def remove_url(self, url: str) -> bool:
         """

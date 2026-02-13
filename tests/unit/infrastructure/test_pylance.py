@@ -24,7 +24,7 @@ def _run_pyright_on(path: Path) -> dict:
 
 
 def test_pylance_types_for_mixins_py():
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[3]
     # Run pyright over the whole application package to catch Pylance issues
     target = repo_root / "app"
     assert target.exists(), f"target file not found: {target}"

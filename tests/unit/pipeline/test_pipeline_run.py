@@ -64,6 +64,16 @@ def _make_doc_dict(title="Test Doc", url="http://example.com/doc.pdf",
     return d
 
 
+def _make_gen(docs, result):
+    """Create a generator that yields docs and returns a ScraperResult.
+
+    The pipeline consumes the generator with next() and retrieves the
+    ScraperResult from StopIteration.value when the generator is exhausted.
+    """
+    yield from docs
+    return result
+
+
 # ── TestRunScraperFails ─────────────────────────────────────────────────
 
 
@@ -83,10 +93,11 @@ class TestRunScraperFails:
     @patch("app.orchestrator.pipeline.ScraperRegistry")
     def test_scraper_returns_failed_status(self, mock_registry, pipeline):
         """Early return when scraper result.status == 'failed'."""
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="failed", errors=["Network timeout"]
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         result = pipeline.run()
@@ -97,10 +108,11 @@ class TestRunScraperFails:
     @patch("app.orchestrator.pipeline.ScraperRegistry")
     def test_scraper_errors_propagated(self, mock_registry, pipeline):
         """Scraper errors are included in final result."""
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="failed", errors=["Error A", "Error B"]
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         result = pipeline.run()
@@ -118,10 +130,11 @@ class TestRunNoDocuments:
     @patch("app.orchestrator.pipeline.ScraperRegistry")
     def test_zero_downloads_returns_completed(self, mock_registry, pipeline):
         """Status is 'completed' when downloaded_count is 0."""
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=0, scraped_count=5
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         result = pipeline.run()
@@ -132,10 +145,11 @@ class TestRunNoDocuments:
     @patch("app.orchestrator.pipeline.ScraperRegistry")
     def test_scraped_count_passed_through(self, mock_registry, pipeline):
         """scraped_count from scraper result is preserved."""
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=0, scraped_count=42
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         result = pipeline.run()
@@ -156,10 +170,11 @@ class TestRunDocumentProcessing:
         pdf.write_bytes(b"%PDF-1.4")
 
         doc = _make_doc_dict(pdf_path=pdf)
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=1, documents=[doc]
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([doc], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         pipeline._process_document = Mock(return_value={
@@ -186,10 +201,11 @@ class TestRunDocumentProcessing:
             _make_doc_dict(title="Doc 1", pdf_path=pdf1),
             _make_doc_dict(title="Doc 2", pdf_path=pdf2),
         ]
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=2, documents=docs
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen(docs, scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         pipeline._process_document = Mock(return_value={
@@ -207,10 +223,11 @@ class TestRunDocumentProcessing:
         """Document with no file_path is skipped (failed_count++)."""
         doc = {"url": "http://example.com", "title": "No Path", "filename": "x.pdf",
                "tags": [], "extra": {}}
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=1, documents=[doc]
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([doc], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         result = pipeline.run()
@@ -221,10 +238,11 @@ class TestRunDocumentProcessing:
     def test_file_not_found_skipped(self, mock_registry, pipeline):
         """Document with non-existent file is skipped."""
         doc = _make_doc_dict(pdf_path="/nonexistent/doc.pdf")
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=1, documents=[doc]
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([doc], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         result = pipeline.run()
@@ -238,10 +256,11 @@ class TestRunDocumentProcessing:
         pdf.write_bytes(b"%PDF-1.4")
 
         doc = _make_doc_dict(pdf_path=pdf, unknown_field="should_be_dropped")
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=1, documents=[doc]
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([doc], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         pipeline._process_document = Mock(return_value={
@@ -273,10 +292,11 @@ class TestRunErrorRecovery:
             _make_doc_dict(title="Doc 1", pdf_path=pdf1),
             _make_doc_dict(title="Doc 2", pdf_path=pdf2),
         ]
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=2, documents=docs
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen(docs, scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         pipeline._process_document = Mock(side_effect=[
@@ -302,10 +322,11 @@ class TestRunErrorRecovery:
             _make_doc_dict(title="Doc 1", pdf_path=pdf1),
             _make_doc_dict(title="Doc 2", pdf_path=pdf2),
         ]
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=2, documents=docs
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen(docs, scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         pipeline._process_document = Mock(side_effect=[
@@ -330,10 +351,11 @@ class TestRunErrorRecovery:
             _make_doc_dict(title="Doc 1", pdf_path=pdf1),
             _make_doc_dict(title="Doc 2", pdf_path=pdf2),
         ]
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=2, documents=docs
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen(docs, scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         pipeline._process_document = Mock(side_effect=[
@@ -359,11 +381,13 @@ class TestRunStatusDetermination:
         pdf = tmp_path / "doc.pdf"
         pdf.write_bytes(b"%PDF-1.4")
 
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        doc = _make_doc_dict(pdf_path=pdf)
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=1,
-            documents=[_make_doc_dict(pdf_path=pdf)]
+            documents=[doc]
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([doc], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         pipeline._process_document = Mock(return_value={
@@ -382,14 +406,16 @@ class TestRunStatusDetermination:
         pdf2 = tmp_path / "doc2.pdf"
         pdf2.write_bytes(b"%PDF-1.4")
 
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        docs = [
+            _make_doc_dict(title="Doc 1", pdf_path=pdf1),
+            _make_doc_dict(title="Doc 2", pdf_path=pdf2),
+        ]
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=2,
-            documents=[
-                _make_doc_dict(title="Doc 1", pdf_path=pdf1),
-                _make_doc_dict(title="Doc 2", pdf_path=pdf2),
-            ]
+            documents=docs
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen(docs, scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         pipeline._process_document = Mock(side_effect=[
@@ -435,10 +461,11 @@ class TestRunPreflightReconciliation:
         mock_recon.preflight_sync.return_value = 3
         mock_recon_cls.return_value = mock_recon
 
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=0
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         pipeline.run()
@@ -460,10 +487,11 @@ class TestRunPreflightReconciliation:
 
         mock_recon_cls.side_effect = RuntimeError("Paperless unreachable")
 
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=0
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         result = pipeline.run()
@@ -481,10 +509,11 @@ class TestRunFinalization:
     @patch("app.orchestrator.pipeline.ScraperRegistry")
     def test_duration_and_completed_at_populated(self, mock_registry, pipeline):
         """duration_seconds and completed_at are set."""
-        mock_scraper = Mock()
-        mock_scraper.run.return_value = _make_scraper_result(
+        scraper_result = _make_scraper_result(
             status="completed", downloaded_count=0
         )
+        mock_scraper = Mock()
+        mock_scraper.run.return_value = _make_gen([], scraper_result)
         mock_registry.get_scraper.return_value = mock_scraper
 
         result = pipeline.run()

@@ -20,7 +20,7 @@ def scraper():
         yield s
 
 
-# -- Helper factories -------------------------------------------------------
+# -- Helper utilities --------------------------------------------------------
 
 
 def _make_post(
@@ -46,6 +46,18 @@ def _make_post(
         "categories": categories or [10, 20],
         "tags": [],
     }
+
+
+def _exhaust_scrape(scraper):
+    """Exhaust scrape() generator and return (docs, ScraperResult)."""
+    gen = scraper.scrape()
+    docs = []
+    try:
+        while True:
+            docs.append(next(gen))
+    except StopIteration as e:
+        result = e.value
+    return docs, result
 
 
 # -- Tests -------------------------------------------------------------------
@@ -158,10 +170,11 @@ class TestProcessPost:
         scraper._categories = {10: "Solar", 20: "Storage"}
         post = _make_post()
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
         assert result.scraped_count == 1
         assert result.downloaded_count == 1  # dry_run counts as downloaded
+        assert len(docs) == 1
 
     def test_deduplicates_across_pages(self, scraper):
         from app.scrapers.models import ScraperResult
@@ -170,12 +183,14 @@ class TestProcessPost:
         scraper._categories = {10: "Solar", 20: "Storage"}
         post = _make_post()
 
-        scraper._process_post(post, result)
-        scraper._process_post(post, result)
+        docs1 = list(scraper._process_post(post, result))
+        docs2 = list(scraper._process_post(post, result))
 
         # Second call should be silently skipped
         assert result.scraped_count == 1
         assert result.downloaded_count == 1
+        assert len(docs1) == 1
+        assert len(docs2) == 0
 
     def test_skips_already_processed(self, scraper):
         from app.scrapers.models import ScraperResult
@@ -185,11 +200,12 @@ class TestProcessPost:
         scraper.state_tracker.is_processed.return_value = True
         post = _make_post()
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
         assert result.scraped_count == 1
         assert result.skipped_count == 1
         assert result.downloaded_count == 0
+        assert len(docs) == 0
 
     def test_skips_no_body(self, scraper):
         from app.scrapers.models import ScraperResult
@@ -198,9 +214,10 @@ class TestProcessPost:
         scraper._categories = {10: "Solar", 20: "Storage"}
         post = _make_post(body="")
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
         assert result.failed_count == 1
+        assert len(docs) == 0
 
     def test_skips_no_title(self, scraper):
         from app.scrapers.models import ScraperResult
@@ -209,10 +226,11 @@ class TestProcessPost:
         scraper._categories = {}
         post = _make_post(title="")
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
-        # No title → skipped, not counted as scraped (logged warning)
+        # No title -> skipped, not counted as scraped (logged warning)
         assert result.downloaded_count == 0
+        assert len(docs) == 0
 
     def test_category_resolution(self, scraper):
         from app.scrapers.models import ScraperResult
@@ -221,9 +239,9 @@ class TestProcessPost:
         scraper._categories = {10: "Solar", 20: "Storage", 99: "Unknown"}
         post = _make_post(categories=[10, 20])
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
-        doc = result.documents[0]
+        doc = docs[0]
         assert "RenewEconomy" in doc["tags"]
         assert "Solar" in doc["tags"]
         assert "Storage" in doc["tags"]
@@ -235,9 +253,9 @@ class TestProcessPost:
         scraper._categories = {10: "Solar"}
         post = _make_post(categories=[10, 999])
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
-        doc = result.documents[0]
+        doc = docs[0]
         assert "Solar" in doc["tags"]
         assert len([t for t in doc["tags"] if t not in ("RenewEconomy", "Solar")]) == 0
 
@@ -248,9 +266,9 @@ class TestProcessPost:
         scraper._categories = {}
         post = _make_post(date="2025-12-23T01:59:09")
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
-        doc = result.documents[0]
+        doc = docs[0]
         assert doc["publication_date"] == "2025-12-23"
 
     def test_missing_date(self, scraper):
@@ -260,10 +278,10 @@ class TestProcessPost:
         scraper._categories = {}
         post = _make_post(date="")
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
         assert result.downloaded_count == 1
-        doc = result.documents[0]
+        doc = docs[0]
         assert doc.get("publication_date") is None
 
     def test_extra_metadata(self, scraper):
@@ -278,9 +296,9 @@ class TestProcessPost:
             modified="2025-12-24T10:00:00",
         )
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
-        doc = result.documents[0]
+        doc = docs[0]
         assert doc["extra"]["slug"] == "test-slug"
         assert doc["extra"]["wp_id"] == 42
         assert doc["extra"]["categories"] == ["Solar"]
@@ -294,9 +312,9 @@ class TestProcessPost:
         scraper._categories = {}
         post = _make_post()
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
-        doc = result.documents[0]
+        doc = docs[0]
         assert doc["filename"].endswith(".md")
 
     def test_organization_is_reneweconomy(self, scraper):
@@ -306,9 +324,9 @@ class TestProcessPost:
         scraper._categories = {}
         post = _make_post()
 
-        scraper._process_post(post, result)
+        docs = list(scraper._process_post(post, result))
 
-        doc = result.documents[0]
+        doc = docs[0]
         assert doc["organization"] == "RenewEconomy"
         assert doc["document_type"] == "Article"
 
@@ -401,7 +419,7 @@ class TestScrapeFlow:
         empty_response = ([], {"X-WP-TotalPages": "1", "X-WP-Total": "0"})
         scraper._api_request = MagicMock(return_value=empty_response)
 
-        result = scraper.scrape()
+        docs, result = _exhaust_scrape(scraper)
 
         assert result.status == "completed"
         assert result.scraped_count == 0
@@ -418,7 +436,7 @@ class TestScrapeFlow:
         )
         scraper._api_request = MagicMock(return_value=page_response)
 
-        result = scraper.scrape()
+        docs, result = _exhaust_scrape(scraper)
 
         assert result.status == "completed"
         # Only 1 page should be fetched due to max_pages=1
@@ -433,10 +451,11 @@ class TestScrapeFlow:
         page_response = (posts, {"X-WP-TotalPages": "1", "X-WP-Total": "1"})
         scraper._api_request = MagicMock(return_value=page_response)
 
-        result = scraper.scrape()
+        docs, result = _exhaust_scrape(scraper)
 
         assert result.status == "completed"
         assert result.downloaded_count == 1
+        assert len(docs) == 1
 
     def test_incremental_mode_passes_from_date(self, scraper):
         scraper.state_tracker.get_state.return_value = {
@@ -448,7 +467,7 @@ class TestScrapeFlow:
         empty_response = ([], {"X-WP-TotalPages": "1", "X-WP-Total": "0"})
         scraper._api_request = MagicMock(return_value=empty_response)
 
-        result = scraper.scrape()
+        docs, result = _exhaust_scrape(scraper)
 
         assert result.status == "completed"
         # Verify from_date was loaded
@@ -466,7 +485,7 @@ class TestScrapeFlow:
         scraper.check_cancelled = MagicMock(return_value=True)
         scraper._api_request = MagicMock()
 
-        result = scraper.scrape()
+        docs, result = _exhaust_scrape(scraper)
 
         assert result.status == "cancelled"
         scraper._api_request.assert_not_called()
@@ -479,7 +498,7 @@ class TestScrapeFlow:
             side_effect=Exception("API unreachable")
         )
 
-        result = scraper.scrape()
+        docs, result = _exhaust_scrape(scraper)
 
         assert result.status == "failed"
         assert len(result.errors) > 0
@@ -521,6 +540,6 @@ class TestCrossPageDedup:
         scraper._categories = {}
         post = _make_post()
 
-        scraper._process_post(post, result)
+        list(scraper._process_post(post, result))
 
         assert "https://reneweconomy.com.au/big-battery-milestone/" in scraper._session_processed_urls

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 import requests
@@ -172,8 +173,9 @@ class BaseScraper(
         return self.state_tracker.is_processed(url)
 
     def _mark_processed(self, url: str, metadata: Optional[dict] = None):
-        """Mark a URL as processed."""
+        """Mark a URL as processed and persist immediately."""
         self.state_tracker.mark_processed(url, metadata)
+        self.state_tracker.save()
 
     def _finalize_result(self, result: ScraperResult) -> None:
         """
@@ -196,16 +198,24 @@ class BaseScraper(
         time.sleep(self.request_delay)
 
     @abstractmethod
-    def scrape(self) -> ScraperResult:
+    def scrape(self) -> Generator[dict, None, ScraperResult]:
         """
-        Main entry point - scrape documents and return results.
+        Main entry point - scrape documents and yield them one at a time.
 
-        Subclasses must implement this method.
+        Subclasses must implement this as a generator that:
+        - Yields doc dicts as each document is downloaded
+        - Returns a ScraperResult with final statistics
+
+        Yields:
+            dict — document metadata for each downloaded document
 
         Returns:
-            ScraperResult with scraping statistics and document list
+            ScraperResult with scraping statistics
         """
-        pass
+        ...
+        # Make this a generator stub (yield is needed for Generator type)
+        yield {}  # pragma: no cover
+        return ScraperResult(status="failed", scraper=self.name)  # pragma: no cover
 
     def parse_page(self, page_source: str) -> list[DocumentMetadata]:
         """
@@ -222,13 +232,19 @@ class BaseScraper(
         """
         return []
 
-    def run(self) -> ScraperResult:
+    def run(self) -> Generator[dict, None, ScraperResult]:
         """
         Run the scraper with proper setup and teardown.
+
+        This is a generator that yields doc dicts as they are scraped
+        and returns a final ScraperResult (accessible via StopIteration.value).
 
         Automatically handles:
         - Selenium WebDriver for HTML scrapers (skip_webdriver=False)
         - HTTP Session for feed/API scrapers (skip_webdriver=True)
+
+        Yields:
+            dict — document metadata for each downloaded document
 
         Returns:
             ScraperResult with final statistics
@@ -238,7 +254,7 @@ class BaseScraper(
 
         try:
             self.setup()
-            result = self.scrape()
+            result = yield from self.scrape()
         except ScraperError as exc:
             self.logger.error(f"Scraper failed: {exc}", exc_info=True)
             result = ScraperResult(

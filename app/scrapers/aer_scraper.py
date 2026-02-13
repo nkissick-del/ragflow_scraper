@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Generator
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -96,15 +97,18 @@ class AERScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
 
         return 1  # Default to single page
 
-    def scrape(self) -> ScraperResult:
+    def scrape(self) -> Generator[dict, None, ScraperResult]:
         """
         Scrape AER Reports and Publications.
 
         Uses FlareSolverr to bypass Akamai bot protection, then parses
         the rendered HTML for document listings.
 
+        Yields:
+            dict — document metadata for each downloaded document
+
         Returns:
-            ScraperResult with statistics and document list
+            ScraperResult with statistics
         """
         result = ScraperResult(
             status="in_progress",
@@ -141,7 +145,7 @@ class AERScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
                 self.logger.info(f"Limited to {pages_to_scrape} pages")
 
             # Process first page
-            self._process_page(page_html, result)
+            yield from self._process_page(page_html, result)
 
             # Process remaining pages
             for page_num in range(1, pages_to_scrape):
@@ -160,7 +164,7 @@ class AERScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
                     if not page_html:
                         self.logger.warning(f"Empty response for page {page_num}")
                         continue
-                    self._process_page(page_html, result)
+                    yield from self._process_page(page_html, result)
                 except Exception as e:
                     self.logger.warning(f"Failed to fetch page {page_num}: {e}")
                     result.errors.append(f"Page {page_num}: {str(e)}")
@@ -175,13 +179,16 @@ class AERScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
 
         return result
 
-    def _process_page(self, html: str, result: ScraperResult) -> None:
+    def _process_page(self, html: str, result: ScraperResult) -> Generator[dict, None, None]:
         """
         Process a single listing page.
 
         Args:
             html: HTML content of the page
             result: ScraperResult to update
+
+        Yields:
+            dict — document metadata for each downloaded document
         """
         documents = self.parse_page(html)
         result.scraped_count += len(documents)
@@ -234,7 +241,7 @@ class AERScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
             if self.dry_run:
                 self.logger.info(f"[DRY RUN] Would download: {doc.title}")
                 result.downloaded_count += 1
-                result.documents.append(doc.to_dict())
+                yield doc.to_dict()
             else:
                 downloaded_path = self._download_file(
                     pdf_url,
@@ -243,9 +250,9 @@ class AERScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
                 )
 
                 if downloaded_path:
-                    result.downloaded_count += 1
-                    result.documents.append(doc.to_dict())
                     self._mark_processed(pdf_url, {"title": doc.title})
+                    result.downloaded_count += 1
+                    yield doc.to_dict()
                 else:
                     result.failed_count += 1
 

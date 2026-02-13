@@ -396,7 +396,13 @@ class TestScrapeFlowNew:
         scraper._polite_delay = MagicMock()
         # max_pages=1 from fixture limits to 1 page
 
-        result = scraper.scrape()
+        gen = scraper.scrape()
+        docs = []
+        try:
+            while True:
+                docs.append(next(gen))
+        except StopIteration as e:
+            result = e.value
 
         assert result.scraped_count >= 1
         assert result.downloaded_count >= 1  # dry_run
@@ -407,7 +413,13 @@ class TestScrapeFlowNew:
 
         scraper._fetch_with_cloudflare_retry = MagicMock(return_value=None)
 
-        result = scraper.scrape()
+        gen = scraper.scrape()
+        docs = []
+        try:
+            while True:
+                docs.append(next(gen))
+        except StopIteration as e:
+            result = e.value
 
         assert result.status == "failed"
         assert len(result.errors) > 0
@@ -420,7 +432,13 @@ class TestScrapeFlowNew:
         scraper._is_processed = MagicMock(return_value=True)
         scraper._polite_delay = MagicMock()
 
-        result = scraper.scrape()
+        gen = scraper.scrape()
+        docs = []
+        try:
+            while True:
+                docs.append(next(gen))
+        except StopIteration as e:
+            result = e.value
 
         assert result.skipped_count >= 1
         assert result.downloaded_count == 0

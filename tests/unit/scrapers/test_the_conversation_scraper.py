@@ -433,7 +433,7 @@ class TestIncrementalFiltering:
         scraper._save_article = MagicMock(return_value="/tmp/fake/path.md")
         scraper._mark_processed = MagicMock()
 
-        scraper._process_feed_entry(entry, result)
+        list(scraper._process_feed_entry(entry, result))
         # Article should have been counted
         assert result.scraped_count == 1
         assert result.downloaded_count == 1
@@ -459,7 +459,7 @@ class TestIncrementalFiltering:
 
         scraper._is_processed = MagicMock(return_value=False)
 
-        scraper._process_feed_entry(entry, result)
+        list(scraper._process_feed_entry(entry, result))
         assert result.scraped_count == 1
         assert result.skipped_count == 1
         assert result.downloaded_count == 0
@@ -488,6 +488,6 @@ class TestIncrementalFiltering:
         scraper._save_article = MagicMock(return_value="/tmp/fake/path.md")
         scraper._mark_processed = MagicMock()
 
-        scraper._process_feed_entry(entry, result)
+        list(scraper._process_feed_entry(entry, result))
         assert result.scraped_count == 1
         assert result.downloaded_count == 1
