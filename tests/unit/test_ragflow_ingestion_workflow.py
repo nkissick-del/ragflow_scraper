@@ -326,3 +326,130 @@ class TestIngestWithMetadata:
         mock_client.wait_for_document_ready.assert_called_once_with(
             "dataset_1", "doc_555", timeout=20.0, poll_interval=2.0
         )
+
+
+# ── Additional coverage tests ─────────────────────────────────────────
+
+
+class TestIngestEdgeCases:
+    """Test edge cases in the ingestion workflow."""
+
+    def test_empty_doc_list(self, workflow, mock_client):
+        """Should return empty list for empty doc list."""
+        results = workflow.ingest_with_metadata("dataset_1", [])
+        assert results == []
+        mock_client.upload_document.assert_not_called()
+
+    def test_ingest_with_tuple_format(self, workflow, mock_client, sample_metadata):
+        """Should handle tuple (filepath, metadata) format."""
+        filepath = Path("/tmp/test.pdf")
+        mock_client.upload_document.return_value = UploadResult(
+            success=True, document_id="doc_tuple", filename="test.pdf"
+        )
+
+        docs = [(filepath, sample_metadata)]
+        results = workflow.ingest_with_metadata("dataset_1", docs)
+
+        assert len(results) == 1
+        assert results[0].success is True
+        assert results[0].document_id == "doc_tuple"
+
+    def test_ingest_with_list_format(self, workflow, mock_client, sample_metadata):
+        """Should handle list [filepath, metadata] format."""
+        filepath = Path("/tmp/test.pdf")
+        mock_client.upload_document.return_value = UploadResult(
+            success=True, document_id="doc_list", filename="test.pdf"
+        )
+
+        docs = [[filepath, sample_metadata]]
+        results = workflow.ingest_with_metadata("dataset_1", docs)
+
+        assert len(results) == 1
+        assert results[0].success is True
+
+    def test_ingest_with_dict_metadata(self, workflow, mock_client):
+        """Should handle dict metadata (not DocumentMetadata object)."""
+        filepath = Path("/tmp/test.pdf")
+        mock_client.upload_document.return_value = UploadResult(
+            success=True, document_id="doc_dict", filename="test.pdf"
+        )
+
+        docs = [{"filepath": filepath, "metadata": {"key": "value", "file_hash": "hash123"}}]
+        results = workflow.ingest_with_metadata("dataset_1", docs, check_duplicates=False)
+
+        assert len(results) == 1
+        assert results[0].success is True
+        # Metadata should be pushed as dict
+        mock_client.set_document_metadata.assert_called_once_with(
+            "dataset_1", "doc_dict", {"key": "value", "file_hash": "hash123"}
+        )
+
+    def test_ingest_with_dict_metadata_duplicate_check(self, workflow, mock_client):
+        """Should extract file_hash from dict metadata for duplicate checking."""
+        filepath = Path("/tmp/test.pdf")
+        mock_client.check_document_exists.return_value = "doc_existing"
+
+        docs = [{"filepath": filepath, "metadata": {"file_hash": "hash123"}}]
+        results = workflow.ingest_with_metadata("dataset_1", docs, check_duplicates=True)
+
+        assert len(results) == 1
+        assert results[0].skipped_duplicate is True
+        mock_client.check_document_exists.assert_called_once_with("dataset_1", "hash123")
+
+    def test_ingest_unknown_doc_format_skipped(self, workflow, mock_client):
+        """Should skip docs with unknown format."""
+        docs = ["just-a-string", 42, None]
+        results = workflow.ingest_with_metadata("dataset_1", docs)
+
+        assert results == []
+        mock_client.upload_document.assert_not_called()
+
+    def test_ingest_skip_duplicates_param(self, workflow, mock_client, sample_metadata):
+        """skip_duplicates param overrides check_duplicates."""
+        filepath = Path("/tmp/test.pdf")
+        mock_client.check_document_exists.return_value = "doc_existing"
+
+        docs = [{"filepath": filepath, "metadata": sample_metadata}]
+        results = workflow.ingest_with_metadata(
+            "dataset_1", docs, check_duplicates=False, skip_duplicates=True
+        )
+
+        assert len(results) == 1
+        assert results[0].skipped_duplicate is True
+
+
+class TestUploadAndWaitEdgeCases:
+    """Test upload_and_wait edge cases."""
+
+    def test_upload_client_exception(self, workflow, mock_client):
+        """Should return failed result when client raises exception."""
+        filepath = Path("/tmp/test.pdf")
+        mock_client.upload_document.side_effect = RuntimeError("API crash")
+
+        result = workflow.upload_and_wait("dataset_1", filepath)
+
+        assert result.success is False
+        assert "API crash" in result.error
+
+    def test_upload_tuple_response_normalization(self, workflow, mock_client):
+        """Should normalize tuple response from client."""
+        filepath = Path("/tmp/test.pdf")
+        mock_client.upload_document.return_value = ("doc_id_from_tuple", 1024)
+
+        result = workflow.upload_and_wait("dataset_1", filepath)
+
+        assert result.success is True
+        assert result.document_id == "doc_id_from_tuple"
+
+    def test_wait_for_parsing_exception(self, workflow, mock_client):
+        """Should mark as failed when wait_for_document_ready raises."""
+        filepath = Path("/tmp/test.pdf")
+        mock_client.upload_document.return_value = UploadResult(
+            success=True, document_id="doc_err", filename="test.pdf"
+        )
+        mock_client.wait_for_document_ready.side_effect = RuntimeError("poll crash")
+
+        result = workflow.upload_and_wait("dataset_1", filepath)
+
+        assert result.success is False
+        assert "poll crash" in result.error

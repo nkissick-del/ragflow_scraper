@@ -314,3 +314,210 @@ class TestContainerIntegration:
             # Access state tracker to trigger logging
             _ = container.state_tracker("test")
             assert mock_debug.call_count >= 2  # Settings + state tracker
+
+
+# ── Additional coverage tests ─────────────────────────────────────────
+
+
+class TestResetServices:
+    """Test reset_services() partial reset."""
+
+    def teardown_method(self):
+        reset_container()
+
+    def test_reset_services_clears_backend_caches(self):
+        """reset_services should clear backend instances but keep settings."""
+        reset_container()
+        container = get_container()
+
+        # Populate settings
+        _ = container.settings
+        assert container._settings is not None
+
+        # Manually set backend cache entries
+        container._parser_backend = MagicMock()
+        container._archive_backend = MagicMock()
+        container._rag_backend = MagicMock()
+        container._vector_store = MagicMock()
+
+        container.reset_services()
+
+        # Backend caches cleared
+        assert container._parser_backend is None
+        assert container._archive_backend is None
+        assert container._rag_backend is None
+        assert container._vector_store is None
+        assert container._ragflow_client is None
+        assert container._flaresolverr_client is None
+        assert container._embedding_client is None
+        assert container._llm_client is None
+
+        # Settings preserved
+        assert container._settings is not None
+
+    def test_reset_services_preserves_state_trackers(self):
+        """reset_services should preserve state trackers."""
+        reset_container()
+        container = get_container()
+
+        _ = container.state_tracker("test")
+        assert len(container._state_trackers) == 1
+
+        container.reset_services()
+
+        assert len(container._state_trackers) == 1
+
+
+class TestGetEffectiveMethods:
+    """Test _get_effective_url, _get_effective_timeout, _get_config_attr."""
+
+    def teardown_method(self):
+        reset_container()
+
+    def test_get_effective_url_settings_override(self):
+        """Settings override should take priority over Config."""
+        reset_container()
+        container = get_container()
+
+        mock_settings = MagicMock()
+        mock_settings.get.return_value = "http://override:9380"
+        container._settings = mock_settings
+
+        result = container._get_effective_url("ragflow", "RAGFLOW_API_URL")
+        assert result == "http://override:9380"
+
+    def test_get_effective_url_config_fallback(self):
+        """Should fall back to Config when no settings override."""
+        reset_container()
+        container = get_container()
+
+        mock_settings = MagicMock()
+        mock_settings.get.return_value = ""
+        container._settings = mock_settings
+
+        with patch("app.services.container.Config") as mock_config:
+            mock_config.RAGFLOW_API_URL = "http://config:9380"
+
+            result = container._get_effective_url("ragflow", "RAGFLOW_API_URL")
+            assert result == "http://config:9380"
+
+    def test_get_effective_timeout_settings_override(self):
+        """Settings override should take priority for timeout."""
+        reset_container()
+        container = get_container()
+
+        mock_settings = MagicMock()
+        mock_settings.get.return_value = 120
+        container._settings = mock_settings
+
+        result = container._get_effective_timeout("ragflow", "RAGFLOW_TIMEOUT")
+        assert result == 120
+
+    def test_get_effective_timeout_config_fallback(self):
+        """Should fall back to Config when settings timeout is 0."""
+        reset_container()
+        container = get_container()
+
+        mock_settings = MagicMock()
+        mock_settings.get.return_value = 0
+        container._settings = mock_settings
+
+        with patch("app.services.container.Config") as mock_config:
+            mock_config.RAGFLOW_TIMEOUT = 90
+
+            result = container._get_effective_timeout("ragflow", "RAGFLOW_TIMEOUT")
+            assert result == 90
+
+    def test_get_config_attr_returns_value(self):
+        """Should return Config attribute value."""
+        reset_container()
+        container = get_container()
+
+        with patch("app.services.container.Config") as mock_config:
+            mock_config.TEST_ATTR = "test_value"
+
+            result = container._get_config_attr("TEST_ATTR")
+            assert result == "test_value"
+
+    def test_get_config_attr_missing_returns_default(self):
+        """Should return default when Config attr missing."""
+        reset_container()
+        container = get_container()
+
+        result = container._get_config_attr("TOTALLY_MISSING_ATTR", "default_val")
+        assert result == "default_val"
+
+    def test_safe_int_valid(self):
+        """Should convert valid string to int."""
+        reset_container()
+        container = get_container()
+        assert container._safe_int("42", 0) == 42
+
+    def test_safe_int_invalid(self):
+        """Should return default for invalid string."""
+        reset_container()
+        container = get_container()
+        assert container._safe_int("not-a-number", 768) == 768
+
+    def test_safe_int_none(self):
+        """Should return default for None."""
+        reset_container()
+        container = get_container()
+        assert container._safe_int(None, 100) == 100
+
+
+class TestVectorStoreProperty:
+    """Test vector_store property."""
+
+    def teardown_method(self):
+        reset_container()
+
+    def test_vector_store_lazy_loaded(self):
+        """vector_store should be lazy-loaded."""
+        reset_container()
+        container = get_container()
+        assert container._vector_store is None
+
+    def test_pgvector_client_alias(self):
+        """pgvector_client should be an alias for vector_store."""
+        reset_container()
+        container = get_container()
+
+        mock_store = MagicMock()
+        container._vector_store = mock_store
+
+        assert container.pgvector_client is mock_store
+
+
+class TestGetEffectiveBackend:
+    """Test _get_effective_backend method."""
+
+    def teardown_method(self):
+        reset_container()
+
+    def test_settings_override(self):
+        """Should use settings override when available."""
+        reset_container()
+        container = get_container()
+
+        mock_settings = MagicMock()
+        mock_settings.get.return_value = "docling_serve"
+        container._settings = mock_settings
+
+        result = container._get_effective_backend("parser")
+        assert result == "docling_serve"
+
+    def test_config_fallback(self):
+        """Should fall back to Config when no settings override."""
+        reset_container()
+        container = get_container()
+
+        mock_settings = MagicMock()
+        mock_settings.get.return_value = ""
+        container._settings = mock_settings
+
+        with patch("app.services.container.Config") as mock_config:
+            mock_config.PARSER_BACKEND = "tika"
+
+            result = container._get_effective_backend("parser")
+            assert result == "tika"

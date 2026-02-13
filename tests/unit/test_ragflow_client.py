@@ -6,6 +6,7 @@ The workflow layer is covered by test_ragflow_ingestion_workflow.py.
 
 from __future__ import annotations
 
+import pytest
 from unittest.mock import Mock, patch
 
 from app.services.ragflow_client import (
@@ -366,3 +367,438 @@ class TestConnectionAndCatalogs:
         """list_chunk_methods returns static list."""
         assert "naive" in CHUNK_METHODS
         assert "paper" in CHUNK_METHODS
+
+
+# ── TestListDatasetsErrorPaths ────────────────────────────────────────
+
+
+class TestListDatasetsErrorPaths:
+    """Additional error-path tests for list_datasets()."""
+
+    @patch("app.services.ragflow_client.Config")
+    def test_non_ok_response_returns_empty(self, mock_config):
+        """Returns empty list when HTTP response is not OK."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_resp = Mock()
+        mock_resp.ok = False
+        mock_resp.status_code = 403
+
+        with patch.object(client.http, "request", return_value=mock_resp):
+            datasets = client.list_datasets()
+
+        assert datasets == []
+
+    @patch("app.services.ragflow_client.Config")
+    def test_missing_fields_use_defaults(self, mock_config):
+        """DatasetInfo fields default when missing from response."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_resp = Mock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {"data": [{"id": "ds-x", "name": "X"}]}
+
+        with patch.object(client.http, "request", return_value=mock_resp):
+            datasets = client.list_datasets()
+
+        assert len(datasets) == 1
+        assert datasets[0].document_count == 0
+        assert datasets[0].chunk_count == 0
+        assert datasets[0].status == "unknown"
+
+
+# ── TestListDocuments ─────────────────────────────────────────────────
+
+
+class TestListDocuments:
+    """Tests for RAGFlowClient.list_documents()."""
+
+    @patch("app.services.ragflow_client.Config")
+    def test_success_returns_document_list(self, mock_config):
+        """Successful response returns list of document dicts."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_resp = Mock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {
+            "data": [{"id": "d1", "name": "doc1"}, {"id": "d2", "name": "doc2"}]
+        }
+
+        with patch.object(client.http, "request", return_value=mock_resp):
+            docs = client.list_documents("ds-1")
+
+        assert len(docs) == 2
+        assert docs[0]["id"] == "d1"
+
+    @patch("app.services.ragflow_client.Config")
+    def test_non_ok_response_returns_empty(self, mock_config):
+        """Returns empty list when HTTP response is not OK."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_resp = Mock()
+        mock_resp.ok = False
+
+        with patch.object(client.http, "request", return_value=mock_resp):
+            docs = client.list_documents("ds-1")
+
+        assert docs == []
+
+    @patch("app.services.ragflow_client.Config")
+    def test_exception_returns_empty(self, mock_config):
+        """Exception returns empty list."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        with patch.object(client.http, "request", side_effect=RuntimeError("network")):
+            docs = client.list_documents("ds-1")
+
+        assert docs == []
+
+
+# ── TestUploadDocumentsWithMetadata ───────────────────────────────────
+
+
+class TestUploadDocumentsWithMetadata:
+    """Tests for RAGFlowClient.upload_documents_with_metadata()."""
+
+    @patch("app.services.ragflow_client.Config")
+    def test_delegates_to_ingestion(self, mock_config):
+        """Should delegate to ingestion workflow."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_workflow = Mock()
+        mock_workflow.ingest_with_metadata.return_value = []
+        client._ingestion_workflow = mock_workflow
+
+        result = client.upload_documents_with_metadata("ds-1", [])
+
+        mock_workflow.ingest_with_metadata.assert_called_once_with(
+            "ds-1", [], check_duplicates=True, wait_timeout=10.0, poll_interval=0.5
+        )
+        assert result == []
+
+
+# ── TestMakeRequestRetryPaths ─────────────────────────────────────────
+
+
+class TestMakeRequestRetryPaths:
+    """Tests for HttpAdapter retry/error edge cases."""
+
+    @patch("time.sleep")
+    def test_request_exception_retries_then_raises(self, mock_sleep):
+        """RequestException on all attempts raises after exhausting retries."""
+        import requests
+
+        adapter = HttpAdapter("http://ragflow:9380", api_key="k", max_retries=2)
+
+        with patch.object(
+            adapter.session, "request",
+            side_effect=requests.ConnectionError("refused"),
+        ):
+            with pytest.raises(requests.ConnectionError):
+                adapter.request("GET", "/test")
+
+    @patch("time.sleep")
+    def test_5xx_on_last_attempt_returns_response(self, mock_sleep):
+        """5xx on last attempt returns the response instead of retrying."""
+        adapter = HttpAdapter("http://ragflow:9380", api_key="k", max_retries=3)
+
+        with patch.object(adapter.session, "request") as mock_req:
+            mock_req.return_value = Mock(status_code=503)
+
+            resp = adapter.request("GET", "/test")
+            assert resp.status_code == 503
+            assert mock_req.call_count == 3
+
+    def test_custom_timeout_passed(self):
+        """Custom timeout kwarg is forwarded to session.request."""
+        adapter = HttpAdapter("http://ragflow:9380", api_key="k")
+
+        with patch.object(adapter.session, "request") as mock_req:
+            mock_req.return_value = Mock(status_code=200)
+
+            adapter.request("GET", "/test", timeout=5)
+
+            call_kwargs = mock_req.call_args[1]
+            assert call_kwargs["timeout"] == 5
+
+
+# ── TestSessionConfigMethods ─────────────────────────────────────────
+
+
+class TestSessionConfigMethods:
+    """Tests for catalog and session configuration methods."""
+
+    @patch("app.services.ragflow_client.Config")
+    def test_list_pdf_parsers_returns_static(self, mock_config):
+        """list_pdf_parsers returns static PDF_PARSERS list."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+        parsers = client.list_pdf_parsers()
+        assert parsers == PDF_PARSERS
+
+    @patch("app.services.ragflow_client.Config")
+    def test_list_chunk_methods_returns_static(self, mock_config):
+        """list_chunk_methods returns static CHUNK_METHODS list."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+        methods = client.list_chunk_methods()
+        assert methods == CHUNK_METHODS
+
+    @patch("app.services.ragflow_client.Config")
+    def test_list_ingestion_pipelines_success(self, mock_config):
+        """list_ingestion_pipelines returns data from API."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_resp = Mock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {"data": [{"id": "p1", "name": "Pipeline1"}]}
+
+        with patch.object(client.http, "request", return_value=mock_resp):
+            pipelines = client.list_ingestion_pipelines()
+
+        assert len(pipelines) == 1
+        assert pipelines[0]["name"] == "Pipeline1"
+
+    @patch("app.services.ragflow_client.Config")
+    def test_list_ingestion_pipelines_exception(self, mock_config):
+        """list_ingestion_pipelines returns empty on exception."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        with patch.object(client.http, "request", side_effect=ConnectionError("down")):
+            pipelines = client.list_ingestion_pipelines()
+
+        assert pipelines == []
+
+    @patch("app.services.ragflow_client.Config")
+    def test_list_ingestion_pipelines_non_ok(self, mock_config):
+        """list_ingestion_pipelines returns empty on non-ok response."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_resp = Mock()
+        mock_resp.ok = False
+
+        with patch.object(client.http, "request", return_value=mock_resp):
+            pipelines = client.list_ingestion_pipelines()
+
+        assert pipelines == []
+
+
+# ── TestListEmbeddingModels ───────────────────────────────────────────
+
+
+class TestListEmbeddingModels:
+    """Tests for RAGFlowClient.list_embedding_models()."""
+
+    @patch("app.services.ragflow_client.Config")
+    def test_no_session_returns_empty(self, mock_config):
+        """Returns empty list when session auth not configured."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+        assert client.list_embedding_models() == []
+
+    @patch("app.services.ragflow_client.Config")
+    def test_with_session_returns_data(self, mock_config):
+        """Returns model list when session auth configured."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = "user"
+        mock_config.RAGFLOW_PASSWORD = "pass"
+        mock_config.RAGFLOW_PUBLIC_KEY = ""
+
+        client = RAGFlowClient(
+            api_url="http://ragflow:9380", api_key="key",
+            username="user", password="pass",
+        )
+        mock_session = Mock()
+        mock_session.get.return_value = {"data": [{"name": "bge-large"}]}
+        client._session_auth = mock_session
+
+        models = client.list_embedding_models()
+        assert len(models) == 1
+        assert models[0]["name"] == "bge-large"
+
+
+# ── TestIngestionPropertyLazy ─────────────────────────────────────────
+
+
+class TestIngestionPropertyLazy:
+    """Tests for lazy-loaded ingestion workflow property."""
+
+    @patch("app.services.ragflow_client.Config")
+    def test_ingestion_lazy_created(self, mock_config):
+        """Ingestion workflow is created on first access."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+        assert client._ingestion_workflow is None
+
+        workflow = client.ingestion
+        assert workflow is not None
+        assert client._ingestion_workflow is workflow
+
+        # Second access returns same instance
+        workflow2 = client.ingestion
+        assert workflow is workflow2
+
+
+# ── TestWaitForParsing ────────────────────────────────────────────────
+
+
+class TestWaitForParsing:
+    """Tests for RAGFlowClient.wait_for_parsing()."""
+
+    @patch("app.services.ragflow_client.Config")
+    @patch("app.services.ragflow_client.time")
+    def test_all_target_ids_completed(self, mock_time, mock_config):
+        """Returns True when all target document IDs are parsed."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_time.time.side_effect = [0, 1.0]
+        mock_time.sleep = Mock()
+
+        mock_resp = Mock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {
+            "data": [
+                {"id": "d1", "status": "parsed"},
+                {"id": "d2", "status": "completed"},
+            ]
+        }
+
+        with patch.object(client.http, "request", return_value=mock_resp):
+            result = client.wait_for_parsing("ds-1", document_ids=["d1", "d2"], timeout=30)
+
+        assert result is True
+
+    @patch("app.services.ragflow_client.Config")
+    @patch("app.services.ragflow_client.time")
+    def test_no_target_ids_returns_on_any_completed(self, mock_time, mock_config):
+        """Returns True when any document completed if no target_ids given."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_time.time.side_effect = [0, 1.0]
+        mock_time.sleep = Mock()
+
+        mock_resp = Mock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {
+            "data": [{"id": "d1", "status": "parsed"}]
+        }
+
+        with patch.object(client.http, "request", return_value=mock_resp):
+            result = client.wait_for_parsing("ds-1", timeout=30)
+
+        assert result is True
+
+
+# ── TestTriggerParsing ────────────────────────────────────────────────
+
+
+class TestTriggerParsing:
+    """Tests for RAGFlowClient.trigger_parsing()."""
+
+    @patch("app.services.ragflow_client.Config")
+    def test_trigger_parsing_success(self, mock_config):
+        """Returns True on successful parsing trigger."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_resp = Mock()
+        mock_resp.ok = True
+
+        with patch.object(client.http, "request", return_value=mock_resp):
+            result = client.trigger_parsing("ds-1", document_ids=["d1", "d2"])
+
+        assert result is True
+
+    @patch("app.services.ragflow_client.Config")
+    def test_trigger_parsing_failure(self, mock_config):
+        """Returns False on failed parsing trigger."""
+        mock_config.RAGFLOW_API_URL = "http://ragflow:9380"
+        mock_config.RAGFLOW_API_KEY = "key"
+        mock_config.RAGFLOW_USERNAME = ""
+        mock_config.RAGFLOW_PASSWORD = ""
+
+        client = RAGFlowClient(api_url="http://ragflow:9380", api_key="key")
+
+        mock_resp = Mock()
+        mock_resp.ok = False
+
+        with patch.object(client.http, "request", return_value=mock_resp):
+            result = client.trigger_parsing("ds-1")
+
+        assert result is False

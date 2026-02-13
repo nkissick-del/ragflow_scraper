@@ -690,3 +690,323 @@ class TestRetryAdapter:
             assert 409 not in retry.status_forcelist
             # Only GET is retried to avoid duplicate uploads on POST
             assert set(retry.allowed_methods) == {"GET"}
+
+
+# ── Additional coverage tests ─────────────────────────────────────────
+
+
+class TestVerifyDocumentEdgeCases:
+    """Test verify_document_exists() edge cases."""
+
+    def test_not_configured_returns_none(self):
+        """Should return None when client is not configured."""
+        client = PaperlessClient(url=None, token=None)
+        result = client.verify_document_exists("some-task-id")
+        assert result is None
+
+    def test_invalid_task_id_format(self, client):
+        """Should return None for invalid task_id format."""
+        result = client.get_task_status("not-a-valid-uuid")
+        assert result is None
+
+    def test_success_with_no_related_document(self, client):
+        """Should return None when SUCCESS but no related_document."""
+        mock_resp = Mock()
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json.return_value = [
+            {"task_id": "12345678-1234-1234-1234-123456789abc", "status": "SUCCESS", "related_document": None}
+        ]
+
+        with patch.object(client.session, "get", return_value=mock_resp):
+            with patch("time.sleep"):
+                result = client.verify_document_exists(
+                    "12345678-1234-1234-1234-123456789abc", timeout=1, poll_interval=0.1
+                )
+
+        assert result is None
+
+    def test_failure_status_returns_none(self, client):
+        """Should return None immediately on FAILURE status."""
+        mock_resp = Mock()
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json.return_value = [
+            {"task_id": "12345678-1234-1234-1234-123456789abc", "status": "FAILURE"}
+        ]
+
+        with patch.object(client.session, "get", return_value=mock_resp):
+            result = client.verify_document_exists(
+                "12345678-1234-1234-1234-123456789abc", timeout=5, poll_interval=0.1
+            )
+
+        assert result is None
+
+    def test_success_with_document_id(self, client):
+        """Should return document ID on SUCCESS with related_document."""
+        mock_resp = Mock()
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json.return_value = [
+            {"task_id": "12345678-1234-1234-1234-123456789abc", "status": "SUCCESS", "related_document": 42}
+        ]
+
+        with patch.object(client.session, "get", return_value=mock_resp):
+            result = client.verify_document_exists(
+                "12345678-1234-1234-1234-123456789abc", timeout=5, poll_interval=0.1
+            )
+
+        assert result == "42"
+
+
+class TestSetCustomFieldsEdgeCases:
+    """Test set_custom_fields() edge cases."""
+
+    def test_not_configured_with_metadata_returns_false(self):
+        """Should return False when not configured but metadata provided."""
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_API_URL = ""
+            mock_config.PAPERLESS_API_TOKEN = ""
+            client = PaperlessClient(url=None, token=None)
+        assert not client.is_configured
+        result = client.set_custom_fields(123, {"url": "https://example.com"})
+        assert result is False
+
+    def test_integer_coercion_skips_invalid(self, client):
+        """Should skip integer fields with None values."""
+        client._custom_field_cache = {"Page Count": 1}
+        client._custom_field_cache_populated = True
+
+        metadata = {"page_count": None}
+
+        result = client.set_custom_fields(123, metadata)
+        assert result is True  # No fields to set
+
+    def test_no_matching_fields_returns_true(self, client):
+        """Should return True when no fields match CUSTOM_FIELD_MAPPING."""
+        client._custom_field_cache_populated = True
+
+        metadata = {"unrelated_key": "value"}
+
+        result = client.set_custom_fields(123, metadata)
+        assert result is True
+
+
+class TestCorrespondentCacheBehavior:
+    """Test _ensure_correspondent() cache behavior."""
+
+    def test_409_conflict_refetches(self, client):
+        """Should re-fetch on 409 conflict during creation."""
+        # Ensure cache is populated (empty)
+        fetch_empty = Mock()
+        fetch_empty.raise_for_status = Mock()
+        fetch_empty.json.return_value = {"results": [], "next": None}
+
+        conflict_resp = Mock()
+        conflict_resp.status_code = 409
+
+        fetch_after = Mock()
+        fetch_after.raise_for_status = Mock()
+        fetch_after.json.return_value = {
+            "results": [{"id": 77, "name": "ConflictOrg"}], "next": None
+        }
+
+        with patch.object(
+            client.session, "get", side_effect=[fetch_empty, fetch_after]
+        ):
+            with patch.object(client.session, "post", return_value=conflict_resp):
+                result = client.get_or_create_correspondent("ConflictOrg")
+
+        assert result == 77
+
+
+class TestGetOrCreateTagsMixed:
+    """Test get_or_create_tags with mixed existing/new tags."""
+
+    def test_mixed_existing_and_new_tags(self, client):
+        """Should handle mix of cached and new tags."""
+        # First fetch populates cache with one tag
+        fetch_response = Mock()
+        fetch_response.raise_for_status = Mock()
+        fetch_response.json.return_value = {
+            "results": [{"id": 10, "name": "Existing"}], "next": None
+        }
+
+        # Creation of new tag
+        create_response = Mock()
+        create_response.raise_for_status = Mock()
+        create_response.json.return_value = {"id": 20, "name": "Brand New"}
+
+        with patch.object(client.session, "get", return_value=fetch_response):
+            with patch.object(client.session, "post", return_value=create_response):
+                result = client.get_or_create_tags(["Existing", "Brand New"])
+
+        assert result == [10, 20]
+
+    def test_tag_creation_failure_continues(self, client):
+        """Should continue processing remaining tags after a failure."""
+        client._tag_cache = {"Good": 1}
+        client._tag_cache_populated = True
+
+        create_fail = Mock(side_effect=Exception("fail"))
+        create_ok = Mock()
+        create_ok.raise_for_status = Mock()
+        create_ok.json.return_value = {"id": 99, "name": "AlsoGood"}
+
+        with patch.object(
+            client.session, "post", side_effect=[Exception("fail"), create_ok]
+        ):
+            result = client.get_or_create_tags(["Good", "FailTag", "AlsoGood"])
+
+        assert 1 in result
+        assert 99 in result
+
+
+class TestPostDocumentEdgeCases:
+    """Test post_document with edge cases."""
+
+    def test_post_document_not_configured(self):
+        """Should return None when not configured."""
+        client = PaperlessClient(url=None, token=None)
+        result = client.post_document("/tmp/test.pdf", title="Test")
+        assert result is None
+
+    def test_post_document_file_not_found(self, client):
+        """Should return None when file does not exist."""
+        result = client.post_document("/nonexistent/path.pdf", title="Test")
+        assert result is None
+
+    def test_post_with_numeric_string_correspondent(self, client, tmp_path):
+        """Should convert numeric string correspondent to int."""
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("PDF content")
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.headers = {"Content-Type": "text/plain"}
+        mock_response.text = "12345678-1234-1234-1234-123456789abc"
+
+        with patch.object(client.session, "post", return_value=mock_response) as mock_post:
+            result = client.post_document(
+                file_path=test_file, title="Test", correspondent="42"
+            )
+
+        assert result == "12345678-1234-1234-1234-123456789abc"
+        call_args = mock_post.call_args
+        assert call_args[1]["data"]["correspondent"] == 42
+
+    def test_post_with_integer_correspondent(self, client, tmp_path):
+        """Should pass integer correspondent directly."""
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("PDF content")
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.headers = {"Content-Type": "text/plain"}
+        mock_response.text = "12345678-1234-1234-1234-123456789ab2"
+
+        with patch.object(client.session, "post", return_value=mock_response) as mock_post:
+            result = client.post_document(
+                file_path=test_file, title="Test", correspondent=99
+            )
+
+        assert result == "12345678-1234-1234-1234-123456789ab2"
+        call_args = mock_post.call_args
+        assert call_args[1]["data"]["correspondent"] == 99
+
+
+class TestTaskIdExtraction:
+    """Test _extract_task_id_from_response and _validate_task_id."""
+
+    def test_extract_json_dict_response(self, client):
+        """Should extract task_id from JSON dict response."""
+        mock_resp = Mock()
+        mock_resp.text = '{"task_id": "abc-123"}'
+        mock_resp.headers = {"Content-Type": "application/json"}
+        mock_resp.json.return_value = {"task_id": "abc-123"}
+
+        result = client._extract_task_id_from_response(mock_resp)
+        assert result == "abc-123"
+
+    def test_extract_json_list_response(self, client):
+        """Should extract task_id from JSON list response."""
+        mock_resp = Mock()
+        mock_resp.text = '[{"task_id": "abc-123"}]'
+        mock_resp.headers = {"Content-Type": "application/json"}
+        mock_resp.json.return_value = [{"task_id": "abc-123"}]
+
+        result = client._extract_task_id_from_response(mock_resp)
+        assert result == "abc-123"
+
+    def test_extract_plain_text_response(self, client):
+        """Should extract task_id from plain text response."""
+        mock_resp = Mock()
+        mock_resp.text = '"abc-123"'
+        mock_resp.headers = {"Content-Type": "text/plain"}
+
+        result = client._extract_task_id_from_response(mock_resp)
+        assert result == "abc-123"
+
+    def test_validate_valid_uuid(self, client):
+        """Should return string for valid UUID."""
+        result = client._validate_task_id("12345678-1234-1234-1234-123456789abc")
+        assert result == "12345678-1234-1234-1234-123456789abc"
+
+    def test_validate_invalid_uuid(self, client):
+        """Should return None for invalid UUID."""
+        result = client._validate_task_id("not-a-uuid")
+        assert result is None
+
+    def test_validate_empty_returns_none(self, client):
+        """Should return None for empty/None task_id."""
+        assert client._validate_task_id(None) is None
+        assert client._validate_task_id("") is None
+
+
+class TestGetTaskStatusEdgeCases:
+    """Test get_task_status edge cases."""
+
+    def test_paginated_dict_response(self, client):
+        """Should handle paginated dict response format."""
+        page1_resp = Mock()
+        page1_resp.raise_for_status = Mock()
+        page1_resp.json.return_value = {
+            "results": [{"task_id": "other-uuid", "status": "SUCCESS"}],
+            "next": "http://localhost:8000/api/tasks/?page=2",
+        }
+
+        page2_resp = Mock()
+        page2_resp.raise_for_status = Mock()
+        page2_resp.json.return_value = {
+            "results": [
+                {"task_id": "12345678-1234-1234-1234-123456789abc", "status": "SUCCESS"}
+            ],
+            "next": None,
+        }
+
+        with patch.object(
+            client.session, "get", side_effect=[page1_resp, page2_resp]
+        ):
+            result = client.get_task_status("12345678-1234-1234-1234-123456789abc")
+
+        assert result is not None
+        assert result["status"] == "SUCCESS"
+
+    def test_task_not_found(self, client):
+        """Should return None when task not in list."""
+        mock_resp = Mock()
+        mock_resp.raise_for_status = Mock()
+        mock_resp.json.return_value = [
+            {"task_id": "other-uuid", "status": "SUCCESS"}
+        ]
+
+        with patch.object(client.session, "get", return_value=mock_resp):
+            result = client.get_task_status("12345678-1234-1234-1234-123456789abc")
+
+        assert result is None
+
+    def test_api_error_returns_none(self, client):
+        """Should return None on API error."""
+        with patch.object(
+            client.session, "get", side_effect=Exception("Connection refused")
+        ):
+            result = client.get_task_status("12345678-1234-1234-1234-123456789abc")
+
+        assert result is None
