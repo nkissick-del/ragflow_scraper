@@ -138,7 +138,9 @@ class MetadataIOMixin:
         if html_content:
             try:
                 safe_fn = sanitize_filename(article.filename)
-                temp_html_path = output_dir / f"{safe_fn}.html"
+                # Strip .md extension if already present
+                base_fn = safe_fn[:-3] if safe_fn.endswith(".md") else safe_fn
+                temp_html_path = output_dir / f"{base_fn}.html"
                 temp_html_path.write_text(html_content, encoding="utf-8")
             except Exception as e:
                 self.logger.error(f"Failed to save HTML for '{article.title}': {e}")
@@ -150,9 +152,12 @@ class MetadataIOMixin:
         try:
             safe_filename = sanitize_filename(article.filename)
 
+            # Strip .md extension if already present (scrapers include it in filename)
+            base_filename = safe_filename[:-3] if safe_filename.endswith(".md") else safe_filename
+
             # Write to temporary files first (atomic write pattern)
-            temp_md_path = output_dir / f".{safe_filename}.md.tmp"
-            temp_json_path = output_dir / f".{safe_filename}.json.tmp"
+            temp_md_path = output_dir / f".{base_filename}.md.tmp"
+            temp_json_path = output_dir / f".{base_filename}.json.tmp"
 
             # Encode content once
             content_bytes = content.encode("utf-8")
@@ -166,7 +171,7 @@ class MetadataIOMixin:
 
             # Prepare metadata with computed values (without mutating article yet)
             article_dict = article.to_dict()
-            article_dict["local_path"] = str(output_dir / f"{safe_filename}.md")
+            article_dict["local_path"] = str(output_dir / f"{base_filename}.md")
             article_dict["file_size"] = file_size
             article_dict["hash"] = file_hash
 
@@ -177,8 +182,8 @@ class MetadataIOMixin:
             )
 
             # Both writes succeeded - now atomically move temp files to final locations
-            md_path = output_dir / f"{safe_filename}.md"
-            json_path = output_dir / f"{safe_filename}.json"
+            md_path = output_dir / f"{base_filename}.md"
+            json_path = output_dir / f"{base_filename}.json"
 
             try:
                 # Rename JSON first (safest: if this fails, MD is not yet moved)

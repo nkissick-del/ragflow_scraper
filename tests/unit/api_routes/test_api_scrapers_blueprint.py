@@ -213,6 +213,7 @@ class TestApiRunScraper:
     def test_not_found(self, client):
         with patch("app.web.blueprints.api_scrapers.ScraperRegistry") as mock_reg:
             mock_reg.get_scraper.return_value = None
+            mock_reg.get_scraper_class.return_value = None
             resp = client.post("/api/scrapers/nonexistent/run", json={})
 
         assert resp.status_code == 404
@@ -250,7 +251,8 @@ class TestApiRunScraper:
     def test_init_exception(self, client):
         with patch("app.web.blueprints.api_scrapers.ScraperRegistry") as mock_reg:
             mock_reg.get_scraper.side_effect = RuntimeError("init failed")
-            resp = client.post("/api/scrapers/aemo/run", json={})
+            # Non-dry-run uses get_scraper_class first, so test dry_run path
+            resp = client.post("/api/scrapers/aemo/run", json={"dry_run": True})
 
         assert resp.status_code == 500
         data = resp.get_json()

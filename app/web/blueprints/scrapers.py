@@ -129,12 +129,41 @@ def run_scraper(name):
     if dry_run and effective_max_pages is None:
         effective_max_pages = 1
 
-    scraper = ScraperRegistry.get_scraper(name, dry_run=dry_run, max_pages=effective_max_pages)
-    if not scraper:
-        return jsonify({"error": f"Scraper not found: {name}"}), 404
+    if dry_run:
+        # Dry runs: use raw scraper (no pipeline processing needed)
+        scraper = ScraperRegistry.get_scraper(name, dry_run=True, max_pages=effective_max_pages)
+        if not scraper:
+            return jsonify({"error": f"Scraper not found: {name}"}), 404
+        runnable = scraper
+    else:
+        # Real runs: use Pipeline so documents are processed (parsed, archived, indexed)
+        from app.orchestrator.pipeline import Pipeline
+
+        # Verify scraper exists before creating pipeline
+        if not ScraperRegistry.get_scraper_class(name):
+            return jsonify({"error": f"Scraper not found: {name}"}), 404
+
+        # Load scraper config for upload flags
+        config_path = Config.SCRAPERS_CONFIG_DIR / f"{name}.json"
+        scraper_config = {}
+        if config_path.exists():
+            import json as json_mod
+            try:
+                with open(config_path) as f:
+                    scraper_config = json_mod.load(f)
+            except json_mod.JSONDecodeError as e:
+                log_event(logger, "error", "scraper.config.invalid", scraper=name, error=str(e))
+
+        runnable = Pipeline(
+            scraper_name=name,
+            max_pages=effective_max_pages,
+            upload_to_ragflow=scraper_config.get("upload_to_ragflow", True),
+            upload_to_paperless=scraper_config.get("upload_to_paperless", True),
+            verify_document_timeout=scraper_config.get("verify_document_timeout", 60),
+        )
 
     try:
-        job_queue.enqueue(name, scraper, dry_run=dry_run, max_pages=effective_max_pages)
+        job_queue.enqueue(name, runnable, dry_run=dry_run, max_pages=effective_max_pages)
     except ValueError:
         scraper_class = ScraperRegistry.get_scraper_class(name)
         if not scraper_class:

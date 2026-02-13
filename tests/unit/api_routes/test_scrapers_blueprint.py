@@ -228,6 +228,7 @@ class TestRunScraper:
     def test_not_found(self, client):
         with patch("app.web.blueprints.scrapers.ScraperRegistry") as mock_reg:
             mock_reg.get_scraper.return_value = None
+            mock_reg.get_scraper_class.return_value = None
             resp = client.post("/scrapers/nonexistent/run", data={})
 
         assert resp.status_code == 404

@@ -105,8 +105,14 @@ class Pipeline:
         self.container = container or get_container()
 
         self.logger = get_logger(f"pipeline.{scraper_name}")
-        self.ragflow = self.container.ragflow_client if upload_to_ragflow else None
         self._step_times: dict[str, float] = {}
+        self._scraper: Optional[object] = None  # set during run for cancel support
+
+    def cancel(self) -> None:
+        """Forward cancellation to the internal scraper."""
+        cancel_fn = getattr(self._scraper, "cancel", None)
+        if callable(cancel_fn):
+            cancel_fn()
 
     def run(self) -> PipelineResult:
         """
@@ -217,6 +223,7 @@ class Pipeline:
         if not scraper:
             raise ValueError(f"Scraper not found: {self.scraper_name}")
 
+        self._scraper = scraper
         return scraper.run()
 
     def _create_scraper_generator(self):

@@ -94,8 +94,8 @@ class TestRateLimiting:
             mock_queue.enqueue.return_value = None
 
             for i in range(10):
-                resp = client.post("/api/scrapers/test_scraper/run", json={})
+                resp = client.post("/api/scrapers/test_scraper/run", json={"dry_run": True})
                 assert resp.status_code == 202, f"API request {i+1} failed"
 
-            resp = client.post("/api/scrapers/test_scraper/run", json={})
+            resp = client.post("/api/scrapers/test_scraper/run", json={"dry_run": True})
             assert resp.status_code == 429

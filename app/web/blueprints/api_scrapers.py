@@ -49,19 +49,43 @@ def api_run_scraper(name):
         except (TypeError, ValueError):
             return jsonify({"error": "max_pages must be an integer"}), 400
     
-    # Get scraper instance
+    # Build runnable: dry runs use raw scraper, real runs use Pipeline
     try:
-        scraper = ScraperRegistry.get_scraper(name, dry_run=dry_run, max_pages=max_pages)
+        if dry_run:
+            runnable = ScraperRegistry.get_scraper(name, dry_run=True, max_pages=max_pages)
+            if not runnable:
+                return jsonify({"error": f"Scraper not found: {name}"}), 404
+        else:
+            if not ScraperRegistry.get_scraper_class(name):
+                return jsonify({"error": f"Scraper not found: {name}"}), 404
+
+            from app.orchestrator.pipeline import Pipeline
+            from app.config import Config
+
+            config_path = Config.SCRAPERS_CONFIG_DIR / f"{name}.json"
+            scraper_config = {}
+            if config_path.exists():
+                import json as json_mod
+                try:
+                    with open(config_path) as f:
+                        scraper_config = json_mod.load(f)
+                except json_mod.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON in config {config_path}: {e}")
+
+            runnable = Pipeline(
+                scraper_name=name,
+                max_pages=max_pages,
+                upload_to_ragflow=scraper_config.get("upload_to_ragflow", True),
+                upload_to_paperless=scraper_config.get("upload_to_paperless", True),
+                verify_document_timeout=scraper_config.get("verify_document_timeout", 60),
+            )
     except Exception as exc:
-        logger.error(f"Error getting scraper {name}: {exc}", exc_info=True)
+        logger.error(f"Error initializing {name}: {exc}", exc_info=True)
         return jsonify({"error": "Failed to initialize scraper"}), 500
-    
-    if not scraper:
-        return jsonify({"error": f"Scraper not found: {name}"}), 404
-    
+
     # Enqueue job for background execution
     try:
-        job_queue.enqueue(name, scraper, dry_run=dry_run, max_pages=max_pages)
+        job_queue.enqueue(name, runnable, dry_run=dry_run, max_pages=max_pages)
         logger.info(f"API: Enqueued scraper {name} (dry_run={dry_run}, max_pages={max_pages})")
         
         return jsonify({
