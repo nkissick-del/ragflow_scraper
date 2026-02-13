@@ -21,7 +21,7 @@ from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.flaresolverr_mixin import FlareSolverrPageFetchMixin
 from app.scrapers.jsonld_mixin import JSONLDDateExtractionMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
-from app.utils import sanitize_filename, ArticleConverter
+from app.utils import sanitize_filename
 
 
 class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, BaseScraper):
@@ -33,7 +33,7 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
     - Phase 2: Sitemap XML provides ~577 historical article URLs for backfill
     - Uses FlareSolverr for fetching article pages during sitemap phase
     - JSON-LD date extraction for accurate publication dates
-    - Extracts article content as Markdown
+    - Saves article content as HTML
     """
 
     name = "theenergy"
@@ -49,8 +49,8 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
     # TheEnergy-specific settings
     articles_per_page = 10
     request_delay = 1.0  # Polite crawling
-    default_chunk_method = "naive"  # Markdown articles need naive chunking
-    default_parser = "Naive"  # No OCR needed for markdown
+    default_chunk_method = "naive"  # HTML articles use naive chunking
+    default_parser = "Naive"  # No OCR needed for HTML content
 
     # No sector-based filtering for news articles
     required_tags: list[str] = []
@@ -58,9 +58,8 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
     excluded_keywords: list[str] = []
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initialize scraper with GFM markdown converter."""
+        """Initialize scraper."""
         super().__init__(*args, **kwargs)
-        self._markdown = ArticleConverter()
 
     # ------------------------------------------------------------------
     # Article limit helper
@@ -215,7 +214,7 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
                 tags.append(cat)
 
         safe_title = sanitize_filename(title)[:100]
-        filename = f"{safe_title}.md"
+        filename = f"{safe_title}.html"
 
         metadata = DocumentMetadata(
             url=url,
@@ -249,15 +248,12 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
             result.failed_count += 1
             return
 
-        # Convert to Markdown
-        content_md = self._convert_html_to_markdown(content_html)
-
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1
             yield metadata.to_dict()
         else:
-            saved_path = self._save_article(metadata, content_md, html_content=content_html)
+            saved_path = self._save_article(metadata, content_html)
             if saved_path:
                 self._mark_processed(url, {"title": title})
                 result.downloaded_count += 1
@@ -413,7 +409,7 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
             tags = ["TheEnergy"]
 
             safe_title = sanitize_filename(title)[:100]
-            filename = f"{safe_title}.md"
+            filename = f"{safe_title}.html"
 
             metadata = DocumentMetadata(
                 url=url,
@@ -446,8 +442,8 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
                 )
                 return
 
-            # Extract article content as Markdown
-            content = self._extract_article_content(article_html)
+            # Extract article body HTML
+            content = self._extract_article_html(article_html)
 
             if self.dry_run:
                 self.logger.info(f"[DRY RUN] Would save: {title}")
@@ -470,14 +466,19 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
     # Content extraction helpers
     # ------------------------------------------------------------------
 
-    def _extract_article_content(self, html: str) -> str:
-        """Extract article body content and convert to GFM Markdown."""
-        return self._markdown.convert(html)
+    def _extract_article_html(self, html: str) -> str:
+        """Extract article body HTML from the full page."""
+        from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 
-    def _convert_html_to_markdown(self, html: str) -> str:
-        """Convert HTML snippet (from RSS) to GFM Markdown."""
-        full_html = f"<article>{html}</article>"
-        return self._markdown.convert(full_html)
+        soup = BeautifulSoup(html, "lxml")
+        article = soup.find("article")
+        if article:
+            return str(article.decode_contents())
+        # Fallback: return the whole body
+        body = soup.find("body")
+        if body:
+            return str(body.decode_contents())
+        return html
 
     def _extract_title(self, html: str) -> str:
         """Extract page title from HTML ``<title>`` or ``<h1>``."""

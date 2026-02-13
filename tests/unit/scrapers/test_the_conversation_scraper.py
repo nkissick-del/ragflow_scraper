@@ -430,7 +430,7 @@ class TestIncrementalFiltering:
         # Mock methods to avoid actual file I/O
         scraper._is_processed = MagicMock(return_value=False)
         scraper.should_exclude_document = MagicMock(return_value=None)
-        scraper._save_article = MagicMock(return_value="/tmp/fake/path.md")
+        scraper._save_article = MagicMock(return_value="/tmp/fake/path.html")
         scraper._mark_processed = MagicMock()
 
         list(scraper._process_feed_entry(entry, result))
@@ -485,7 +485,7 @@ class TestIncrementalFiltering:
 
         scraper._is_processed = MagicMock(return_value=False)
         scraper.should_exclude_document = MagicMock(return_value=None)
-        scraper._save_article = MagicMock(return_value="/tmp/fake/path.md")
+        scraper._save_article = MagicMock(return_value="/tmp/fake/path.html")
         scraper._mark_processed = MagicMock()
 
         list(scraper._process_feed_entry(entry, result))

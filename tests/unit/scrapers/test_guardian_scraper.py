@@ -295,32 +295,6 @@ class TestProcessApiResultExtended:
         assert "Renewable energy" in doc["tags"]
 
 
-class TestConvertBodyToMarkdown:
-    """Tests for _convert_body_to_markdown."""
-
-    def test_standard_html(self, scraper):
-        """Standard HTML body converts to Markdown string."""
-        result = scraper._convert_body_to_markdown("<p>Hello world</p>")
-        assert isinstance(result, str)
-
-    def test_empty_body(self, scraper):
-        """Empty body HTML returns a string (possibly empty)."""
-        result = scraper._convert_body_to_markdown("")
-        assert isinstance(result, str)
-
-    def test_html_with_links_and_lists(self, scraper):
-        """HTML with links and lists converts without error."""
-        html = """
-        <p>Check out <a href="https://example.com">this link</a>.</p>
-        <ul>
-          <li>Item one</li>
-          <li>Item two</li>
-        </ul>
-        """
-        result = scraper._convert_body_to_markdown(html)
-        assert isinstance(result, str)
-
-
 class TestApiRequest:
     """Tests for _api_request."""
 
@@ -509,37 +483,6 @@ class TestProcessApiResultNew:
         docs = list(scraper._process_api_result(item, "tag", result))
         assert result.downloaded_count == 1
         assert docs[0]["extra"]["section"] == "News"
-
-
-class TestConvertBodyToMarkdownNew:
-    """New tests for _convert_body_to_markdown."""
-
-    def test_standard_html_paragraphs(self, scraper):
-        """Multiple paragraphs produce a markdown string."""
-        html = (
-            "<p>Australia's energy transition is accelerating as renewable "
-            "generation capacity continues to grow across the National "
-            "Electricity Market. New solar and wind installations are being "
-            "deployed at record rates, with battery storage providing "
-            "firming capacity for intermittent generation sources.</p>"
-            "<p>The Clean Energy Regulator reported that large-scale "
-            "renewable energy generation reached new highs, with solar "
-            "farms and wind projects contributing significantly to the "
-            "overall energy mix in the country.</p>"
-        )
-        md = scraper._convert_body_to_markdown(html)
-        assert isinstance(md, str)
-
-    def test_empty_body(self, scraper):
-        """Empty string input returns a string."""
-        md = scraper._convert_body_to_markdown("")
-        assert isinstance(md, str)
-
-    def test_html_with_links_preserved(self, scraper):
-        """HTML containing links converts without error."""
-        html = '<p>See <a href="https://example.com">the report</a> for details.</p>'
-        md = scraper._convert_body_to_markdown(html)
-        assert isinstance(md, str)
 
 
 class TestApiRequestNew:

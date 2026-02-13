@@ -73,15 +73,15 @@ class AnythingLLMBackend(RAGBackend):
 
     def ingest_document(
         self,
-        markdown_path: Path,
+        content_path: Path,
         metadata: dict,
         collection_id: Optional[str] = None,
     ) -> RAGResult:
         """
-        Ingest Markdown document into AnythingLLM.
+        Ingest document into AnythingLLM.
 
         Args:
-            markdown_path: Path to Markdown file
+            content_path: Path to content file (HTML, Markdown, etc.)
             metadata: Document metadata dict
             collection_id: Optional workspace ID (overrides default)
 
@@ -93,8 +93,8 @@ class AnythingLLMBackend(RAGBackend):
             self.logger.error(error_msg)
             return RAGResult(success=False, error=error_msg, rag_name=self.name)
 
-        if not markdown_path.exists():
-            error_msg = f"Markdown file not found: {markdown_path}"
+        if not content_path.exists():
+            error_msg = f"Content file not found: {content_path}"
             self.logger.error(error_msg)
             return RAGResult(success=False, error=error_msg, rag_name=self.name)
 
@@ -111,7 +111,7 @@ class AnythingLLMBackend(RAGBackend):
 
             # Upload document
             upload_result = self.client.upload_document(
-                filepath=markdown_path,
+                filepath=content_path,
                 folder_name="scraped_documents",
                 workspace_ids=workspace_ids,
                 metadata=anythingllm_metadata,

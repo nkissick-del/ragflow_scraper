@@ -5,7 +5,7 @@ Fetches articles from: https://theconversation.com/topics/energy-662/articles.at
 
 Feed-based scraper (no Selenium/browser required).
 Single-stage scraping: Feed contains full article HTML in <content> tags.
-Saves article content as Markdown for RAGFlow indexing.
+Saves article content as HTML for pipeline processing.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import feedparser  # type: ignore[import-untyped]
 
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
-from app.utils import sanitize_filename, ArticleConverter
+from app.utils import sanitize_filename
 from app.utils.errors import NetworkError, ParsingError
 from app.utils.retry import retry_on_error
 
@@ -30,7 +30,7 @@ class TheConversationScraper(BaseScraper):
     - Uses Atom feed which includes full article HTML content
     - No browser required (HTTP requests only)
     - Single-stage: feed contains title, author, dates, and full body
-    - Extracts article content as Markdown
+    - Saves article content as HTML
     - ~39 HTTP requests vs ~1000+ for HTML scraping
     """
 
@@ -45,8 +45,8 @@ class TheConversationScraper(BaseScraper):
 
     # Scraper settings
     request_delay = 1.0  # Polite delay between feed requests
-    default_chunk_method = "naive"  # Markdown articles need naive chunking
-    default_parser = "Naive"  # No OCR needed for markdown
+    default_chunk_method = "naive"  # HTML articles use naive chunking
+    default_parser = "Naive"  # No OCR needed for HTML content
 
     # No sector-based filtering for news articles
     required_tags: list[str] = []
@@ -54,13 +54,6 @@ class TheConversationScraper(BaseScraper):
     excluded_keywords: list[str] = []
 
     # Elements to exclude from HTML content
-    # Note: Article extraction now handled by trafilatura
-    # No need for manual CSS selectors - trafilatura automatically removes:
-    # - Partner boxes and disclosure statements
-    # - Navigation, ads, sidebars
-    # - Social sharing buttons
-    # - Author bios and contributor sections
-    # - Related stories widgets
 
     # Use base class HTTP session instead of Selenium
     skip_webdriver = True
@@ -68,9 +61,6 @@ class TheConversationScraper(BaseScraper):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize feed-based scraper."""
         super().__init__(*args, **kwargs)
-
-        # Article converter for feed HTML
-        self._markdown = ArticleConverter()
 
     def scrape(self) -> Generator[dict, None, ScraperResult]:
         """
@@ -80,8 +70,8 @@ class TheConversationScraper(BaseScraper):
         1. Check for last scrape date (incremental mode)
         2. Paginate through feed pages
         3. Parse each feed entry
-        4. Extract HTML content and convert to Markdown
-        5. Save as .md with frontmatter + .json sidecar
+        4. Extract HTML content
+        5. Save as .html with .json metadata sidecar
         6. Update last scrape date on success
 
         Yields:
@@ -261,7 +251,7 @@ class TheConversationScraper(BaseScraper):
 
         # Create safe filename
         safe_title = sanitize_filename(title)[:100]
-        filename = f"{safe_title}.md"
+        filename = f"{safe_title}.html"
 
         # Create DocumentMetadata
         metadata = DocumentMetadata(
@@ -304,18 +294,13 @@ class TheConversationScraper(BaseScraper):
             result.failed_count += 1
             return
 
-        # Convert to Markdown
-        content_md = self._convert_content_to_markdown(content_html)
-
-        # Save article
+        # Save article (HTML directly)
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1
             yield metadata.to_dict()
         else:
-            saved_path = self._save_article(
-                metadata, content_md, html_content=content_html
-            )
+            saved_path = self._save_article(metadata, content_html)
             if saved_path:
                 self._mark_processed(url, {"title": title})
                 result.downloaded_count += 1
@@ -347,22 +332,6 @@ class TheConversationScraper(BaseScraper):
 
         # Fallback to summary (usually truncated)
         return entry.get("summary", "")
-
-    def _convert_content_to_markdown(self, html: str) -> str:
-        """
-        Convert article HTML to GFM Markdown.
-
-        Args:
-            html: Article HTML from feed
-
-        Returns:
-            GFM-compliant Markdown
-        """
-        # Wrap in article tag for consistent structure
-        full_html = f"<article>{html}</article>"
-
-        # ArticleConverter ignores selectors, extracts content automatically
-        return self._markdown.convert(full_html)
 
     def _parse_feedparser_date(self, time_struct: Any) -> Optional[str]:
         """

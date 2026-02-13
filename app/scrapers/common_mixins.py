@@ -125,7 +125,6 @@ class MetadataIOMixin:
         self,
         article: "DocumentMetadata",
         content: str,
-        html_content: Optional[str] = None,
     ) -> Optional[str]:
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {article.title}")
@@ -133,37 +132,28 @@ class MetadataIOMixin:
 
         output_dir = ensure_dir(Config.DOWNLOAD_DIR / self.name)
 
-        # Save raw HTML for pipeline Gotenberg conversion
         temp_html_path = None
-        if html_content:
-            try:
-                safe_fn = sanitize_filename(article.filename)
-                # Strip .md extension if already present
-                base_fn = safe_fn[:-3] if safe_fn.endswith(".md") else safe_fn
-                temp_html_path = output_dir / f"{base_fn}.html"
-                temp_html_path.write_text(html_content, encoding="utf-8")
-            except Exception as e:
-                self.logger.error(f"Failed to save HTML for '{article.title}': {e}")
-                temp_html_path = None
-
-        temp_md_path = None
         temp_json_path = None
 
         try:
             safe_filename = sanitize_filename(article.filename)
 
-            # Strip .md extension if already present (scrapers include it in filename)
-            base_filename = safe_filename[:-3] if safe_filename.endswith(".md") else safe_filename
+            # Strip known extensions if already present
+            for ext in (".md", ".html"):
+                if safe_filename.endswith(ext):
+                    safe_filename = safe_filename[: -len(ext)]
+                    break
+            base_filename = safe_filename
 
             # Write to temporary files first (atomic write pattern)
-            temp_md_path = output_dir / f".{base_filename}.md.tmp"
+            temp_html_path = output_dir / f".{base_filename}.html.tmp"
             temp_json_path = output_dir / f".{base_filename}.json.tmp"
 
             # Encode content once
             content_bytes = content.encode("utf-8")
 
-            # Write markdown to temp file
-            temp_md_path.write_bytes(content_bytes)
+            # Write HTML to temp file
+            temp_html_path.write_bytes(content_bytes)
 
             # Compute metadata from content bytes
             file_size = len(content_bytes)
@@ -171,7 +161,7 @@ class MetadataIOMixin:
 
             # Prepare metadata with computed values (without mutating article yet)
             article_dict = article.to_dict()
-            article_dict["local_path"] = str(output_dir / f"{base_filename}.md")
+            article_dict["local_path"] = str(output_dir / f"{base_filename}.html")
             article_dict["file_size"] = file_size
             article_dict["hash"] = file_hash
 
@@ -182,35 +172,31 @@ class MetadataIOMixin:
             )
 
             # Both writes succeeded - now atomically move temp files to final locations
-            md_path = output_dir / f"{base_filename}.md"
+            html_path = output_dir / f"{base_filename}.html"
             json_path = output_dir / f"{base_filename}.json"
 
             try:
-                # Rename JSON first (safest: if this fails, MD is not yet moved)
+                # Rename JSON first (safest: if this fails, HTML is not yet moved)
                 temp_json_path.rename(json_path)
-                temp_md_path.rename(md_path)
+                temp_html_path.rename(html_path)
             except Exception:
-                # Clean up JSON if MD rename failed to avoid orphaned files
+                # Clean up JSON if HTML rename failed to avoid orphaned files
                 if json_path.exists():
                     json_path.unlink()
                 raise
 
             # Only mutate article after all file operations succeed
-            article.local_path = str(md_path)
+            article.local_path = str(html_path)
             article.file_size = file_size
             article.hash = file_hash
-            if temp_html_path:
-                if not hasattr(article, "extra") or article.extra is None:
-                    article.extra = {}
-                article.extra["html_path"] = str(temp_html_path)
 
-            self.logger.info(f"Saved: {md_path.name}")
-            return str(md_path)
+            self.logger.info(f"Saved: {html_path.name}")
+            return str(html_path)
         except Exception as exc:
             self.logger.error(f"Failed to save article '{article.title}': {exc}")
             # Clean up temp files if they exist
-            if temp_md_path and temp_md_path.exists():
-                temp_md_path.unlink()
+            if temp_html_path and temp_html_path.exists():
+                temp_html_path.unlink()
             if temp_json_path and temp_json_path.exists():
                 temp_json_path.unlink()
             return None

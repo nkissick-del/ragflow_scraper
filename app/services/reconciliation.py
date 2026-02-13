@@ -293,7 +293,7 @@ class ReconciliationService:
                     # Ingest to RAG
                     metadata = {"url": url, "source": "reconciliation"}
                     rag_result = rag.ingest_document(
-                        markdown_path=parse_result.markdown_path,
+                        content_path=parse_result.markdown_path,
                         metadata=metadata,
                         collection_id=dataset_id,
                     )

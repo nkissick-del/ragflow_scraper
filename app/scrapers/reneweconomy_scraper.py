@@ -4,7 +4,7 @@ RenewEconomy (reneweconomy.com.au) scraper using WordPress REST API.
 Fetches articles from: https://reneweconomy.com.au/wp-json/wp/v2/posts
 API-based scraper (no FlareSolverr/browser required).
 Single-stage scraping: API returns full article content, categories, dates.
-Saves article content as Markdown for RAGFlow indexing.
+Saves article content as HTML for pipeline processing.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
-from app.utils import sanitize_filename, ArticleConverter
+from app.utils import sanitize_filename
 from app.utils.retry import retry_on_error
 from app.utils.errors import NetworkError, ParsingError
 
@@ -29,7 +29,7 @@ class RenewEconomyScraper(BaseScraper):
     - Single-stage: API returns title, content, dates, categories
     - Category ID→name resolution via /categories endpoint
     - Incremental scraping via `after` date parameter
-    - Extracts article content as Markdown
+    - Saves article content as HTML
     """
 
     name = "reneweconomy"
@@ -43,8 +43,8 @@ class RenewEconomyScraper(BaseScraper):
 
     # RenewEconomy-specific settings
     request_delay = 0.5  # API is lighter than HTML scraping
-    default_chunk_method = "naive"  # Markdown articles need naive chunking
-    default_parser = "Naive"  # No OCR needed for markdown
+    default_chunk_method = "naive"  # HTML articles use naive chunking
+    default_parser = "Naive"  # No OCR needed for HTML content
 
     # No sector-based filtering for news articles
     required_tags: list[str] = []
@@ -57,9 +57,6 @@ class RenewEconomyScraper(BaseScraper):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize API-based scraper."""
         super().__init__(*args, **kwargs)
-
-        # Article converter for body HTML
-        self._markdown = ArticleConverter()
 
         # Category ID→name cache (populated on first scrape)
         self._categories: dict[int, str] = {}
@@ -192,8 +189,7 @@ class RenewEconomyScraper(BaseScraper):
         2. Check for last scrape date (incremental mode)
         3. Paginate through all posts (with after filter if set)
         4. Deduplicate by URL
-        5. Convert body HTML to Markdown
-        6. Save article as Markdown with metadata sidecar
+        5. Save article HTML with metadata sidecar
         7. Update last scrape date on success
 
         Yields:
@@ -372,7 +368,7 @@ class RenewEconomyScraper(BaseScraper):
 
         # Create safe filename
         safe_title = sanitize_filename(title)
-        filename = f"{safe_title[:100]}.md"
+        filename = f"{safe_title[:100]}.html"
 
         # Create DocumentMetadata
         metadata = DocumentMetadata(
@@ -415,16 +411,13 @@ class RenewEconomyScraper(BaseScraper):
             result.failed_count += 1
             return
 
-        # Convert body HTML to Markdown
-        content = self._convert_content_to_markdown(body_html)
-
-        # Save article
+        # Save article (HTML directly)
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1
             yield metadata.to_dict()
         else:
-            saved_path = self._save_article(metadata, content)
+            saved_path = self._save_article(metadata, body_html)
             if saved_path:
                 self._mark_processed(url, {"title": title})
                 result.downloaded_count += 1
@@ -432,18 +425,3 @@ class RenewEconomyScraper(BaseScraper):
             else:
                 result.failed_count += 1
 
-    def _convert_content_to_markdown(self, body_html: str) -> str:
-        """
-        Convert WordPress post body HTML to GFM Markdown.
-
-        The API body is cleaner than scraped HTML (no nav, ads, etc.)
-        but still needs conversion to Markdown.
-
-        Args:
-            body_html: HTML from content.rendered field
-
-        Returns:
-            GFM-compliant Markdown
-        """
-        full_html = f"<article>{body_html}</article>"
-        return self._markdown.convert(full_html)

@@ -264,7 +264,7 @@ class TestRAGBackend:
         """Valid implementation with all methods."""
 
         class ValidRAG(RAGBackend):
-            def ingest_document(self, markdown_path, metadata, collection_id=None):
+            def ingest_document(self, content_path, metadata, collection_id=None):
                 return RAGResult(success=True, document_id="abc", rag_name="valid")
 
             def is_configured(self):

@@ -710,7 +710,7 @@ class TestMetadataIOMixinEdgeCases:
 
     @patch("app.scrapers.common_mixins.ensure_dir")
     def test_save_article_success(self, mock_ensure_dir, tmp_path):
-        """Should save markdown and JSON files and return path."""
+        """Should save HTML and JSON files and return path."""
         mixin = self._make_mixin()
         output_dir = tmp_path / "downloads" / "test_scraper"
         output_dir.mkdir(parents=True)
@@ -722,40 +722,18 @@ class TestMetadataIOMixinEdgeCases:
             filename="test_doc.pdf",
         )
 
-        result = mixin._save_article(doc, "# Test Content")
+        result = mixin._save_article(doc, "<h1>Test Content</h1>")
 
         assert result is not None
-        assert result.endswith(".md")
-        md_path = Path(result)
-        assert md_path.exists()
-        assert md_path.read_text(encoding="utf-8") == "# Test Content"
+        assert result.endswith(".html")
+        html_path = Path(result)
+        assert html_path.exists()
+        assert html_path.read_text(encoding="utf-8") == "<h1>Test Content</h1>"
 
-        json_path = md_path.with_suffix(".json")
+        json_path = html_path.with_suffix(".json")
         assert json_path.exists()
         data = json.loads(json_path.read_text(encoding="utf-8"))
         assert data["title"] == "Test Doc"
-
-    @patch("app.scrapers.common_mixins.ensure_dir")
-    def test_save_article_with_html_content(self, mock_ensure_dir, tmp_path):
-        """Should save HTML alongside markdown when html_content provided."""
-        mixin = self._make_mixin()
-        output_dir = tmp_path / "downloads" / "test_scraper"
-        output_dir.mkdir(parents=True)
-        mock_ensure_dir.return_value = output_dir
-
-        doc = DocumentMetadata(
-            url="http://example.com/doc.pdf",
-            title="Test Doc",
-            filename="test_doc.pdf",
-        )
-
-        result = mixin._save_article(doc, "# Content", html_content="<h1>Content</h1>")
-
-        assert result is not None
-        # HTML file should exist — sanitize_filename preserves the dot
-        html_path = output_dir / "test_doc.pdf.html"
-        assert html_path.exists()
-        assert html_path.read_text(encoding="utf-8") == "<h1>Content</h1>"
 
     @patch("pathlib.Path.write_bytes")
     @patch("app.scrapers.common_mixins.ensure_dir")

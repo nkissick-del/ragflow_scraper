@@ -10,8 +10,8 @@ from app.scrapers.mixins import (
 class TestScraperFixes:
     """Verification for specific fixes in mixins and models."""
 
-    def test_pdf_path_assignment_post_success(self, tmp_path):
-        """Verify extra.html_path is only assigned after successful file operations."""
+    def test_path_assignment_post_success(self, tmp_path):
+        """Verify local_path is only assigned after successful file operations."""
 
         class TestScraper(MetadataIOMixin):
             name = "test"
@@ -19,17 +19,17 @@ class TestScraperFixes:
             logger = Mock()
 
         scraper = TestScraper()
-        article = DocumentMetadata(url="u", title="t", filename="f.md")
+        article = DocumentMetadata(url="u", title="t", filename="f.html")
 
-        # Mock file writing to fail (write_bytes for the markdown temp file)
+        # Mock file writing to fail (write_bytes for the HTML temp file)
         with patch(
             "pathlib.Path.write_bytes", side_effect=Exception("Write failed")
         ):
             with patch("app.scrapers.common_mixins.ensure_dir", return_value=tmp_path):
-                scraper._save_article(article, "content", html_content="<html>")
+                result = scraper._save_article(article, "<html>content</html>")
 
-            # extra.html_path should NOT be set because we failed before the mutation block
-            assert article.extra.get("html_path") is None
+            # Should return None because the write failed
+            assert result is None
 
     def test_mixin_super_init_calls(self):
         """Verify mixins call super().__init__()."""

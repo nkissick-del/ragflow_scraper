@@ -183,6 +183,23 @@ class TestParseDocument:
             pipeline._parse_document(docx_file, Mock(), "office")
 
     @patch("app.orchestrator.pipeline.Config")
+    def test_html_skips_parser(self, mock_config, pipeline, tmp_path):
+        """HTML doc_type returns file_path directly without calling parser."""
+        mock_config.TIKA_ENRICHMENT_ENABLED = False
+        mock_config.TIKA_SERVER_URL = ""
+
+        html_file = tmp_path / "doc.html"
+        html_file.write_text("<h1>Already HTML</h1>")
+
+        content_path, meta = pipeline._parse_document(
+            html_file, Mock(), "html"
+        )
+
+        assert content_path == html_file
+        assert meta == {}
+        pipeline.container.parser_backend.parse_document.assert_not_called()
+
+    @patch("app.orchestrator.pipeline.Config")
     def test_tika_enrichment_called(self, mock_config, pipeline, tmp_path):
         """Tika enrichment is invoked after parsing."""
         mock_config.TIKA_ENRICHMENT_ENABLED = True
@@ -277,6 +294,30 @@ class TestPrepareArchiveFile:
         assert str(archive_path).endswith(".archive.pdf")
         assert cleanup_path is not None
         mock_gotenberg.convert_to_pdf.assert_called_once_with(docx_file)
+
+    @patch("app.orchestrator.pipeline.Config")
+    def test_html_gotenberg_conversion(self, mock_config, pipeline, tmp_path):
+        """HTML uses Gotenberg convert_html_to_pdf to create .archive.pdf."""
+        mock_config.GOTENBERG_URL = "http://gotenberg:3156"
+
+        html_file = tmp_path / "doc.html"
+        html_file.write_text("<h1>Test</h1><p>Content</p>")
+
+        mock_gotenberg = Mock()
+        mock_gotenberg.convert_html_to_pdf.return_value = b"%PDF-1.4 html"
+        pipeline.container.gotenberg_client = mock_gotenberg
+
+        merged = Mock()
+        merged.title = "Test Doc"
+
+        archive_path, cleanup_path = pipeline._prepare_archive_file(
+            html_file, html_file, "html", merged
+        )
+
+        assert str(archive_path).endswith(".archive.pdf")
+        assert archive_path == cleanup_path
+        assert archive_path.exists()
+        mock_gotenberg.convert_html_to_pdf.assert_called_once()
 
     @patch("app.orchestrator.pipeline.Config")
     def test_gotenberg_failure_falls_back(self, mock_config, pipeline, tmp_path):
@@ -461,7 +502,7 @@ class TestIngestToRag:
         assert pipeline._ingest_to_rag(md_file, merged) is False
 
     def test_ingest_passes_metadata_and_collection(self, pipeline, tmp_path):
-        """Verify kwargs: markdown_path, metadata, collection_id."""
+        """Verify kwargs: content_path, metadata, collection_id."""
         md_file = tmp_path / "doc.md"
         md_file.write_text("# Content")
 
@@ -476,7 +517,7 @@ class TestIngestToRag:
         pipeline._ingest_to_rag(md_file, merged)
 
         call_kwargs = pipeline.container.rag_backend.ingest_document.call_args[1]
-        assert call_kwargs["markdown_path"] == md_file
+        assert call_kwargs["content_path"] == md_file
         assert call_kwargs["metadata"] == {"title": "My Doc", "url": "http://example.com"}
         assert call_kwargs["collection_id"] == "ds-1"
 

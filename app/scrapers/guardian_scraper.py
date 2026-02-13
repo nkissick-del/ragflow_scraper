@@ -6,7 +6,7 @@ Filtered by Australian energy-related subject tags.
 
 API-based scraper (no Selenium/browser required).
 Single-stage scraping: API returns all data including full article body.
-Saves article content as Markdown for RAGFlow indexing.
+Saves article content as HTML for pipeline processing.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import requests
 from app.config import Config
 from app.scrapers.base_scraper import BaseScraper
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
-from app.utils import sanitize_filename, ArticleConverter
+from app.utils import sanitize_filename
 from app.utils.retry import retry_on_error
 from app.utils.errors import NetworkError, ParsingError
 
@@ -33,7 +33,7 @@ class GuardianScraper(BaseScraper):
     - Uses Guardian Open Platform API (no browser required)
     - Multi-tag scraping strategy with cross-tag deduplication
     - Single-stage: API returns headline, byline, dates, and full body
-    - Extracts article content as Markdown
+    - Saves article content as HTML
     - Subject tags: energy, renewables, coal, nuclear, climate, EVs, etc.
     """
 
@@ -48,8 +48,8 @@ class GuardianScraper(BaseScraper):
 
     # Guardian-specific settings
     request_delay = 1.0  # Polite API usage (limit is 12/sec)
-    default_chunk_method = "naive"  # Markdown articles need naive chunking
-    default_parser = "Naive"  # No OCR needed for markdown
+    default_chunk_method = "naive"  # HTML articles use naive chunking
+    default_parser = "Naive"  # No OCR needed for HTML content
 
     # No sector-based filtering for news articles
     required_tags: list[str] = []
@@ -81,12 +81,6 @@ class GuardianScraper(BaseScraper):
         "environment/electric-cars",
     ]
 
-    # Note: Article extraction now handled by trafilatura
-    # No need for manual CSS selectors - trafilatura automatically removes:
-    # - Navigation, ads, sidebars
-    # - Social sharing buttons
-    # - Author bios
-    # - Newsletter CTAs
 
     # Use base class HTTP session instead of Selenium
     skip_webdriver = True
@@ -102,8 +96,6 @@ class GuardianScraper(BaseScraper):
                 "GUARDIAN_API_KEY not configured - scraper will fail"
             )
 
-        # Article converter for body HTML
-        self._markdown = ArticleConverter()
 
     @retry_on_error(exceptions=(NetworkError,), max_attempts=5)
     def _api_request(
@@ -186,8 +178,7 @@ class GuardianScraper(BaseScraper):
         2. Iterate through all subject tags
         3. For each tag, paginate through results (with from-date filter if set)
         4. Track URLs to avoid duplicates across tags
-        5. Convert body HTML to Markdown
-        6. Save article as Markdown with metadata sidecar
+        5. Save article HTML with metadata sidecar
         7. Update last scrape date on success
 
         Yields:
@@ -377,7 +368,7 @@ class GuardianScraper(BaseScraper):
 
         # Create safe filename
         safe_title = sanitize_filename(title)
-        filename = f"{safe_title[:100]}.md"
+        filename = f"{safe_title[:100]}.html"
 
         # Create DocumentMetadata
         metadata = DocumentMetadata(
@@ -421,16 +412,13 @@ class GuardianScraper(BaseScraper):
             result.failed_count += 1
             return
 
-        # Convert body HTML to Markdown
-        content = self._convert_body_to_markdown(body_html)
-
-        # Save article
+        # Save article (HTML directly)
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1
             yield metadata.to_dict()
         else:
-            saved_path = self._save_article(metadata, content)
+            saved_path = self._save_article(metadata, body_html)
             if saved_path:
                 self._mark_processed(url, {"title": title})
                 result.downloaded_count += 1
@@ -438,21 +426,3 @@ class GuardianScraper(BaseScraper):
             else:
                 result.failed_count += 1
 
-    def _convert_body_to_markdown(self, body_html: str) -> str:
-        """
-        Convert API body HTML to GFM Markdown.
-
-        The API body is cleaner than scraped HTML (no nav, ads, etc.)
-        but still needs conversion to Markdown.
-
-        Args:
-            body_html: HTML from API body field
-
-        Returns:
-            GFM-compliant Markdown
-        """
-        # Wrap in article tag for the converter
-        full_html = f"<article>{body_html}</article>"
-
-        # ArticleConverter ignores selectors, extracts content automatically
-        return self._markdown.convert(full_html)

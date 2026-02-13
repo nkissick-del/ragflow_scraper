@@ -98,7 +98,7 @@ class TestVectorRAGBackendIngest:
         md_file.write_text("# Title\nHello world content here.")
 
         result = backend.ingest_document(
-            markdown_path=md_file,
+            content_path=md_file,
             metadata={"source": "aemo", "title": "Test"},
             collection_id="aemo",
         )

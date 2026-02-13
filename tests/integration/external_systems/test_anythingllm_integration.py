@@ -205,7 +205,7 @@ class TestBackendIntegration:
         }
 
         result = backend.ingest_document(
-            markdown_path=test_file,
+            content_path=test_file,
             metadata=metadata,
         )
 
@@ -228,7 +228,7 @@ class TestBackendIntegration:
         )
 
         result = backend.ingest_document(
-            markdown_path=test_file,
+            content_path=test_file,
             metadata={},
             collection_id="custom-workspace-456",
         )

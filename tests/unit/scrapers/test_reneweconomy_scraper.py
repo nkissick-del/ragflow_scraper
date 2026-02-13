@@ -305,7 +305,7 @@ class TestProcessPost:
         assert doc["extra"]["date_modified"] == "2025-12-24T10:00:00"
         assert doc["extra"]["content_type"] == "article"
 
-    def test_filename_is_md(self, scraper):
+    def test_filename_is_html(self, scraper):
         from app.scrapers.models import ScraperResult
 
         result = ScraperResult(status="in_progress", scraper="reneweconomy")
@@ -315,7 +315,7 @@ class TestProcessPost:
         docs = list(scraper._process_post(post, result))
 
         doc = docs[0]
-        assert doc["filename"].endswith(".md")
+        assert doc["filename"].endswith(".html")
 
     def test_organization_is_reneweconomy(self, scraper):
         from app.scrapers.models import ScraperResult
@@ -329,29 +329,6 @@ class TestProcessPost:
         doc = docs[0]
         assert doc["organization"] == "RenewEconomy"
         assert doc["document_type"] == "Article"
-
-
-class TestConvertContentToMarkdown:
-    """_convert_content_to_markdown converts WP body HTML to Markdown."""
-
-    def test_standard_html(self, scraper):
-        result = scraper._convert_content_to_markdown("<p>Hello world</p>")
-        assert isinstance(result, str)
-
-    def test_empty_body(self, scraper):
-        result = scraper._convert_content_to_markdown("")
-        assert isinstance(result, str)
-
-    def test_html_with_links_and_lists(self, scraper):
-        html = """
-        <p>Check out <a href="https://example.com">this link</a>.</p>
-        <ul>
-          <li>Item one</li>
-          <li>Item two</li>
-        </ul>
-        """
-        result = scraper._convert_content_to_markdown(html)
-        assert isinstance(result, str)
 
 
 class TestApiRequest:

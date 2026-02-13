@@ -199,20 +199,43 @@ class HybridDoclingChunker(ChunkingStrategy):
                     f"docling-serve chunking failed, using fallback: {e}"
                 )
 
-        # Fallback to FixedChunker
-        return self._fallback.chunk(text, metadata)
+        # Fallback to FixedChunker — strip HTML tags for clean text
+        plain_text = self._strip_html(text)
+        return self._fallback.chunk(plain_text, metadata)
+
+    @staticmethod
+    def _strip_html(text: str) -> str:
+        """Strip HTML tags if content looks like HTML, returning plain text."""
+        if "<" not in text:
+            return text
+        try:
+            from bs4 import BeautifulSoup  # type: ignore[import-untyped]
+
+            return BeautifulSoup(text, "html.parser").get_text(separator="\n")
+        except Exception:
+            return text
 
     def _chunk_via_docling(
         self, text: str, metadata: Optional[dict] = None
     ) -> list[Chunk]:
-        """Send markdown to docling-serve and parse chunked response."""
+        """Send content to docling-serve and parse chunked response."""
 
-        # Build a filename for the upload
-        filename = (metadata or {}).get("filename", "document.md")
-        if not filename.endswith(".md"):
-            filename = (
-                filename.rsplit(".", 1)[0] + ".md" if "." in filename else filename + ".md"
-            )
+        # Detect content type from filename or content
+        raw_filename = (metadata or {}).get("filename", "document.md")
+        is_html = raw_filename.endswith((".html", ".htm")) or (
+            text.lstrip()[:20].lower().startswith(("<!", "<html", "<article", "<div", "<p"))
+        )
+
+        if is_html:
+            content_type = "text/html"
+            ext = ".html"
+        else:
+            content_type = "text/markdown"
+            ext = ".md"
+
+        # Normalize filename extension
+        base = raw_filename.rsplit(".", 1)[0] if "." in raw_filename else raw_filename
+        filename = f"{base}{ext}"
 
         params = {
             "chunking_max_tokens": self._max_tokens,
@@ -221,7 +244,7 @@ class HybridDoclingChunker(ChunkingStrategy):
 
         response = requests.post(
             f"{self._docling_url}/v1/chunk/hybrid/file",
-            files={"files": (filename, text.encode("utf-8"), "text/markdown")},
+            files={"files": (filename, text.encode("utf-8"), content_type)},
             params=params,
             timeout=self._timeout,
         )
@@ -232,7 +255,7 @@ class HybridDoclingChunker(ChunkingStrategy):
         raw_chunks = data.get("chunks", [])
         if not raw_chunks:
             self.logger.warning("docling-serve returned 0 chunks, falling back")
-            return self._fallback.chunk(text, metadata)
+            return self._fallback.chunk(self._strip_html(text), metadata)
 
         base_metadata = dict(metadata or {})
         chunks: list[Chunk] = []

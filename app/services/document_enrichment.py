@@ -54,22 +54,22 @@ class DocumentEnrichmentService:
         self._max_tokens = max_tokens
         self.logger = get_logger("services.document_enrichment")
 
-    def enrich_metadata(self, markdown_path: Path) -> Optional[dict]:
-        """Extract structured metadata from a markdown document.
+    def enrich_metadata(self, content_path: Path) -> Optional[dict]:
+        """Extract structured metadata from a document.
 
         Reads the document, truncates if needed, and asks the LLM
         for structured JSON metadata (Tier 1).
 
         Args:
-            markdown_path: Path to the markdown file
+            content_path: Path to the content file (HTML, Markdown, etc.)
 
         Returns:
             Dict with extracted metadata, or None on any failure
         """
         try:
-            text = markdown_path.read_text(encoding="utf-8")
+            text = content_path.read_text(encoding="utf-8")
             if not text.strip():
-                self.logger.warning(f"Empty document, skipping enrichment: {markdown_path.name}")
+                self.logger.warning(f"Empty document, skipping enrichment: {content_path.name}")
                 return None
 
             # Truncate to approximate token limit (~4 chars/token)

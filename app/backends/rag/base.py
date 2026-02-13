@@ -38,15 +38,15 @@ class RAGBackend(ABC):
     @abstractmethod
     def ingest_document(
         self,
-        markdown_path: Path,
+        content_path: Path,
         metadata: dict[str, Any],
         collection_id: Optional[str] = None,
     ) -> RAGResult:
         """
-        Ingest a Markdown document into RAG system.
+        Ingest a document into RAG system.
 
         Args:
-            markdown_path: Path to Markdown file
+            content_path: Path to content file (HTML, Markdown, etc.)
             metadata: Document metadata dict
             collection_id: Optional collection/dataset ID
 

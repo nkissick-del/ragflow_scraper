@@ -67,7 +67,7 @@ class VectorRAGBackend(RAGBackend):
 
     def ingest_document(
         self,
-        markdown_path: Path,
+        content_path: Path,
         metadata: dict[str, Any],
         collection_id: Optional[str] = None,
     ) -> RAGResult:
@@ -78,24 +78,24 @@ class VectorRAGBackend(RAGBackend):
                 rag_name=self.name,
             )
 
-        if not markdown_path.exists():
+        if not content_path.exists():
             return RAGResult(
                 success=False,
-                error=f"Markdown file not found: {markdown_path}",
+                error=f"Content file not found: {content_path}",
                 rag_name=self.name,
             )
 
         try:
             # Determine source (partition key)
             source = collection_id or metadata.get("source", "default")
-            filename = markdown_path.name
+            filename = content_path.name
 
-            # Read markdown
-            text = markdown_path.read_text(encoding="utf-8")
+            # Read content
+            text = content_path.read_text(encoding="utf-8")
             if not text.strip():
                 return RAGResult(
                     success=False,
-                    error=f"Markdown file is empty: {markdown_path}",
+                    error=f"Content file is empty: {content_path}",
                     rag_name=self.name,
                 )
 
@@ -104,7 +104,7 @@ class VectorRAGBackend(RAGBackend):
             if not chunks:
                 return RAGResult(
                     success=False,
-                    error=f"No chunks produced from: {markdown_path}",
+                    error=f"No chunks produced from: {content_path}",
                     rag_name=self.name,
                 )
 
@@ -117,7 +117,7 @@ class VectorRAGBackend(RAGBackend):
             if not embedding_result.embeddings:
                 return RAGResult(
                     success=False,
-                    error=f"Embedding failed for: {markdown_path}",
+                    error=f"Embedding failed for: {content_path}",
                     rag_name=self.name,
                 )
             if len(embedding_result.embeddings) != len(chunks):

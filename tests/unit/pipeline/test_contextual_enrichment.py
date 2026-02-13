@@ -187,7 +187,7 @@ class TestPgVectorIngestWithEnrichment:
                  return_value=["enriched chunk 0", "enriched chunk 1"],
              ):
             result = backend.ingest_document(
-                markdown_path=md_file,
+                content_path=md_file,
                 metadata={"source": "test"},
             )
 
@@ -239,7 +239,7 @@ class TestPgVectorIngestWithEnrichment:
                  return_value=["ENRICHED: first chunk"],
              ):
             backend.ingest_document(
-                markdown_path=md_file,
+                content_path=md_file,
                 metadata={"source": "test"},
             )
 

@@ -119,7 +119,7 @@ class TestIngestDocument:
             backend.client, "upload_document", return_value=upload_result
         ):
             result = backend.ingest_document(
-                markdown_path=test_file,
+                content_path=test_file,
                 metadata={"title": "Test Doc", "url": "http://example.com"},
             )
 
@@ -138,7 +138,7 @@ class TestIngestDocument:
             backend.client, "upload_document", return_value=upload_result
         ) as mock_upload:
             result = backend.ingest_document(
-                markdown_path=test_file,
+                content_path=test_file,
                 metadata={},
                 collection_id="custom-workspace",
             )
@@ -167,7 +167,7 @@ class TestIngestDocument:
     def test_ingest_file_not_found(self, backend):
         """Should return error when file doesn't exist."""
         result = backend.ingest_document(
-            markdown_path=Path("/nonexistent/file.md"),
+            content_path=Path("/nonexistent/file.md"),
             metadata={},
         )
 

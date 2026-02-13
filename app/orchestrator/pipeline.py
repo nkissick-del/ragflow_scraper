@@ -318,6 +318,7 @@ class Pipeline:
             )
 
     # Format classification constants
+    _HTML_FORMATS = {".html", ".htm"}
     _MARKDOWN_FORMATS = {".md", ".markdown"}
     _OFFICE_FORMATS = {
         ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
@@ -329,9 +330,11 @@ class Pipeline:
         Detect document type for routing.
 
         Returns:
-            'markdown', 'pdf', or 'office'
+            'html', 'markdown', 'pdf', or 'office'
         """
         suffix = file_path.suffix.lower()
+        if suffix in self._HTML_FORMATS:
+            return "html"
         if suffix in self._MARKDOWN_FORMATS:
             return "markdown"
         if suffix == ".pdf":
@@ -347,7 +350,8 @@ class Pipeline:
         """
         Process a single document through the modular pipeline.
 
-        Supports three document flows:
+        Supports four document flows:
+        - 'html': Skip parsing (article HTML) → Gotenberg HTML→PDF for archive
         - 'pdf': Parse with configured parser backend → archive original PDF
         - 'markdown': Skip parsing (already markdown) → Gotenberg MD→PDF for archive
         - 'office': Parse with Tika → Gotenberg for PDF archive
@@ -379,8 +383,8 @@ class Pipeline:
         doc_type = self._detect_document_type(file_path)
         self.logger.info(f"Processing document ({doc_type}): {file_path.name}")
 
-        # Step 1: Parse → Markdown
-        md_path, parse_metadata = self._parse_document(file_path, doc_metadata, doc_type)
+        # Step 1: Parse document
+        content_path, parse_metadata = self._parse_document(file_path, doc_metadata, doc_type)
         result["parsed"] = True
 
         # Step 2: Merge metadata
@@ -399,7 +403,7 @@ class Pipeline:
 
         # Step 4: Prepare archive PDF (Gotenberg conversion for non-PDF)
         archive_file_path, archive_pdf_path = self._prepare_archive_file(
-            file_path, md_path, doc_type, merged_metadata)
+            file_path, content_path, doc_type, merged_metadata)
 
         # Step 5: Archive (if enabled)
         if self.upload_to_paperless:
@@ -418,10 +422,10 @@ class Pipeline:
 
         # Step 6: RAG ingestion (if enabled)
         if self.upload_to_ragflow and self.dataset_id:
-            result["rag_indexed"] = self._ingest_to_rag(md_path, merged_metadata)
+            result["rag_indexed"] = self._ingest_to_rag(content_path, merged_metadata)
 
         # Step 7: Cleanup
-        self._cleanup_local_files(file_path, md_path, archive_pdf_path, doc_dict, result)
+        self._cleanup_local_files(file_path, content_path, archive_pdf_path, doc_dict, result)
 
         return result
 
@@ -432,10 +436,10 @@ class Pipeline:
         doc_type: str,
     ) -> tuple[Path, dict]:
         """
-        Parse document to markdown based on type.
+        Parse document based on type.
 
         Returns:
-            (md_path, parse_metadata) — path to markdown file and extracted metadata dict
+            (content_path, parse_metadata) — path to content file and extracted metadata dict
 
         Raises:
             ParserBackendError: If parsing fails (FAIL FAST)
@@ -443,7 +447,14 @@ class Pipeline:
         md_path: Path
         parse_metadata: dict = {}
 
-        if doc_type == "markdown":
+        if doc_type == "html":
+            # HTML already exists — skip parsing
+            md_path = file_path
+            self.logger.info(
+                f"HTML file detected, skipping parse: {file_path.name}"
+            )
+
+        elif doc_type == "markdown":
             # Markdown already exists — skip parsing
             md_path = file_path
             self.logger.info(
@@ -520,7 +531,7 @@ class Pipeline:
     def _prepare_archive_file(
         self,
         file_path: Path,
-        md_path: Path,
+        content_path: Path,
         doc_type: str,
         merged_metadata: DocumentMetadata,
     ) -> tuple[Path, Path | None]:
@@ -538,9 +549,14 @@ class Pipeline:
         elif self.upload_to_paperless and Config.GOTENBERG_URL:
             try:
                 gotenberg = self.container.gotenberg_client
-                if doc_type == "markdown":
+                if doc_type == "html":
+                    pdf_bytes = gotenberg.convert_html_to_pdf(
+                        content_path.read_text(encoding="utf-8"),
+                        title=merged_metadata.title or "",
+                    )
+                elif doc_type == "markdown":
                     pdf_bytes = gotenberg.convert_markdown_to_pdf(
-                        md_path.read_text(encoding="utf-8"),
+                        content_path.read_text(encoding="utf-8"),
                         title=merged_metadata.title or "",
                     )
                 else:  # office
@@ -626,20 +642,20 @@ class Pipeline:
 
     def _ingest_to_rag(
         self,
-        md_path: Path,
+        content_path: Path,
         merged_metadata: DocumentMetadata,
     ) -> bool:
         """
-        Ingest markdown to RAG backend (non-fatal).
+        Ingest content to RAG backend (non-fatal).
 
         Returns:
             True if ingestion succeeded, False otherwise
         """
-        self.logger.info(f"Ingesting to RAG: {md_path.name}")
+        self.logger.info(f"Ingesting to RAG: {content_path.name}")
         rag = self.container.rag_backend
 
         rag_result = rag.ingest_document(
-            markdown_path=md_path,
+            content_path=content_path,
             metadata=merged_metadata.to_dict(),
             collection_id=self.dataset_id,
         )
@@ -656,7 +672,7 @@ class Pipeline:
     def _cleanup_local_files(
         self,
         file_path: Path,
-        md_path: Path,
+        content_path: Path,
         archive_pdf_path: Path | None,
         doc_dict: dict,
         result: dict,
@@ -687,8 +703,8 @@ class Pipeline:
         try:
             if file_path.exists():
                 file_path.unlink()
-            if md_path and md_path.exists() and md_path != file_path:
-                md_path.unlink()
+            if content_path and content_path.exists() and content_path != file_path:
+                content_path.unlink()
             # Delete metadata JSON if exists
             metadata_path = file_path.with_suffix(".json")
             if metadata_path.exists():
@@ -696,13 +712,6 @@ class Pipeline:
             # Clean up Gotenberg-generated archive PDF
             if archive_pdf_path and archive_pdf_path.exists():
                 archive_pdf_path.unlink()
-            # Clean up HTML file saved by scraper
-            extra = doc_dict.get("extra", {}) or {}
-            html_path_str = extra.get("html_path")
-            if html_path_str:
-                html_path = Path(html_path_str)
-                if html_path.exists():
-                    html_path.unlink()
             self.logger.debug("Local files deleted")
         except Exception as e:
             self.logger.warning(f"Failed to delete local files: {e}")
@@ -729,7 +738,7 @@ class Pipeline:
                         f"Tika enrichment failed (non-fatal): {e}"
                     )
 
-    def _run_llm_enrichment(self, md_path: Path, parse_metadata: dict):
+    def _run_llm_enrichment(self, content_path: Path, parse_metadata: dict):
         """Run optional LLM metadata enrichment (fill-gaps strategy)."""
         enrichment_enabled = Config.LLM_ENRICHMENT_ENABLED
         override = self.container.settings.get("pipeline.llm_enrichment_enabled", "")
@@ -749,7 +758,7 @@ class Pipeline:
 
             max_tokens = Config.LLM_ENRICHMENT_MAX_TOKENS
             service = DocumentEnrichmentService(llm_client, max_tokens=max_tokens)
-            enriched = service.enrich_metadata(md_path)
+            enriched = service.enrich_metadata(content_path)
 
             if not enriched:
                 return

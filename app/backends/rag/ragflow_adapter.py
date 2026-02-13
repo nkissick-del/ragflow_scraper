@@ -56,15 +56,15 @@ class RAGFlowBackend(RAGBackend):
 
     def ingest_document(
         self,
-        markdown_path: Path,
+        content_path: Path,
         metadata: dict,
         collection_id: Optional[str] = None,
     ) -> RAGResult:
         """
-        Ingest Markdown document into RAGFlow.
+        Ingest document into RAGFlow.
 
         Args:
-            markdown_path: Path to Markdown file
+            content_path: Path to content file (HTML, Markdown, etc.)
             metadata: Document metadata dict
             collection_id: Optional dataset ID (uses default if not provided)
 
@@ -76,8 +76,8 @@ class RAGFlowBackend(RAGBackend):
             self.logger.error(error_msg)
             return RAGResult(success=False, error=error_msg, rag_name=self.name)
 
-        if not markdown_path.exists():
-            error_msg = f"Markdown file not found: {markdown_path}"
+        if not content_path.exists():
+            error_msg = f"Content file not found: {content_path}"
             self.logger.error(error_msg)
             return RAGResult(success=False, error=error_msg, rag_name=self.name)
 
@@ -113,7 +113,7 @@ class RAGFlowBackend(RAGBackend):
             # Upload document with metadata using ingestion workflow
             upload_result = self.client.upload_documents_with_metadata(
                 dataset_id=dataset_id,
-                docs=[{"filepath": markdown_path, "metadata": ragflow_metadata}],
+                docs=[{"filepath": content_path, "metadata": ragflow_metadata}],
             )
 
             if not upload_result or not upload_result[0].success:
