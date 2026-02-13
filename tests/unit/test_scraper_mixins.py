@@ -748,16 +748,17 @@ class TestMetadataIOMixinEdgeCases:
         assert html_path.exists()
         assert html_path.read_text(encoding="utf-8") == "<h1>Content</h1>"
 
+    @patch("pathlib.Path.write_bytes")
     @patch("app.scrapers.common_mixins.ensure_dir")
-    def test_save_article_write_error_returns_none(self, mock_ensure_dir, tmp_path):
+    def test_save_article_write_error_returns_none(self, mock_ensure_dir, mock_write_bytes, tmp_path):
         """Should return None and clean up temps on write failure."""
         mixin = self._make_mixin()
-        # Use a read-only directory to cause write error
-        output_dir = tmp_path / "readonly"
+        output_dir = tmp_path / "output"
         output_dir.mkdir()
         mock_ensure_dir.return_value = output_dir
-        # Make directory read-only to force write failure
-        output_dir.chmod(0o444)
+
+        # Mock write_bytes to raise PermissionError
+        mock_write_bytes.side_effect = PermissionError("Permission denied")
 
         doc = DocumentMetadata(
             url="http://example.com/doc.pdf",
@@ -765,12 +766,9 @@ class TestMetadataIOMixinEdgeCases:
             filename="test_doc.pdf",
         )
 
-        try:
-            result = mixin._save_article(doc, "# Content")
-            assert result is None
-            mixin.logger.error.assert_called()
-        finally:
-            output_dir.chmod(0o755)
+        result = mixin._save_article(doc, "# Content")
+        assert result is None
+        mixin.logger.error.assert_called()
 
 
 # ---------------------------------------------------------------------------

@@ -1,54 +1,47 @@
 """
-RenewEconomy (reneweconomy.com.au) scraper for Australian energy news articles.
+RenewEconomy (reneweconomy.com.au) scraper using WordPress REST API.
 
-Scrapes articles from: https://reneweconomy.com.au/
-
-Server-side rendered site (no Cloudflare protection).
-Category-first strategy with homepage fallback.
-Pagination pattern: /category/{cat}/page/{n}/ or /page/{n}/
-Two-stage scraping: listing page -> article page for JSON-LD dates and content.
+Fetches articles from: https://reneweconomy.com.au/wp-json/wp/v2/posts
+API-based scraper (no FlareSolverr/browser required).
+Single-stage scraping: API returns full article content, categories, dates.
 Saves article content as Markdown for RAGFlow indexing.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Optional
-from urllib.parse import urljoin
-
-from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 
 from app.scrapers.base_scraper import BaseScraper
-from app.scrapers.flaresolverr_mixin import FlareSolverrPageFetchMixin
-from app.scrapers.jsonld_mixin import JSONLDDateExtractionMixin
 from app.scrapers.models import DocumentMetadata, ExcludedDocument, ScraperResult
-from app.scrapers.pagination_guard import PaginationGuard
 from app.utils import sanitize_filename, ArticleConverter
+from app.utils.retry import retry_on_error
+from app.utils.errors import NetworkError, ParsingError
 
 
-class RenewEconomyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, BaseScraper):
+class RenewEconomyScraper(BaseScraper):
     """
-    Scraper for RenewEconomy news articles.
+    API-based scraper for RenewEconomy Australian energy news articles.
 
     Key features:
-    - Uses FlareSolverr for rendered page fetching
-    - Server-side rendered (no JS challenge, no Cloudflare)
-    - Category-first scraping strategy with homepage fallback
-    - Path-based pagination: /category/{cat}/page/{n}/
-    - Two-stage scraping for full ISO 8601 dates from JSON-LD
+    - Uses WordPress REST API (no browser required)
+    - Single-stage: API returns title, content, dates, categories
+    - Category ID→name resolution via /categories endpoint
+    - Incremental scraping via `after` date parameter
     - Extracts article content as Markdown
-    - Categories: Renewables, Solar, Storage, Policy, Hydrogen, EVs, etc.
     """
 
     name = "reneweconomy"
     display_name = "RenewEconomy"
-    description = "Scrapes articles from RenewEconomy (reneweconomy.com.au)"
+    description = "Scrapes articles from RenewEconomy (reneweconomy.com.au) via WordPress API"
     base_url = "https://reneweconomy.com.au"
 
-    skip_webdriver = True  # Use FlareSolverr instead of Selenium
+    # API configuration
+    API_BASE_URL = "https://reneweconomy.com.au/wp-json/wp/v2"
+    API_PAGE_SIZE = 100  # WP API max per_page
 
     # RenewEconomy-specific settings
-    request_delay = 1.5  # Polite crawling
-    homepage_fallback_pages = 5  # Pages to check after categories
+    request_delay = 0.5  # API is lighter than HTML scraping
     default_chunk_method = "naive"  # Markdown articles need naive chunking
     default_parser = "Naive"  # No OCR needed for markdown
 
@@ -57,130 +50,150 @@ class RenewEconomyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin,
     excluded_tags: list[str] = []
     excluded_keywords: list[str] = []
 
-    # Categories to scrape (excludes multimedia)
-    CATEGORIES = [
-        # Renewables
-        "renewables",
-        "renewables/wind",
-        "renewables/wave",
-        "renewables/biomass",
-        "renewables/geothermal",
-        # Solar
-        "solar",
-        "solar/rooftop-pv",
-        "solar/utility-pv",
-        "solar/solar-thermal",
-        # Storage
-        "storage",
-        "storage/battery",
-        "storage/pumpedhydro",
-        # Other categories
-        "policyandplanning",
-        "hydrogen",
-        "electric-vehicles",
-        "electric-vehicles/electric-cars",
-        "electric-vehicles/hydrogen-fuel-cell",
-        # Content types
-        "chart-of-the-day",
-        "explainers",
-        "markets",
-        "utilities",
-        "press-releases",
-        "news-and-commentary",
-    ]
+    # Use base class HTTP session instead of Selenium
+    skip_webdriver = True
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initialize scraper with article converter."""
+        """Initialize API-based scraper."""
         super().__init__(*args, **kwargs)
 
-        # Use article converter
+        # Article converter for body HTML
         self._markdown = ArticleConverter()
 
-        # Track processed URLs across categories to avoid duplicates
-        self._session_processed_urls: set[str] = set()
+        # Category ID→name cache (populated on first scrape)
+        self._categories: dict[int, str] = {}
 
-    def _build_category_url(self, category: str, page: int) -> str:
+    @retry_on_error(exceptions=(NetworkError,), max_attempts=5)
+    def _api_request(
+        self,
+        endpoint: str,
+        params: Optional[dict[str, Any]] = None,
+    ) -> tuple[Any, dict[str, str]]:
         """
-        Build URL for a category page.
+        Make WordPress REST API request with retry.
 
         Args:
-            category: Category path (e.g., "storage/battery")
-            page: 1-indexed page number
+            endpoint: API path (e.g., "/posts", "/categories")
+            params: Query parameters
 
         Returns:
-            Full URL for the category page
+            Tuple of (parsed JSON response, response headers dict)
+
+        Raises:
+            NetworkError: If request fails
+            ParsingError: If JSON parsing fails
+            RuntimeError: If session not initialized
         """
-        if page == 1:
-            return f"{self.base_url}/category/{category}/"
-        return f"{self.base_url}/category/{category}/page/{page}/"
+        if not self._session:
+            raise RuntimeError("HTTP session not initialized")
 
-    def _build_homepage_url(self, page: int) -> str:
-        """
-        Build URL for a homepage page.
+        url = f"{self.API_BASE_URL}{endpoint}"
 
-        Args:
-            page: 1-indexed page number
+        response = self._request_with_retry(
+            self._session,
+            "get",
+            url,
+            params=params or {},
+            timeout=30,
+        )
 
-        Returns:
-            Full URL for the homepage page
-        """
-        if page == 1:
-            return f"{self.base_url}/"
-        return f"{self.base_url}/page/{page}/"
+        if response is None:
+            raise NetworkError(
+                f"Failed to fetch {endpoint}",
+                scraper=self.name,
+                context={"url": url, "endpoint": endpoint},
+            )
 
-    def _get_max_pages_from_html(self, html: str) -> Optional[int]:
-        """
-        Extract max page number from pagination element in HTML.
-
-        Args:
-            html: HTML content of the page
-
-        Returns:
-            Maximum page number or None if not found
-        """
-        soup = BeautifulSoup(html, "lxml")
-
-        # Find pagination container
-        pagination = soup.select_one(".wp-block-query-pagination-numbers")
-        if not pagination:
-            return None
-
-        # Find all page number links
-        page_links = pagination.select("a.page-numbers")
-        if not page_links:
-            return None
-
-        # Last link contains the maximum page number
-        last_link = page_links[-1]
         try:
-            return int(last_link.get_text(strip=True))
-        except ValueError:
-            return None
+            data = response.json()
+        except ValueError as exc:
+            raise ParsingError(
+                f"Failed to parse API response for {url}",
+                scraper=self.name,
+                context={"url": url},
+            ) from exc
 
-    def _extract_article_content(self, html: str) -> str:
+        headers = dict(response.headers)
+        return data, headers
+
+    def _fetch_categories(self) -> dict[int, str]:
         """
-        Extract article body content and convert to GFM-compliant Markdown.
-
-        Args:
-            html: HTML content of the article page
+        Fetch all WordPress categories and return ID→name mapping.
 
         Returns:
-            Article content as GFM Markdown string
+            Dict mapping category ID (int) to category name (str)
         """
-        # ArticleConverter automatically finds main content
-        return self._markdown.convert(html)
+        categories: dict[int, str] = {}
+        page = 1
+
+        while True:
+            params = {"per_page": 100, "page": page}
+            try:
+                data, headers = self._api_request("/categories", params)  # type: ignore[misc]
+            except (NetworkError, ParsingError) as e:
+                self.logger.warning(f"Failed to fetch categories page {page}: {e}")
+                break
+
+            if not data:
+                break
+
+            for cat in data:
+                cat_id = cat.get("id")
+                cat_name = cat.get("name", "")
+                if cat_id is not None and cat_name:
+                    categories[cat_id] = cat_name
+
+            # Check if more pages
+            try:
+                total_pages = int(headers.get("X-WP-TotalPages", "1"))
+            except ValueError:
+                break
+            if page >= total_pages:
+                break
+            page += 1
+
+        self.logger.info(f"Fetched {len(categories)} categories")
+        return categories
+
+    def _build_posts_params(
+        self,
+        page: int = 1,
+        from_date: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        Build API query parameters for the posts endpoint.
+
+        Args:
+            page: Page number (1-indexed)
+            from_date: Optional date filter (YYYY-MM-DD) for incremental scraping
+
+        Returns:
+            Dictionary of API parameters
+        """
+        params: dict[str, Any] = {
+            "per_page": self.API_PAGE_SIZE,
+            "page": page,
+            "orderby": "date",
+            "order": "desc",
+        }
+
+        if from_date:
+            params["after"] = f"{from_date}T00:00:00"
+
+        return params
 
     def scrape(self) -> ScraperResult:
         """
-        Scrape RenewEconomy articles.
+        Scrape RenewEconomy articles via WordPress REST API.
 
         Workflow:
-        1. Iterate through all categories
-        2. For each category, get max pages and scrape all pages
-        3. Track URLs to avoid duplicates across categories
-        4. Fall back to homepage for any uncategorized articles
-        5. For each article: fetch page, extract JSON-LD dates and content
+        1. Fetch category ID→name mapping
+        2. Check for last scrape date (incremental mode)
+        3. Paginate through all posts (with after filter if set)
+        4. Deduplicate by URL
+        5. Convert body HTML to Markdown
         6. Save article as Markdown with metadata sidecar
+        7. Update last scrape date on success
 
         Returns:
             ScraperResult with statistics and article metadata
@@ -190,19 +203,18 @@ class RenewEconomyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin,
             scraper=self.name,
         )
 
+        # Get last scrape date for incremental mode
+        self._from_date = self._get_last_scrape_date()
+
+        # Reset newest article tracker for this scrape
+        self._newest_article_date = None
+
         try:
-            # Phase 1: Scrape all categories
-            for category in self.CATEGORIES:
-                if self.check_cancelled():
-                    self.logger.info("Scraper cancelled")
-                    result.status = "cancelled"
-                    break
+            # Fetch categories for ID→name resolution
+            self._categories = self._fetch_categories()
 
-                self._scrape_category(category, result)
-
-            # Phase 2: Homepage fallback (if not cancelled)
-            if result.status != "cancelled":
-                self._scrape_homepage_fallback(result)
+            # Paginate through posts
+            self._scrape_posts(result)
 
             # Set final status
             if result.status != "cancelled":
@@ -213,6 +225,14 @@ class RenewEconomyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin,
                 else:
                     result.status = "completed"
 
+            # Update last scrape date on success
+            if result.status in ("completed", "partial") and not self.dry_run:
+                if self._newest_article_date:
+                    self._update_last_scrape_date(self._newest_article_date)
+                else:
+                    today = datetime.now().strftime("%Y-%m-%d")
+                    self._update_last_scrape_date(today)
+
         except Exception as e:
             self.logger.error(f"Scraper failed: {e}")
             result.errors.append(str(e))
@@ -220,388 +240,200 @@ class RenewEconomyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin,
 
         return result
 
-    def _scrape_category(self, category: str, result: ScraperResult) -> None:
+    def _scrape_posts(self, result: ScraperResult) -> None:
         """
-        Scrape all pages of a single category.
+        Paginate through WordPress posts API.
 
         Args:
-            category: Category path (e.g., "storage/battery")
             result: ScraperResult to update
         """
-        self.logger.info(f"Scraping category: {category}")
+        from_date_str = f" (from {self._from_date})" if self._from_date else ""
+        self.logger.info(f"Scraping posts via API{from_date_str}")
 
-        page_num = 1
-        max_pages: Optional[int] = None
-        guard = PaginationGuard()
+        page = 1
+        total_pages: Optional[int] = None
 
         while True:
             if self.check_cancelled():
+                self.logger.info("Scraper cancelled")
+                result.status = "cancelled"
                 break
 
-            # Apply user's max_pages limit if set
-            if self.max_pages and page_num > self.max_pages:
+            # Apply user's max_pages limit
+            if self.max_pages and page > self.max_pages:
                 self.logger.info(f"Reached max pages limit ({self.max_pages})")
                 break
 
-            # If we know max_pages and we've exceeded it, stop
-            if max_pages and page_num > max_pages:
+            # Stop if we've exceeded known pages
+            if total_pages is not None and page > total_pages:
                 break
-
-            page_url = self._build_category_url(category, page_num)
-
-            if max_pages:
-                self.logger.info(f"Scraping {category} page {page_num}/{max_pages}")
-            else:
-                self.logger.info(f"Scraping {category} page {page_num}")
 
             try:
-                # Fetch page via FlareSolverr (full result for redirect detection)
-                fs_result = self.fetch_rendered_page_full(page_url)
+                params = self._build_posts_params(page, self._from_date)
+                data, headers = self._api_request("/posts", params)  # type: ignore[misc]
 
-                if not fs_result.success or not fs_result.html:
-                    self.logger.warning(f"Failed to fetch {category} page {page_num}")
-                    should_stop, reason = guard.check_page([])
-                    if should_stop:
-                        self.logger.info(f"Stopping {category}: {reason}")
-                        break
-                    page_num += 1
-                    self._polite_delay()
-                    continue
-
-                # Check for redirect (end of pagination)
-                final_url = fs_result.url
-                if page_num > 1 and final_url and (
-                    f"/category/{category}" not in final_url
-                    or "/page/" not in final_url
-                ):
+                # Get pagination info on first page
+                if page == 1:
+                    try:
+                        total_pages = int(headers.get("X-WP-TotalPages", "1"))
+                        total_results = int(headers.get("X-WP-Total", "0"))
+                    except ValueError:
+                        total_pages = 1
+                        total_results = len(data) if data else 0
                     self.logger.info(
-                        f"Category {category} pagination ended (redirected to {final_url})"
-                    )
-                    break
-
-                page_html = fs_result.html
-
-                # On first page, try to get max pages from pagination
-                if page_num == 1:
-                    max_pages = self._get_max_pages_from_html(page_html)
-                    if max_pages:
-                        self.logger.info(f"Category '{category}' has {max_pages} pages")
-                    else:
-                        self.logger.info(
-                            f"No pagination found for {category}, will continue until empty"
-                        )
-
-                # Parse articles from listing page
-                articles = self.parse_page(page_html)
-                article_urls = [a.url for a in articles]
-
-                should_stop, reason = guard.check_page(article_urls)
-                if should_stop:
-                    self.logger.info(
-                        f"Pagination guard stopped {category}: {reason}"
-                    )
-                    break
-
-                if articles:
-                    result.scraped_count += len(articles)
-                    self.logger.info(
-                        f"Found {len(articles)} articles on {category} page {page_num}"
+                        f"Found {total_results} posts across {total_pages} pages"
                     )
 
-                    # Process each article
-                    for article in articles:
-                        if self.check_cancelled():
-                            break
-
-                        # Skip if already processed in this session
-                        if article.url in self._session_processed_urls:
-                            self.logger.debug(f"Already seen in session: {article.title}")
-                            continue
-
-                        self._session_processed_urls.add(article.url)
-
-                        # Add category to tags
-                        article.tags.append(category.split("/")[-1])
-                        article.extra["category"] = category
-
-                        self._process_article(article, result)
-                        self._polite_delay()
-
-            except Exception as e:
-                self.logger.error(f"Error on {category} page {page_num}: {e}")
-                result.errors.append(f"{category} page {page_num}: {str(e)}")
-                # Errors count as empty pages for guard purposes
-                should_stop, reason = guard.check_page([])
-                if should_stop:
-                    self.logger.info(
-                        f"Stopping {category}: {reason}"
-                    )
+                # Process results
+                if not data:
+                    self.logger.debug(f"No results on page {page}")
                     break
 
-            page_num += 1
-            self._polite_delay()
-
-    def _scrape_homepage_fallback(self, result: ScraperResult) -> None:
-        """
-        Scrape homepage pages to catch any uncategorized articles.
-
-        Args:
-            result: ScraperResult to update
-        """
-        self.logger.info(
-            f"Homepage fallback: checking {self.homepage_fallback_pages} pages"
-        )
-
-        for page_num in range(1, self.homepage_fallback_pages + 1):
-            if self.check_cancelled():
-                break
-
-            # Apply max_pages limit if set
-            if self.max_pages and page_num > self.max_pages:
-                break
-
-            page_url = self._build_homepage_url(page_num)
-            self.logger.info(f"Scraping homepage page {page_num}")
-
-            try:
-                # Fetch page via FlareSolverr (full result for redirect detection)
-                fs_result = self.fetch_rendered_page_full(page_url)
-
-                if not fs_result.success or not fs_result.html:
-                    self.logger.warning(f"Failed to fetch homepage page {page_num}")
-                    continue
-
-                # Check for redirect (end of pagination)
-                final_url = fs_result.url
-                if page_num > 1 and final_url and final_url.rstrip("/") == self.base_url:
-                    self.logger.info("Homepage pagination ended (redirected)")
-                    break
-
-                page_html = fs_result.html
-
-                # Parse articles from listing page
-                articles = self.parse_page(page_html)
-
-                if not articles:
-                    self.logger.debug(f"No articles on homepage page {page_num}")
-                    continue
-
-                # Count new articles (not seen in categories)
-                new_articles = [
-                    a for a in articles if a.url not in self._session_processed_urls
-                ]
                 self.logger.info(
-                    f"Found {len(new_articles)} new articles on homepage page {page_num}"
+                    f"Processing {len(data)} posts from page {page}"
                 )
 
-                result.scraped_count += len(new_articles)
-
-                # Process each new article
-                for article in new_articles:
+                for post in data:
                     if self.check_cancelled():
+                        result.status = "cancelled"
                         break
+                    self._process_post(post, result)
 
-                    self._session_processed_urls.add(article.url)
-                    article.extra["category"] = "homepage"
+                page += 1
+                self._polite_delay()
 
-                    self._process_article(article, result)
-                    self._polite_delay()
+            except (NetworkError, ParsingError) as e:
+                self.logger.error(f"API error on page {page}: {e}")
+                result.errors.append(f"Page {page}: {str(e)}")
+                break
 
-            except Exception as e:
-                self.logger.error(f"Error on homepage page {page_num}: {e}")
-                result.errors.append(f"Homepage page {page_num}: {str(e)}")
-
-            self._polite_delay()
-
-    def parse_page(self, page_source: str) -> list[DocumentMetadata]:
+    def _process_post(
+        self,
+        post: dict[str, Any],
+        result: ScraperResult,
+    ) -> None:
         """
-        Parse listing page and extract article metadata.
+        Process a single WordPress post from the API.
 
         Args:
-            page_source: HTML source of the listing page
-
-        Returns:
-            List of DocumentMetadata for articles found
+            post: WordPress post dict from API
+            result: ScraperResult to update
         """
-        soup = BeautifulSoup(page_source, "lxml")
-        articles: list[DocumentMetadata] = []
+        url = post.get("link", "")
 
-        # Find all post elements
-        post_elements = soup.select(".post")
-        self.logger.debug(f"Found {len(post_elements)} post elements")
+        # Cross-page dedup
+        if url in self._session_processed_urls:
+            self.logger.debug(f"Already seen in session: {url}")
+            return
 
-        for post_el in post_elements:
-            try:
-                doc = self._parse_post_item(post_el)
-                if doc:
-                    articles.append(doc)
-            except Exception as e:
-                self.logger.warning(f"Failed to parse post: {e}")
+        self._session_processed_urls.add(url)
+        result.scraped_count += 1
 
-        return articles
+        # Persistent state dedup
+        if self._is_processed(url):
+            self.logger.debug(f"Already processed: {url}")
+            result.skipped_count += 1
+            return
 
-    def _parse_post_item(self, post_el: Any) -> Optional[DocumentMetadata]:
-        """
-        Parse a single post element from the listing page.
-
-        Args:
-            post_el: BeautifulSoup post element
-
-        Returns:
-            DocumentMetadata or None if parsing fails
-        """
-        # Find article link (exclude category/author/tag links)
-        article_url = self._extract_article_url(post_el)
-        if not article_url:
-            return None
-
-        # Title from heading
-        title_el = post_el.select_one("h1, h2, h3, h4, h5, h6")
-        title = title_el.get_text(strip=True) if title_el else ""
+        # Extract title
+        title_obj = post.get("title", {})
+        title = title_obj.get("rendered", "") if isinstance(title_obj, dict) else ""
         if not title:
-            self.logger.debug(f"No title found for article: {article_url}")
-            return None
+            self.logger.warning(f"No title for post: {url}")
+            return
 
-        # Category
-        category_el = post_el.select_one(".post-primary-category")
-        category = category_el.get_text(strip=True) if category_el else ""
+        # Parse publication date
+        pub_date = self._parse_iso_date(post.get("date", ""))
+
+        # Track newest article date for incremental scraping
+        self._track_article_date(pub_date)
+
+        # Resolve category IDs to names
+        category_ids = post.get("categories", [])
+        category_names = [
+            self._categories[cid]
+            for cid in category_ids
+            if cid in self._categories
+        ]
 
         # Build tags
         tags = ["RenewEconomy"]
-        if category:
-            tags.append(category)
+        tags.extend(category_names)
 
-        # Create filename from title
+        # Create safe filename
         safe_title = sanitize_filename(title)
         filename = f"{safe_title[:100]}.md"
 
-        return DocumentMetadata(
-            url=article_url,
+        # Create DocumentMetadata
+        metadata = DocumentMetadata(
+            url=url,
             title=title,
             filename=filename,
-            publication_date=None,  # Will be filled from JSON-LD
+            publication_date=pub_date,
             tags=tags,
             source_page=self.base_url,
             organization="RenewEconomy",
             document_type="Article",
             extra={
-                "category": category,
+                "slug": post.get("slug", ""),
+                "wp_id": post.get("id", ""),
+                "categories": category_names,
+                "date_modified": post.get("modified", ""),
                 "content_type": "article",
             },
         )
 
-    def _extract_article_url(self, post_el: Any) -> Optional[str]:
-        """
-        Extract article URL from a post element.
-
-        Filters out category, author, and tag links.
-
-        Args:
-            post_el: BeautifulSoup post element
-
-        Returns:
-            Article URL or None
-        """
-        # Find all links in the post
-        links = post_el.select("a[href]")
-
-        for link in links:
-            href = link.get("href", "")
-            if not href:
-                continue
-
-            # Skip non-article links
-            skip_patterns = ["/category/", "/author/", "/tag/", "#"]
-            if any(pattern in href for pattern in skip_patterns):
-                continue
-
-            # Must be a RenewEconomy URL
-            if "reneweconomy.com.au" in href:
-                return href
-
-            # Handle relative URLs
-            if href.startswith("/") and not any(
-                href.startswith(p) for p in ["/category", "/author", "/tag"]
-            ):
-                return urljoin(self.base_url, href)
-
-        return None
-
-    def _process_article(
-        self, article: DocumentMetadata, result: ScraperResult
-    ) -> None:
-        """
-        Process a single article: fetch full dates and content, save as Markdown.
-
-        Args:
-            article: DocumentMetadata from listing page
-            result: ScraperResult to update
-        """
         # Check exclusion
-        exclusion_reason = self.should_exclude_document(article)
+        exclusion_reason = self.should_exclude_document(metadata)
         if exclusion_reason:
-            self.logger.debug(f"Excluded: {article.title} ({exclusion_reason})")
+            self.logger.debug(f"Excluded: {title} ({exclusion_reason})")
             result.excluded_count += 1
             result.excluded.append(
                 ExcludedDocument(
-                    title=article.title,
-                    url=article.url,
+                    title=title,
+                    url=url,
                     reason=exclusion_reason,
                 ).to_dict()
             )
             return
 
-        # Check if already processed (persistent state)
-        if self._is_processed(article.url):
-            self.logger.debug(f"Already processed: {article.title}")
-            result.skipped_count += 1
+        # Get body content
+        content_obj = post.get("content", {})
+        body_html = content_obj.get("rendered", "") if isinstance(content_obj, dict) else ""
+        if not body_html:
+            self.logger.warning(f"No body content for: {title}")
+            result.failed_count += 1
             return
 
-        # Stage 2: Fetch article page for JSON-LD dates and content
-        try:
-            self.logger.debug(f"Fetching article: {article.url}")
-            article_html = self.fetch_rendered_page(article.url)
-            if not article_html:
-                self.logger.warning(f"Empty response for article: {article.url}")
-                result.failed_count += 1
-                return
+        # Convert body HTML to Markdown
+        content = self._convert_content_to_markdown(body_html)
 
-            # Extract JSON-LD dates
-            dates = self._extract_jsonld_dates(article_html)
-
-            # Update article metadata with full dates
-            if dates["date_published"]:
-                article.publication_date = dates["date_published"]
-                article.extra["date_published_iso"] = dates["date_published"]
-            if dates["date_modified"]:
-                article.extra["date_modified"] = dates["date_modified"]
-
-            self.logger.debug(
-                f"Extracted dates for '{article.title}': "
-                f"published={dates['date_published']}"
-            )
-
-            # Extract article content as Markdown
-            content = self._extract_article_content(article_html)
-
-            if self.dry_run:
-                self.logger.info(f"[DRY RUN] Would save: {article.title}")
+        # Save article
+        if self.dry_run:
+            self.logger.info(f"[DRY RUN] Would save: {title}")
+            result.downloaded_count += 1
+            result.documents.append(metadata.to_dict())
+        else:
+            saved_path = self._save_article(metadata, content)
+            if saved_path:
                 result.downloaded_count += 1
-                result.documents.append(article.to_dict())
+                result.documents.append(metadata.to_dict())
+                self._mark_processed(url, {"title": title})
             else:
-                # Set filename before calling base method
-                article.filename = sanitize_filename(article.title)[:100]
+                result.failed_count += 1
 
-                # Save article as Markdown with metadata (uses base class method)
-                saved_path = self._save_article(article, content)
+    def _convert_content_to_markdown(self, body_html: str) -> str:
+        """
+        Convert WordPress post body HTML to GFM Markdown.
 
-                if saved_path:
-                    result.downloaded_count += 1
-                    result.documents.append(article.to_dict())
-                    self._mark_processed(article.url, {"title": article.title})
-                else:
-                    result.failed_count += 1
+        The API body is cleaner than scraped HTML (no nav, ads, etc.)
+        but still needs conversion to Markdown.
 
-        except Exception as e:
-            self.logger.warning(f"Failed to process article {article.url}: {e}")
-            result.failed_count += 1
+        Args:
+            body_html: HTML from content.rendered field
+
+        Returns:
+            GFM-compliant Markdown
+        """
+        full_html = f"<article>{body_html}</article>"
+        return self._markdown.convert(full_html)
