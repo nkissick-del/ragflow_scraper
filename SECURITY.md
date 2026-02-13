@@ -125,7 +125,7 @@ Application logs security-relevant events:
 - Malformed requests
 - Rate limit violations
 
-See [LOGGING_AND_ERROR_STANDARDS.md](docs/development/ERROR_HANDLING.md) for log details.
+See [LOGGING_AND_ERROR_STANDARDS.md](docs/development/LOGGING_AND_ERROR_STANDARDS.md) for log details.
 
 ## Dependency Security
 
