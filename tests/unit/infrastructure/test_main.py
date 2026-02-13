@@ -14,7 +14,7 @@ class TestMain:
         self.mock_config = MagicMock()
         self.mock_config.HOST = "0.0.0.0"
         self.mock_config.PORT = 5000
-        self.mock_config.DEBUG = False
+        self.mock_config.DEBUG = True  # Use Flask dev server path in tests
         self.mock_config.LOG_LEVEL = "INFO"
         self.mock_config.DATABASE_URL = ""
         self.mock_config.ANYTHINGLLM_VIEW_NAME = "test_view"
@@ -62,7 +62,7 @@ class TestMain:
         self.mock_app.run.assert_called_once_with(
             host="0.0.0.0",
             port=5000,
-            debug=False,
+            debug=True,
         )
 
     def test_config_validation_failure(self):
@@ -139,7 +139,23 @@ class TestMain:
         # Should NOT raise
         main()
 
-        # App should still run
+        # App should still run (via Flask dev server since DEBUG=True)
         self.mock_app.run.assert_called_once()
         # Exception should be logged
         self.mock_logger.exception.assert_called()
+
+    def test_gunicorn_used_when_debug_false(self):
+        """When DEBUG is False, main() should use gunicorn instead of app.run()."""
+        self.mock_config.DEBUG = False
+
+        from gunicorn.app.base import BaseApplication as RealBase
+        from app.main import main
+
+        with patch.object(RealBase, "__init__", return_value=None), \
+             patch.object(RealBase, "run") as mock_run:
+            main()
+
+        # Flask dev server should NOT be called
+        self.mock_app.run.assert_not_called()
+        # Gunicorn should have been started
+        assert mock_run.called

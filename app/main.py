@@ -75,7 +75,7 @@ def main():
     except Exception:  # Keep the app booting even if scheduler fails
         logger.exception("Failed to initialize scheduler")
 
-    # Run the development server
+    # Run the server
     print(f"\n{'=' * 60}")
     print("PDF Scraper Web Interface")
     print(f"{'=' * 60}")
@@ -83,11 +83,40 @@ def main():
     print(f"Debug mode: {'enabled' if Config.DEBUG else 'disabled'}")
     print(f"{'=' * 60}\n")
 
-    app.run(
-        host=Config.HOST,
-        port=Config.PORT,
-        debug=Config.DEBUG,
-    )
+    if Config.DEBUG:
+        # Use Flask dev server for auto-reload during development
+        app.run(
+            host=Config.HOST,
+            port=Config.PORT,
+            debug=True,
+        )
+    else:
+        from gunicorn.app.base import BaseApplication
+
+        class StandaloneApplication(BaseApplication):
+            def __init__(self, application, options=None):
+                self.options = options or {}
+                self.application = application
+                super().__init__()
+
+            def load_config(self):
+                for key, value in self.options.items():
+                    if key in self.cfg.settings and value is not None:
+                        self.cfg.set(key.lower(), value)
+
+            def load(self):
+                return self.application
+
+        options = {
+            "bind": f"{Config.HOST}:{Config.PORT}",
+            "workers": 1,
+            "threads": 4,
+            "worker_class": "gthread",
+            "timeout": 120,
+            "accesslog": "-",
+            "errorlog": "-",
+        }
+        StandaloneApplication(app, options).run()
 
 
 if __name__ == "__main__":

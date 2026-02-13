@@ -74,7 +74,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Entrypoint creates dirs, fixes permissions, then drops to scraper user via gosu
 ENTRYPOINT ["docker-entrypoint.sh"]
 
-# Default command - run the web interface
+# Default command - run the web interface via gunicorn
 CMD ["python", "app/main.py"]
 
 # Stage 2b: Runtime with dev/test deps (opt-in for local dev/CI)
