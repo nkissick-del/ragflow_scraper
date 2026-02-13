@@ -139,3 +139,94 @@ class TestSourcesAPI:
         data = resp.get_json()
         assert len(data["sources"]) == 2
         assert data["stats"]["total_chunks"] == 150
+
+
+class TestSearchAPIValidation:
+    """Test input validation edge cases for POST /api/search."""
+
+    def test_sources_not_a_list(self, client):
+        """sources must be a list, not a string."""
+        resp = client.post(
+            "/api/search",
+            data=json.dumps({"query": "test", "sources": "aemo"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "sources must be a list"
+
+    def test_invalid_source_name(self, client):
+        """Source names containing special characters should be rejected."""
+        resp = client.post(
+            "/api/search",
+            data=json.dumps({"query": "test", "sources": ["../evil"]}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "Invalid source name"
+
+    def test_metadata_filter_not_a_dict(self, client):
+        """metadata_filter must be a dict, not a list."""
+        resp = client.post(
+            "/api/search",
+            data=json.dumps({"query": "test", "metadata_filter": ["bad"]}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "metadata_filter must be an object"
+
+    def test_search_non_integer_limit_uses_default(self, client):
+        """Non-integer limit should fall back to default 10."""
+        resp = client.post(
+            "/api/search",
+            data=json.dumps({"query": "test", "limit": "abc"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+
+
+class TestDocumentChunksAPI:
+    """Test GET /api/search/document/<source>/<filename>."""
+
+    def test_get_document_chunks_success(self, client, app):
+        """Valid source and filename should return chunks."""
+        # Access the mock pgvector_client through the app's patched container
+        with app.app_context():
+            from app.web.blueprints.search import container as search_container
+            search_container.pgvector_client.get_document_chunks.return_value = [
+                {"chunk_index": 0, "content": "chunk one"},
+                {"chunk_index": 1, "content": "chunk two"},
+            ]
+
+        resp = client.get("/api/search/document/aemo/report.md")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["source"] == "aemo"
+        assert data["filename"] == "report.md"
+        assert data["chunk_count"] == 2
+
+    def test_invalid_source_with_traversal(self, client):
+        """Source containing '..' should be rejected."""
+        resp = client.get("/api/search/document/../etc/report.md")
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "Invalid source"
+
+    def test_invalid_filename_with_traversal(self, client):
+        """Filename containing '..' should be rejected."""
+        resp = client.get("/api/search/document/aemo/../../etc/passwd")
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "Invalid filename"
+
+    def test_pgvector_not_configured(self, client, app):
+        """When pgvector is not configured, should return 503."""
+        with app.app_context():
+            from app.web.blueprints.search import container as search_container
+            search_container.pgvector_client.is_configured.return_value = False
+
+        resp = client.get("/api/search/document/aemo/report.md")
+        assert resp.status_code == 503
+        assert resp.get_json()["error"] == "pgvector not configured"
+
+        # Reset for other tests
+        with app.app_context():
+            from app.web.blueprints.search import container as search_container
+            search_container.pgvector_client.is_configured.return_value = True
