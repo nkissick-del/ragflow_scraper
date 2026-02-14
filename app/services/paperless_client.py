@@ -123,6 +123,21 @@ class PaperlessClient:
         """Check if client has necessary credentials."""
         return bool(self.url and self.token)
 
+    def _ensure_public(self, endpoint: str, item_id: int, name: str) -> None:
+        """PATCH an object to set owner=null if currently private."""
+        try:
+            response = self.session.patch(
+                f"{self.url}/api/{endpoint}/{item_id}/",
+                json={"owner": None},
+                timeout=30,
+            )
+            response.raise_for_status()
+            self.logger.info(f"Made {endpoint} '{name}' (ID {item_id}) public")
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to make {endpoint} '{name}' (ID {item_id}) public: {e}"
+            )
+
     def _fetch_correspondents(self) -> dict[str, int]:
         """
         Fetch all correspondents from Paperless API with pagination.
@@ -146,6 +161,8 @@ class PaperlessClient:
                 corr_id = item.get("id")
                 if name and corr_id:
                     correspondents[name] = corr_id
+                    if item.get("owner") is not None:
+                        self._ensure_public("correspondents", corr_id, name)
 
             next_url = data.get("next")
 
@@ -236,6 +253,8 @@ class PaperlessClient:
                 dt_id = item.get("id")
                 if name and dt_id:
                     doc_types[name] = dt_id
+                    if item.get("owner") is not None:
+                        self._ensure_public("document_types", dt_id, name)
 
             next_url = data.get("next")
 
@@ -325,6 +344,8 @@ class PaperlessClient:
                 tag_id = item.get("id")
                 if name and tag_id:
                     tags[name] = tag_id
+                    if item.get("owner") is not None:
+                        self._ensure_public("tags", tag_id, name)
 
             next_url = data.get("next")
 
@@ -408,6 +429,8 @@ class PaperlessClient:
                 field_id = item.get("id")
                 if name and field_id:
                     fields[name] = field_id
+                    if item.get("owner") is not None:
+                        self._ensure_public("custom_fields", field_id, name)
 
             next_url = data.get("next")
 

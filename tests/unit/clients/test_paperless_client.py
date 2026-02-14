@@ -1369,3 +1369,155 @@ class TestGetTaskStatusEdgeCases:
             result = client.get_task_status("12345678-1234-1234-1234-123456789abc")
 
         assert result is None
+
+
+class TestEnsurePublic:
+    """Test _ensure_public() helper."""
+
+    def test_patches_with_owner_null(self, client):
+        """Should PATCH the object with owner=null."""
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(client.session, "patch", return_value=mock_response) as mock_patch:
+            client._ensure_public("correspondents", 42, "AEMO")
+
+        mock_patch.assert_called_once_with(
+            "http://localhost:8000/api/correspondents/42/",
+            json={"owner": None},
+            timeout=30,
+        )
+
+    def test_logs_warning_on_failure(self, client):
+        """Should log warning but not raise on PATCH failure."""
+        with patch.object(
+            client.session, "patch", side_effect=Exception("Network error")
+        ):
+            # Should not raise
+            client._ensure_public("tags", 10, "Energy")
+
+    def test_handles_http_error_gracefully(self, client):
+        """Should handle HTTP error response without raising."""
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = Exception("403 Forbidden")
+
+        with patch.object(client.session, "patch", return_value=mock_response):
+            # Should not raise
+            client._ensure_public("document_types", 5, "Article")
+
+
+class TestFetchEnsuresPublic:
+    """Test that _fetch_*() methods call _ensure_public for private objects."""
+
+    def test_fetch_correspondents_patches_private(self, client):
+        """Should PATCH correspondents with non-null owner."""
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.json.return_value = {
+            "results": [
+                {"id": 1, "name": "PublicOrg", "owner": None},
+                {"id": 2, "name": "PrivateOrg", "owner": 3},
+            ],
+            "next": None,
+        }
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            with patch.object(client, "_ensure_public") as mock_ensure:
+                result = client._fetch_correspondents()
+
+        assert result == {"PublicOrg": 1, "PrivateOrg": 2}
+        mock_ensure.assert_called_once_with("correspondents", 2, "PrivateOrg")
+
+    def test_fetch_tags_patches_private(self, client):
+        """Should PATCH tags with non-null owner."""
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.json.return_value = {
+            "results": [
+                {"id": 10, "name": "Public", "owner": None},
+                {"id": 20, "name": "Private", "owner": 1},
+            ],
+            "next": None,
+        }
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            with patch.object(client, "_ensure_public") as mock_ensure:
+                result = client._fetch_tags()
+
+        assert result == {"Public": 10, "Private": 20}
+        mock_ensure.assert_called_once_with("tags", 20, "Private")
+
+    def test_fetch_document_types_patches_private(self, client):
+        """Should PATCH document types with non-null owner."""
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.json.return_value = {
+            "results": [
+                {"id": 1, "name": "Article", "owner": 5},
+            ],
+            "next": None,
+        }
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            with patch.object(client, "_ensure_public") as mock_ensure:
+                result = client._fetch_document_types()
+
+        assert result == {"Article": 1}
+        mock_ensure.assert_called_once_with("document_types", 1, "Article")
+
+    def test_fetch_custom_fields_patches_private(self, client):
+        """Should PATCH custom fields with non-null owner."""
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.json.return_value = {
+            "results": [
+                {"id": 1, "name": "Original URL", "owner": 2},
+                {"id": 2, "name": "Scraped Date", "owner": None},
+            ],
+            "next": None,
+        }
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            with patch.object(client, "_ensure_public") as mock_ensure:
+                result = client._fetch_custom_fields()
+
+        assert result == {"Original URL": 1, "Scraped Date": 2}
+        mock_ensure.assert_called_once_with("custom_fields", 1, "Original URL")
+
+    def test_fetch_skips_items_without_owner_key(self, client):
+        """Should not PATCH items missing the owner key entirely."""
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.json.return_value = {
+            "results": [
+                {"id": 1, "name": "NoOwnerKey"},  # No owner key
+            ],
+            "next": None,
+        }
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            with patch.object(client, "_ensure_public") as mock_ensure:
+                result = client._fetch_correspondents()
+
+        assert result == {"NoOwnerKey": 1}
+        mock_ensure.assert_not_called()
+
+    def test_fetch_still_caches_on_patch_failure(self, client):
+        """Cache should be populated even if PATCH to make public fails."""
+        get_response = Mock()
+        get_response.raise_for_status = Mock()
+        get_response.json.return_value = {
+            "results": [
+                {"id": 1, "name": "PrivateTag", "owner": 5},
+            ],
+            "next": None,
+        }
+
+        with patch.object(client.session, "get", return_value=get_response):
+            with patch.object(
+                client.session, "patch", side_effect=Exception("PATCH failed")
+            ):
+                result = client._fetch_tags()
+
+        # Cache populated despite PATCH failure (_ensure_public is fire-and-forget)
+        assert result == {"PrivateTag": 1}
