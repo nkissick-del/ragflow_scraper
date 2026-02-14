@@ -448,10 +448,30 @@ class Pipeline:
         parse_metadata: dict = {}
 
         if doc_type == "html":
-            # HTML already exists — skip parsing
-            md_path = file_path
+            # HTML — send through parser backend (docling handles HTML
+            # with hybrid chunking for proper structure-aware splitting)
+            self.logger.info(f"Parsing HTML document: {file_path.name}")
+            parser = self.container.parser_backend
+            parse_result = parser.parse_document(file_path, doc_metadata)
+
+            if not parse_result.success:
+                raise ParserBackendError(
+                    parse_result.error or "Parser failed on HTML document"
+                )
+
+            if not parse_result.markdown_path:
+                error_msg = (
+                    f"Parser '{parse_result.parser_name}' succeeded "
+                    f"but returned no markdown_path for HTML"
+                )
+                if parse_result.error:
+                    error_msg += f": {parse_result.error}"
+                raise ParserBackendError(error_msg)
+
+            md_path = parse_result.markdown_path
+            parse_metadata = parse_result.metadata or {}
             self.logger.info(
-                f"HTML file detected, skipping parse: {file_path.name}"
+                f"HTML parse successful: {md_path.name} ({parse_result.parser_name})"
             )
 
         elif doc_type == "markdown":
