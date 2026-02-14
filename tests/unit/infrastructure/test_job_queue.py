@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
-from app.web.job_queue import JobQueue
+from app.web.job_queue import JobQueue, _safe_result_dict
 
 
 class TestJobQueue:
@@ -483,3 +483,125 @@ class TestJobQueueConcurrency:
         self.queue.enqueue("rerun", scraper, preview=True)
         job2 = self.queue.get("rerun")
         assert job2 is not None
+
+
+class TestJobQueueWithStore:
+    """Test JobQueue with an optional JobStore."""
+
+    def setup_method(self):
+        self.store = MagicMock()
+        self.queue = JobQueue(daemon=True, job_store=self.store)
+
+    def test_enqueue_persists_to_store(self):
+        scraper = Mock()
+        scraper.name = "test_scraper"
+
+        self.queue.enqueue("test_scraper", scraper, preview=True, max_pages=3)
+
+        self.store.upsert.assert_called_once_with(
+            job_id="test_scraper",
+            scraper_name="test_scraper",
+            preview=True,
+            dry_run=False,
+            max_pages=3,
+        )
+
+    def test_cancel_updates_store(self):
+        scraper = Mock()
+        scraper.name = "test_scraper"
+        self.queue.enqueue("test_scraper", scraper)
+
+        self.queue.cancel("test_scraper")
+
+        self.store.update_status.assert_called_with("test_scraper", "cancelling")
+
+    def test_status_falls_back_to_store(self):
+        """When no in-memory job, status falls back to persistent store."""
+        self.store.get.return_value = {"status": "completed"}
+
+        status = self.queue.status("old_job")
+
+        assert status == "completed"
+        self.store.get.assert_called_with("old_job")
+
+    def test_status_returns_idle_when_store_has_nothing(self):
+        self.store.get.return_value = None
+
+        status = self.queue.status("missing")
+        assert status == "idle"
+
+    def test_drop_deletes_from_store(self):
+        scraper = Mock()
+        scraper.name = "test_scraper"
+        scraper.run = Mock(return_value=None)
+        self.queue.enqueue("test_scraper", scraper)
+
+        job = self.queue.get("test_scraper")
+        job.status = "completed"
+
+        self.queue.drop("test_scraper")
+
+        self.store.delete.assert_called_with("test_scraper")
+
+    def test_get_stored_returns_dict(self):
+        self.store.get.return_value = {"id": "old", "status": "completed"}
+
+        result = self.queue.get_stored("old")
+        assert result["id"] == "old"
+
+    def test_get_stored_returns_none_without_store(self):
+        queue = JobQueue(daemon=True, job_store=None)
+        result = queue.get_stored("old")
+        assert result is None
+
+    def test_store_failure_does_not_block_enqueue(self):
+        """Store I/O failure should not prevent job from being queued."""
+        self.store.upsert.side_effect = Exception("DB down")
+
+        scraper = Mock()
+        scraper.name = "test"
+        job = self.queue.enqueue("test", scraper)
+
+        assert job is not None
+        assert job.scraper_name == "test"
+
+    def test_worker_persists_final_state(self):
+        """After execution, worker should persist job state to store."""
+        import time
+
+        scraper = Mock()
+        scraper.name = "persist_test"
+        scraper.run = Mock(return_value={"docs": 5})
+
+        self.queue.enqueue("persist_test", scraper)
+
+        time.sleep(1.5)
+
+        # Should have called update_status at least twice:
+        # once for running, once for completed
+        assert self.store.update_status.call_count >= 2
+
+
+class TestSafeResultDict:
+    """Test _safe_result_dict helper."""
+
+    def test_none_returns_none(self):
+        assert _safe_result_dict(None) is None
+
+    def test_dict_returned_as_is(self):
+        d = {"a": 1}
+        assert _safe_result_dict(d) == {"a": 1}
+
+    def test_object_with_to_dict(self):
+        obj = Mock()
+        obj.to_dict.return_value = {"x": 42}
+        assert _safe_result_dict(obj) == {"x": 42}
+
+    def test_to_dict_exception_returns_none(self):
+        obj = Mock()
+        obj.to_dict.side_effect = Exception("oops")
+        assert _safe_result_dict(obj) is None
+
+    def test_non_dict_non_to_dict_returns_none(self):
+        assert _safe_result_dict("just a string") is None
+        assert _safe_result_dict(42) is None

@@ -46,6 +46,8 @@ services:
       - GOTENBERG_URL=http://gotenberg:3000
       # pgvector RAG backend
       - DATABASE_URL=${DATABASE_URL:-}
+      # Redis / Valkey (job dispatch and real-time events)
+      - REDIS_URL=${REDIS_URL:-}
       - EMBEDDING_BACKEND=${EMBEDDING_BACKEND:-ollama}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
       - EMBEDDING_URL=${EMBEDDING_URL:-}

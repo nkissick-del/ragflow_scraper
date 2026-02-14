@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.services.tika_client import TikaClient
     from app.services.embedding_client import EmbeddingClient
     from app.services.llm_client import LLMClient
+    from app.services.state_store import StateStore
 
 
 class ServiceContainer:
@@ -68,6 +69,9 @@ class ServiceContainer:
         self._tika_client: Optional[TikaClient] = None
         self._embedding_client: Optional[EmbeddingClient] = None
         self._llm_client: Optional[LLMClient] = None
+
+        # State store (PostgreSQL, lazy-loaded)
+        self._state_store: Optional[StateStore] = None
 
         # State trackers (cached by scraper name)
         self._state_trackers: dict[str, StateTracker] = {}
@@ -147,9 +151,32 @@ class ServiceContainer:
             self.logger.debug("Initialized Scheduler")
         return self._scheduler
 
+    def _get_state_store(self) -> Optional["StateStore"]:
+        """Get or create the shared StateStore (lazy, cached)."""
+        if self._state_store is not None:
+            return self._state_store
+        from app.services import db_pool
+
+        if not db_pool.is_configured():
+            return None
+        try:
+            from app.services.state_store import StateStore
+
+            pool = db_pool.get_pool()
+            self._state_store = StateStore(pool)
+            self._state_store.ensure_schema()
+            self.logger.debug("Initialized StateStore (PostgreSQL)")
+            return self._state_store
+        except Exception as e:
+            self.logger.warning(f"StateStore unavailable, using file fallback: {e}")
+            return None
+
     def state_tracker(self, scraper_name: str) -> StateTracker:
         """
         Get or create state tracker for a scraper (factory pattern).
+
+        When DATABASE_URL is configured, injects a StateStore so all
+        state is persisted to PostgreSQL.
 
         Args:
             scraper_name: Name of the scraper (e.g., "aemo")
@@ -159,7 +186,8 @@ class ServiceContainer:
         """
         with self._trackers_lock:
             if scraper_name not in self._state_trackers:
-                tracker = StateTracker(scraper_name)
+                store = self._get_state_store()
+                tracker = StateTracker(scraper_name, state_store=store)
                 self._state_trackers[scraper_name] = tracker
                 self.logger.debug(f"Initialized StateTracker for {scraper_name}")
             return self._state_trackers[scraper_name]
@@ -213,6 +241,7 @@ class ServiceContainer:
         self._flaresolverr_client = None
         self._embedding_client = None
         self._llm_client = None
+        self._state_store = None
         self.logger.debug("Service/backend instances reset (settings preserved)")
 
     @property
@@ -438,6 +467,7 @@ class ServiceContainer:
         self._tika_client = None
         self._embedding_client = None
         self._llm_client = None
+        self._state_store = None
         self.logger.debug("Service container reset")
 
 

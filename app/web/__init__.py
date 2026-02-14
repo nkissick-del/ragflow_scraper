@@ -49,6 +49,8 @@ def create_app() -> Flask:
     csrf.exempt(api_bp)
     from app.web.blueprints.search import bp as search_bp
     csrf.exempt(search_bp)
+    from app.web.blueprints.sse import bp as sse_bp
+    csrf.exempt(sse_bp)
 
     @app.route("/health")
     def health():

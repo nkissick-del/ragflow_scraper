@@ -53,12 +53,30 @@ class PgVectorVectorStore(VectorStoreBackend):
         return "pgvector"
 
     def _get_pool(self):
-        """Get or create the connection pool (lazy init, thread-safe)."""
+        """Get or create the connection pool (lazy init, thread-safe).
+
+        Delegates to the shared db_pool when the configured URL matches
+        the global DATABASE_URL.  Falls back to a private pool for
+        custom URLs (e.g. tests).
+        """
         if self._pool is None:
             with self._pool_lock:
                 if self._pool is None:
                     if not self._database_url:
                         raise ValueError("DATABASE_URL is not configured")
+
+                    # Try the shared pool when URL matches global config
+                    from app.services import db_pool
+
+                    if db_pool.is_configured():
+                        from app.config import Config
+
+                        if self._database_url == Config.DATABASE_URL:
+                            self._pool = db_pool.get_pool()
+                            self._shared_pool = True
+                            return self._pool
+
+                    # Private pool for non-standard URLs
                     from psycopg_pool import ConnectionPool
 
                     self._pool = ConnectionPool(
@@ -67,6 +85,7 @@ class PgVectorVectorStore(VectorStoreBackend):
                         max_size=10,
                         open=True,
                     )
+                    self._shared_pool = False
         return self._pool
 
     def is_configured(self) -> bool:
@@ -529,10 +548,15 @@ class PgVectorVectorStore(VectorStoreBackend):
         ]
 
     def close(self) -> None:
-        """Close the connection pool (thread-safe)."""
+        """Close the connection pool (thread-safe).
+
+        When using the shared db_pool, only clears the local reference
+        without closing the pool (other consumers may still need it).
+        """
         with self._pool_lock:
             if self._pool is not None:
-                self._pool.close()
+                if not getattr(self, "_shared_pool", False):
+                    self._pool.close()
                 self._pool = None
                 self._schema_ensured = False
                 self._known_partitions.clear()

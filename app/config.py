@@ -239,6 +239,9 @@ class Config:
 
     # pgvector (PostgreSQL vector storage)
     DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+    # Redis / Valkey (job dispatch and real-time events)
+    REDIS_URL = os.getenv("REDIS_URL", "")
     ANYTHINGLLM_VIEW_NAME = os.getenv("ANYTHINGLLM_VIEW_NAME", "anythingllm_document_view")
     PGVECTOR_DROP_ON_MISMATCH = os.getenv("PGVECTOR_DROP_ON_MISMATCH", "").lower() in (
         "true", "1", "yes",

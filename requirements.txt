@@ -34,3 +34,6 @@ psycopg[binary]==3.3.2
 psycopg-pool==3.3.0
 pgvector==0.4.2
 
+# Redis / Valkey
+valkey==6.1.1
+
