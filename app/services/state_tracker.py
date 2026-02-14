@@ -245,6 +245,43 @@ class StateTracker:
                 pass
         return count
 
+    def nuclear_purge(
+        self,
+        archive_backend: Any = None,
+        vector_store: Any = None,
+        tag_name: Optional[str] = None,
+    ) -> dict[str, int]:
+        """Nuclear purge: local data + Paperless documents + vector chunks.
+
+        Args:
+            archive_backend: Archive backend with delete_by_tag() method
+            vector_store: Vector store with delete_by_source() method
+            tag_name: Tag name for archive deletion
+
+        Returns:
+            Dict with counts: urls_cleared, files_deleted, metadata_deleted,
+            archive_deleted, vector_deleted
+        """
+        counts = self.purge()
+        counts["archive_deleted"] = 0
+        counts["vector_deleted"] = 0
+
+        if archive_backend and tag_name:
+            try:
+                counts["archive_deleted"] = archive_backend.delete_by_tag(tag_name)
+            except Exception as e:
+                self.logger.error(f"Archive delete failed: {e}")
+                counts["archive_deleted"] = 0
+
+        if vector_store:
+            try:
+                counts["vector_deleted"] = vector_store.delete_by_source(self.scraper_name)
+            except Exception as e:
+                self.logger.error(f"Vector delete failed: {e}")
+                counts["vector_deleted"] = 0
+
+        return counts
+
     def remove_url(self, url: str) -> bool:
         """Remove a URL from processed state."""
         if self._store is not None:

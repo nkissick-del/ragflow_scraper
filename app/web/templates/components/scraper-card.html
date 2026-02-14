@@ -46,6 +46,14 @@
                 aria-label="Purge {{ scraper.name }} scraper data">
             Purge
         </button>
+        <button class="btn btn-danger btn-sm"
+                hx-post="{{ url_for('scrapers.nuclear_purge_scraper', name=scraper.name) }}"
+                hx-target="#scraper-{{ scraper.name }}"
+                hx-swap="outerHTML"
+                hx-confirm="NUCLEAR PURGE: This will permanently delete ALL documents from Paperless and vector DB for this scraper. This CANNOT be undone. Are you sure?"
+                aria-label="Nuclear purge {{ scraper.name }}">
+            Nuclear Purge
+        </button>
         {% endif %}
         <a href="{{ url_for('scrapers.scrapers_page') }}#scraper-{{ scraper.name }}" class="btn btn-secondary" aria-label="Configure {{ scraper.name }} scraper">Configure</a>
     </div>

@@ -11,6 +11,8 @@ from app.utils.errors import ScraperAlreadyRunningError
 from app.web.limiter import limiter
 from app.web.runtime import container, job_queue
 
+_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
+
 bp = Blueprint("api_scrapers", __name__)
 logger = get_logger("web.api_scrapers")
 
@@ -190,3 +192,52 @@ def api_purge_scraper(name):
     except Exception as exc:
         logger.error(f"Error purging scraper {name}: {exc}", exc_info=True)
         return jsonify({"error": "Failed to purge scraper data"}), 500
+
+
+@bp.route("/api/scrapers/<name>/nuclear-purge", methods=["POST"])
+@limiter.limit("2/minute")
+def api_nuclear_purge_scraper(name):
+    """Nuclear purge: delete local data, Paperless documents, and vector chunks.
+
+    Returns 409 if the scraper is currently running.
+    """
+    if not _NAME_RE.match(name):
+        return jsonify({"error": "Invalid scraper name format"}), 400
+
+    scraper_class = ScraperRegistry.get_scraper_class(name)
+    if not scraper_class:
+        return jsonify({"error": f"Scraper not found: {name}"}), 404
+
+    job = job_queue.get(name)
+    if job and job.is_active:
+        return jsonify({
+            "error": f"Scraper {name} is currently running",
+            "status": job.status,
+        }), 409
+
+    tag_name = scraper_class.get_metadata().get("primary_tag", "")
+
+    archive_backend = None
+    try:
+        archive_backend = container.archive_backend
+    except Exception as exc:
+        logger.warning(f"Archive backend unavailable for nuclear purge of {name}: {exc}")
+
+    vector_store = None
+    try:
+        vector_store = container.vector_store
+    except Exception as exc:
+        logger.warning(f"Vector store unavailable for nuclear purge of {name}: {exc}")
+
+    try:
+        state = container.state_tracker(name)
+        counts = state.nuclear_purge(
+            archive_backend=archive_backend,
+            vector_store=vector_store,
+            tag_name=tag_name,
+        )
+        logger.warning(f"API: Nuclear purged scraper {name}: {counts}")
+        return jsonify({"success": True, **counts}), 200
+    except Exception as exc:
+        logger.error(f"Error in nuclear purge for {name}: {exc}", exc_info=True)
+        return jsonify({"error": "Failed to nuclear purge scraper data"}), 500

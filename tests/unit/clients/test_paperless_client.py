@@ -659,6 +659,51 @@ class TestSetCustomFields:
         assert values[2] == "en"
 
 
+class TestSetCustomFieldsTruncation:
+    """Test that string custom fields are truncated to 128 chars."""
+
+    def test_long_string_truncated(self, client):
+        """String values over 128 chars should be truncated with ellipsis."""
+        client._custom_field_cache = {"Description": 8}
+        client._custom_field_cache_populated = True
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+
+        long_desc = "A" * 200
+        metadata = {"description": long_desc}
+
+        with patch.object(
+            client.session, "patch", return_value=mock_response
+        ) as mock_patch:
+            result = client.set_custom_fields(123, metadata)
+
+        assert result is True
+        payload = mock_patch.call_args[1]["json"]["custom_fields"]
+        desc_value = payload[0]["value"]
+        assert len(desc_value) == 128
+        assert desc_value.endswith("...")
+
+    def test_short_string_not_truncated(self, client):
+        """String values under 128 chars should not be modified."""
+        client._custom_field_cache = {"Description": 8}
+        client._custom_field_cache_populated = True
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+
+        metadata = {"description": "Short description"}
+
+        with patch.object(
+            client.session, "patch", return_value=mock_response
+        ) as mock_patch:
+            result = client.set_custom_fields(123, metadata)
+
+        assert result is True
+        payload = mock_patch.call_args[1]["json"]["custom_fields"]
+        assert payload[0]["value"] == "Short description"
+
+
 class TestRetryAdapter:
     """Test that PaperlessClient session has retry adapter configured."""
 
@@ -1157,6 +1202,89 @@ class TestSetCustomFieldsLLMFlattening:
         payload = mock_patch.call_args[1]["json"]["custom_fields"]
         assert len(payload) == 1
         assert payload[0]["value"] == "Top Level Author"
+
+
+class TestOwnerNullOnCreation:
+    """Test that POST payloads include owner: null for public objects."""
+
+    def test_correspondent_created_with_owner_null(self, client):
+        """Correspondent creation should include owner: null."""
+        fetch_response = Mock()
+        fetch_response.raise_for_status = Mock()
+        fetch_response.json.return_value = {"results": [], "next": None}
+
+        create_response = Mock()
+        create_response.status_code = 201
+        create_response.raise_for_status = Mock()
+        create_response.json.return_value = {"id": 1, "name": "Test"}
+
+        with patch.object(client.session, "get", return_value=fetch_response):
+            with patch.object(
+                client.session, "post", return_value=create_response
+            ) as mock_post:
+                client.get_or_create_correspondent("Test")
+
+        call_args = mock_post.call_args
+        assert call_args[1]["json"]["owner"] is None
+
+    def test_document_type_created_with_owner_null(self, client):
+        """Document type creation should include owner: null."""
+        fetch_response = Mock()
+        fetch_response.raise_for_status = Mock()
+        fetch_response.json.return_value = {"results": [], "next": None}
+
+        create_response = Mock()
+        create_response.status_code = 201
+        create_response.raise_for_status = Mock()
+        create_response.json.return_value = {"id": 1, "name": "Article"}
+
+        with patch.object(client.session, "get", return_value=fetch_response):
+            with patch.object(
+                client.session, "post", return_value=create_response
+            ) as mock_post:
+                client.get_or_create_document_type("Article")
+
+        call_args = mock_post.call_args
+        assert call_args[1]["json"]["owner"] is None
+
+    def test_tag_created_with_owner_null(self, client):
+        """Tag creation should include owner: null."""
+        client._tag_cache = {}
+        client._tag_cache_populated = True
+
+        create_response = Mock()
+        create_response.raise_for_status = Mock()
+        create_response.json.return_value = {"id": 1, "name": "Energy"}
+
+        with patch.object(
+            client.session, "post", return_value=create_response
+        ) as mock_post:
+            client.get_or_create_tags(["Energy"])
+
+        call_args = mock_post.call_args
+        assert call_args[1]["json"]["owner"] is None
+
+    def test_custom_field_created_with_owner_null(self, client):
+        """Custom field creation should include owner: null."""
+        fetch_response = Mock()
+        fetch_response.raise_for_status = Mock()
+        fetch_response.json.return_value = {"results": [], "next": None}
+
+        create_response = Mock()
+        create_response.status_code = 201
+        create_response.raise_for_status = Mock()
+        create_response.json.return_value = {
+            "id": 1, "name": "Test Field", "data_type": "string"
+        }
+
+        with patch.object(client.session, "get", return_value=fetch_response):
+            with patch.object(
+                client.session, "post", return_value=create_response
+            ) as mock_post:
+                client.get_or_create_custom_field("Test Field", "string")
+
+        call_args = mock_post.call_args
+        assert call_args[1]["json"]["owner"] is None
 
 
 class TestCustomFieldMappingUpdated:

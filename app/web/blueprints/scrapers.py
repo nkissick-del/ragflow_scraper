@@ -380,6 +380,56 @@ def purge_scraper(name):
     return render_template("components/scraper-card.html", scraper=metadata)
 
 
+@bp.route("/scrapers/<name>/nuclear-purge", methods=["POST"])
+@limiter.limit("2/minute")
+def nuclear_purge_scraper(name):
+    """Nuclear purge: delete local data, Paperless documents, and vector chunks."""
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return jsonify({"error": "Invalid scraper name format"}), 400
+
+    scraper_class = ScraperRegistry.get_scraper_class(name)
+    if not scraper_class:
+        return jsonify({"error": f"Scraper not found: {escape(name)}"}), 404
+
+    # Refuse if scraper is running
+    job = job_queue.get(name)
+    if job and job.is_active:
+        metadata = scraper_class.get_metadata()
+        state = container.state_tracker(name)
+        metadata["state"] = state.get_last_run_info()
+        metadata["status"] = job_queue.status(name)
+        return render_template(
+            "components/scraper-card.html",
+            scraper=metadata,
+            message="Cannot purge while running",
+        )
+
+    tag_name = scraper_class.get_metadata().get("primary_tag", "")
+
+    archive_backend = None
+    try:
+        archive_backend = container.archive_backend
+    except Exception as exc:
+        log_event(logger, "warning", "scraper.nuclear_purge.archive_unavailable", scraper=name, error=str(exc))
+
+    vector_store = None
+    try:
+        vector_store = container.vector_store
+    except Exception as exc:
+        log_event(logger, "warning", "scraper.nuclear_purge.vector_unavailable", scraper=name, error=str(exc))
+
+    state = container.state_tracker(name)
+    counts = state.nuclear_purge(
+        archive_backend=archive_backend,
+        vector_store=vector_store,
+        tag_name=tag_name,
+    )
+    log_event(logger, "warning", "scraper.nuclear_purge", scraper=name, **counts)
+
+    metadata = build_scraper_metadata(name)
+    return render_template("components/scraper-card.html", scraper=metadata)
+
+
 @bp.route("/scrapers/<name>/cloudflare", methods=["POST"])
 def toggle_scraper_cloudflare(name):
     """Toggle FlareSolverr/Cloudflare bypass for a specific scraper."""

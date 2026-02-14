@@ -398,6 +398,27 @@ class PgVectorVectorStore(VectorStoreBackend):
         self.logger.debug(f"Deleted {deleted} chunks for {source}/{filename}")
         return deleted
 
+    def delete_by_source(self, source: str) -> int:
+        """Delete all chunks for a source partition.
+
+        Args:
+            source: Source/partition name (e.g., scraper name)
+
+        Returns:
+            Number of chunks deleted
+        """
+        pool = self._get_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM document_chunks WHERE source = %s",  # noqa: S608
+                    (source,),
+                )
+                deleted = cur.rowcount
+            conn.commit()
+        self.logger.info(f"Deleted {deleted} chunks for source '{source}'")
+        return deleted
+
     def search(
         self,
         query_embedding: list[float],

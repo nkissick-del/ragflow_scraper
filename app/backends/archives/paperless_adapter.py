@@ -112,6 +112,10 @@ class PaperlessArchiveBackend(ArchiveBackend):
             archive_name=self.name,
         )
 
+    def delete_by_tag(self, tag: str) -> int:
+        """Delete all Paperless documents with a given tag."""
+        return self.client.delete_documents_by_tag(tag)
+
     def verify_document(self, document_id: str, timeout: int = 60) -> bool:
         """
         Verify document was successfully archived (Sonarr-style polling).

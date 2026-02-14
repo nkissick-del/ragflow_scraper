@@ -277,9 +277,17 @@ class MetadataIOMixin:
         """Wrap a bare HTML fragment in a full, self-contained article document.
 
         Adds title/date header, CSS, <base> tag, and inlines external images.
+        Cleans non-article noise (share buttons, CTAs) before wrapping.
         Non-fatal: returns original HTML on any error.
         """
-        from app.utils.html_utils import build_article_html, inline_images
+        from app.utils.html_utils import build_article_html, clean_article_html, inline_images
+
+        # Clean before wrapping (non-fatal — keeps original on error)
+        try:
+            extra = getattr(self, "_html_extra_removals", None)
+            body_html = clean_article_html(body_html, extra_removals=extra)
+        except Exception:
+            pass
 
         base_url: str = getattr(self, "base_url", "") or ""
         source_url = metadata.url or ""

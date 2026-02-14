@@ -131,6 +131,13 @@ class VectorStoreBackend(ABC):
         """Get vector store backend name for logging/identification."""
         raise NotImplementedError
 
+    def delete_by_source(self, source: str) -> int:
+        """Delete all chunks for a source. Returns count deleted.
+
+        Default implementation is a no-op. Override in backends that support it.
+        """
+        return 0
+
     def is_available(self) -> bool:
         """Check if the vector store is available for use.
 

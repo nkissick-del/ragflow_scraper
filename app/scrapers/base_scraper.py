@@ -53,6 +53,7 @@ class BaseScraper(
     display_name: str = "Base Scraper"  # Human-readable name for RAGFlow datasets
     description: str = "Base scraper - do not use directly"
     base_url: str = ""
+    primary_tag: str = ""  # Override when Paperless tag differs from display_name
 
     # Default settings (can be overridden)
     request_delay: float = 1.0  # Seconds between requests
@@ -342,6 +343,7 @@ class BaseScraper(
             "display_name": cls.display_name,
             "description": cls.description,
             "base_url": cls.base_url,
+            "primary_tag": cls.primary_tag or cls.display_name,
             "excluded_tags": cls.excluded_tags,
             "excluded_keywords": cls.excluded_keywords,
             "required_tags": cls.required_tags,

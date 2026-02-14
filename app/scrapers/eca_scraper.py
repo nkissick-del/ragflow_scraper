@@ -60,6 +60,7 @@ class ECAScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
 
     name = "eca"
     display_name = "Energy Consumers Australia"
+    primary_tag = "ECA"
     description = "Scrapes documents from Energy Consumers Australia (Research & Submissions)"
     base_url = "https://energyconsumersaustralia.com.au/our-work/research"
 

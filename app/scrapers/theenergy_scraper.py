@@ -46,6 +46,14 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
 
     skip_webdriver = True  # Use FlareSolverr instead of Selenium
 
+    primary_tag = "TheEnergy"
+
+    # TheEnergy-specific removals for HTML cleaning
+    _html_extra_removals = [
+        {"selector": "button", "class_contains": "plausible-event-name"},
+        {"selector": "span", "text": "Share", "remove_parent_levels": 2},
+    ]
+
     # TheEnergy-specific settings
     articles_per_page = 10
     request_delay = 1.0  # Polite crawling
@@ -231,11 +239,15 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
             },
         )
 
-        # Fetch article page for structured metadata enrichment
+        # Fetch article page for structured metadata enrichment + tag extraction
         try:
             page_html = self.fetch_rendered_page(url)
             if page_html:
                 self._enrich_metadata_from_html(page_html, metadata)
+                # Extract tags from the fetched page
+                from bs4 import BeautifulSoup as _BS  # type: ignore[import-untyped]
+                page_soup = _BS(page_html, "lxml")
+                self._extract_and_remove_tags(page_soup, metadata)
         except Exception as e:
             self.logger.debug(f"Page metadata extraction failed: {e}")
 
@@ -455,8 +467,8 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
                 )
                 return
 
-            # Extract article body HTML
-            content = self._extract_article_html(article_html)
+            # Extract article body HTML (also extracts tags into metadata)
+            content = self._extract_article_html(article_html, metadata)
 
             content = self._build_article_html(content, metadata)
 
@@ -481,11 +493,22 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
     # Content extraction helpers
     # ------------------------------------------------------------------
 
-    def _extract_article_html(self, html: str) -> str:
-        """Extract article body HTML from the full page."""
+    def _extract_article_html(
+        self, html: str, metadata: Optional[DocumentMetadata] = None,
+    ) -> str:
+        """Extract article body HTML from the full page.
+
+        When metadata is provided, also extracts tags from /tags/ links
+        and adds them to metadata.tags.
+        """
         from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 
         soup = BeautifulSoup(html, "lxml")
+
+        # Extract tags before extracting article body
+        if metadata is not None:
+            self._extract_and_remove_tags(soup, metadata)
+
         article = soup.find("article")
         if article:
             return str(article.decode_contents())
@@ -494,6 +517,45 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
         if body:
             return str(body.decode_contents())
         return html
+
+    def _extract_and_remove_tags(
+        self, soup: Any, metadata: DocumentMetadata,
+    ) -> None:
+        """Extract tag names from /tags/ links and add to metadata.
+
+        TheEnergy articles have tag links like:
+          <a href="https://theenergy.co/tags/decommissioning">Decommissioning</a>
+
+        Extracts the text as tag names, deduplicates case-insensitively,
+        and removes the parent container from the HTML.
+        """
+        existing_lower = {t.lower() for t in metadata.tags}
+
+        # Find all <a> with href containing /tags/
+        import re
+        tag_links = soup.find_all("a", href=re.compile(r"/tags/"))
+        containers_to_remove: set[int] = set()
+
+        for link in tag_links:
+            tag_text = link.get_text(strip=True)
+            if tag_text and tag_text.lower() not in existing_lower:
+                metadata.tags.append(tag_text)
+                existing_lower.add(tag_text.lower())
+
+            # Mark parent container for removal (the flex-wrap div)
+            parent = link.parent
+            if parent and parent.name != "body" and id(parent) not in containers_to_remove:
+                containers_to_remove.add(id(parent))
+
+        # Remove tag containers
+        for link in tag_links:
+            parent = link.parent
+            if parent and id(parent) in containers_to_remove:
+                try:
+                    parent.decompose()
+                    containers_to_remove.discard(id(parent))
+                except Exception:
+                    pass
 
     def _extract_title(self, html: str) -> str:
         """Extract page title from HTML ``<title>`` or ``<h1>``."""

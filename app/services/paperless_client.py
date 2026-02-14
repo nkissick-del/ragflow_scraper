@@ -186,7 +186,7 @@ class PaperlessClient:
             try:
                 response = self.session.post(
                     f"{self.url}/api/correspondents/",
-                    json={"name": name},
+                    json={"name": name, "owner": None},
                     timeout=30,
                 )
                 if response.status_code == 409:
@@ -276,7 +276,7 @@ class PaperlessClient:
             try:
                 response = self.session.post(
                     f"{self.url}/api/document_types/",
-                    json={"name": name},
+                    json={"name": name, "owner": None},
                     timeout=30,
                 )
                 if response.status_code == 409:
@@ -368,7 +368,7 @@ class PaperlessClient:
             try:
                 response = self.session.post(
                     f"{self.url}/api/tags/",
-                    json={"name": name},
+                    json={"name": name, "owner": None},
                     timeout=30,
                 )
                 response.raise_for_status()
@@ -449,7 +449,7 @@ class PaperlessClient:
             try:
                 response = self.session.post(
                     f"{self.url}/api/custom_fields/",
-                    json={"name": name, "data_type": data_type},
+                    json={"name": name, "data_type": data_type, "owner": None},
                     timeout=30,
                 )
                 if response.status_code == 409:
@@ -519,6 +519,10 @@ class PaperlessClient:
                     )
                     continue
 
+            # Paperless-ngx "string" fields have a 128-character limit
+            if data_type == "string" and isinstance(value, str) and len(value) > 128:
+                value = value[:125] + "..."
+
             custom_fields_payload.append({"field": field_id, "value": value})
 
         if not custom_fields_payload:
@@ -536,6 +540,17 @@ class PaperlessClient:
                 f"Set {len(custom_fields_payload)} custom fields on document {document_id}"
             )
             return True
+        except requests.exceptions.HTTPError as e:
+            body = ""
+            if e.response is not None:
+                try:
+                    body = f" Response: {e.response.text[:500]}"
+                except Exception:
+                    pass
+            self.logger.error(
+                f"Failed to set custom fields on document {document_id}: {e}{body}"
+            )
+            return False
         except Exception as e:
             self.logger.error(
                 f"Failed to set custom fields on document {document_id}: {e}"
@@ -968,6 +983,79 @@ class PaperlessClient:
             f"Found {len(url_map)} document URLs for scraper '{scraper_name}'"
         )
         return url_map
+
+    def delete_documents_by_tag(self, tag_name: str) -> int:
+        """Delete all Paperless documents with a given tag.
+
+        Args:
+            tag_name: Tag name to filter by
+
+        Returns:
+            Number of documents deleted
+        """
+        if not self.is_configured or not tag_name:
+            return 0
+
+        # Look up tag ID
+        tag_id: Optional[int] = None
+        with self._tag_lock:
+            if not self._tag_cache_populated:
+                try:
+                    self._tag_cache = self._fetch_tags()
+                    self._tag_cache_populated = True
+                except Exception as e:
+                    self.logger.error(f"Failed to fetch tags: {e}")
+                    return 0
+            tag_id = next(
+                (tid for name, tid in self._tag_cache.items() if name.lower() == tag_name.lower()),
+                None,
+            )
+
+        if tag_id is None:
+            self.logger.warning(f"Tag '{tag_name}' not found, nothing to delete")
+            return 0
+
+        # Paginate through documents with this tag
+        doc_ids: list[int] = []
+        next_url: Optional[str] = f"{self.url}/api/documents/"
+        params: dict[str, Any] = {"tags__id": tag_id, "page_size": 100}
+
+        try:
+            while next_url:
+                response = self.session.get(next_url, params=params, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+
+                for doc in data.get("results", []):
+                    doc_id = doc.get("id")
+                    if doc_id:
+                        doc_ids.append(doc_id)
+
+                next_url = data.get("next")
+                params = {}  # params embedded in next_url after first request
+        except Exception as e:
+            self.logger.error(f"Failed to fetch documents for tag '{tag_name}': {e}")
+            return 0
+
+        if not doc_ids:
+            self.logger.info(f"No documents found with tag '{tag_name}'")
+            return 0
+
+        # Bulk delete
+        try:
+            response = self.session.post(
+                f"{self.url}/api/documents/bulk_edit/",
+                json={"documents": doc_ids, "method": "delete", "parameters": {}},
+                timeout=60,
+            )
+            response.raise_for_status()
+            self.logger.info(
+                f"Deleted {len(doc_ids)} documents with tag '{tag_name}'"
+            )
+            return len(doc_ids)
+        except Exception as e:
+            self.logger.error(f"Bulk delete failed for tag '{tag_name}': {e}")
+            return 0
 
     def _resolve_custom_field_name(self, field_id: Optional[int]) -> Optional[str]:
         """Resolve a custom field ID to its name using the cache."""

@@ -42,6 +42,7 @@ class AERScraper(FlareSolverrPageFetchMixin, CardListPaginationMixin, BaseScrape
 
     name = "aer"
     display_name = "Australian Energy Regulator"
+    primary_tag = "AER"
     description = "Scrapes PDFs from AER Reports (Electricity sector, excluding Corporate)"
     base_url = "https://www.aer.gov.au/publications/reports"
 

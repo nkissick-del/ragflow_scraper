@@ -99,6 +99,13 @@ class ArchiveBackend(ABC):
         """
         return self.is_configured()
 
+    def delete_by_tag(self, tag: str) -> int:
+        """Delete all documents with a given tag. Returns count deleted.
+
+        Default implementation is a no-op. Override in backends that support it.
+        """
+        return 0
+
     @property
     @abstractmethod
     def name(self) -> str:

@@ -1,6 +1,8 @@
 """Utilities for building self-contained HTML article documents.
 
 Provides:
+- clean_article_html(): removes non-article noise (share buttons, CTAs, scripts)
+  from HTML before PDF generation.
 - build_article_html(): wraps a bare HTML fragment in a full document with
   title, date, CSS, and <base> tag for URL resolution.
 - inline_images(): downloads external <img> sources and converts them to
@@ -11,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re as _re
 from html import escape as html_escape
 from typing import Optional
 from urllib.parse import urljoin
@@ -45,6 +48,130 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courie
 .article-meta { color: #666; font-size: 0.9em; margin-bottom: 2em; }
 .article-meta a { color: #0066cc; }
 """
+
+
+# Social share URL patterns
+_SOCIAL_SHARE_PATTERNS = [
+    "linkedin.com/sharing",
+    "twitter.com/intent",
+    "x.com/intent",
+    "facebook.com/sharer",
+]
+
+# Class substrings that indicate non-article content
+_NOISE_CLASS_PATTERNS = ["newsletter", "signup"]
+
+# Subscribe CTA text patterns (case-insensitive)
+_SUBSCRIBE_CTA_RE = _re.compile(
+    r"(subscribe|sign\s*up|get .* in your inbox)", _re.IGNORECASE
+)
+
+
+def clean_article_html(
+    html: str,
+    extra_removals: Optional[list[dict[str, str]]] = None,
+) -> str:
+    """Remove non-article noise from HTML before PDF generation.
+
+    Universal removals (all sites):
+    - <script>, <style>, <iframe>, <noscript> tags
+    - Social share links (LinkedIn, Twitter/X, Facebook)
+    - Elements with newsletter/signup classes
+    - Subscribe CTA links
+
+    Per-scraper removals via extra_removals list of dicts with keys:
+    - selector: CSS selector to match
+    - class_contains: match elements whose class contains this string
+    - text: only remove if element text matches
+    - remove_parent_levels: int, remove N parent levels up (default 0)
+
+    Non-fatal: returns original HTML on any error.
+    """
+    if not html or not html.strip():
+        return html
+
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:
+        return html
+
+    try:
+        # Remove script, style, iframe, noscript tags
+        for tag_name in ("script", "style", "iframe", "noscript"):
+            for el in soup.find_all(tag_name):
+                el.decompose()
+
+        # Remove social share links
+        for pattern in _SOCIAL_SHARE_PATTERNS:
+            for a_tag in soup.find_all("a", href=_re.compile(_re.escape(pattern))):
+                # Check if parent is a tooltip/share wrapper and remove it too
+                parent = a_tag.parent
+                if parent and parent.name != "body":
+                    parent_classes = " ".join(parent.get("class", []))
+                    parent_classes_lower = parent_classes.lower()
+                    if "tooltip" in parent_classes_lower or "share" in parent_classes_lower:
+                        parent.decompose()
+                        continue
+                a_tag.decompose()
+
+        # Remove elements with share/social classes
+        for el in soup.find_all(class_=_re.compile(r"\b(share|social)\b", _re.IGNORECASE)):
+            # Don't remove if it contains substantial article text (>200 chars)
+            if len(el.get_text(strip=True)) > 200:
+                continue
+            el.decompose()
+
+        # Remove elements with newsletter/signup classes
+        for pattern in _NOISE_CLASS_PATTERNS:
+            for el in soup.find_all(class_=_re.compile(pattern, _re.IGNORECASE)):
+                el.decompose()
+
+        # Remove subscribe CTA links
+        for a_tag in soup.find_all("a", href=_re.compile(r"/subscribe")):
+            text = a_tag.get_text(strip=True)
+            if _SUBSCRIBE_CTA_RE.search(text):
+                a_tag.decompose()
+
+        # Apply per-scraper extra removals
+        if extra_removals:
+            for removal in extra_removals:
+                _apply_extra_removal(soup, removal)
+
+        return str(soup)
+    except Exception:
+        logger.warning("HTML cleaning failed, returning original", exc_info=True)
+        return html
+
+
+def _apply_extra_removal(soup: BeautifulSoup, removal: dict[str, str]) -> None:
+    """Apply a single extra removal rule to the soup."""
+    selector = removal.get("selector", "")
+    class_contains = removal.get("class_contains", "")
+    text_match = removal.get("text", "")
+    try:
+        remove_parent_levels = int(removal.get("remove_parent_levels", "0"))
+    except (ValueError, TypeError):
+        remove_parent_levels = 0
+
+    if class_contains:
+        elements = soup.find_all(
+            selector or True,
+            class_=_re.compile(_re.escape(class_contains)),
+        )
+    elif selector:
+        elements = soup.select(selector)
+    else:
+        return
+
+    for el in elements:
+        if text_match and text_match not in el.get_text(strip=True):
+            continue
+
+        target = el
+        for _ in range(remove_parent_levels):
+            if target.parent and target.parent.name != "[document]":
+                target = target.parent
+        target.decompose()
 
 
 def build_article_html(
