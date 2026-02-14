@@ -183,32 +183,22 @@ class TestParseDocument:
             pipeline._parse_document(docx_file, Mock(), "office")
 
     @patch("app.orchestrator.pipeline.Config")
-    def test_html_goes_through_parser(self, mock_config, pipeline, tmp_path):
-        """HTML doc_type is sent through the parser backend (e.g. docling)."""
+    def test_html_passes_through(self, mock_config, pipeline, tmp_path):
+        """HTML doc_type passes through without parser — content_path == file_path."""
         mock_config.TIKA_ENRICHMENT_ENABLED = False
         mock_config.TIKA_SERVER_URL = ""
         mock_config.LLM_ENRICHMENT_ENABLED = False
 
         html_file = tmp_path / "doc.html"
         html_file.write_text("<h1>Already HTML</h1>")
-        md_file = tmp_path / "doc.md"
-        md_file.write_text("# Already HTML")
-
-        parser_result = ParserResult(
-            success=True,
-            markdown_path=md_file,
-            parser_name="docling_serve",
-            metadata={"content_type": "text/html"},
-        )
-        pipeline.container.parser_backend.parse_document.return_value = parser_result
 
         content_path, meta = pipeline._parse_document(
             html_file, Mock(), "html"
         )
 
-        assert content_path == md_file
-        assert meta == {"content_type": "text/html"}
-        pipeline.container.parser_backend.parse_document.assert_called_once()
+        assert content_path == html_file
+        assert meta == {}
+        pipeline.container.parser_backend.parse_document.assert_not_called()
 
     @patch("app.orchestrator.pipeline.Config")
     def test_tika_enrichment_called(self, mock_config, pipeline, tmp_path):

@@ -201,6 +201,47 @@ class MetadataIOMixin:
                 temp_json_path.unlink()
             return None
 
+    def _build_article_html(
+        self,
+        body_html: str,
+        metadata: "DocumentMetadata",
+    ) -> str:
+        """Wrap a bare HTML fragment in a full, self-contained article document.
+
+        Adds title/date header, CSS, <base> tag, and inlines external images.
+        Non-fatal: returns original HTML on any error.
+        """
+        from app.utils.html_utils import build_article_html, inline_images
+
+        base_url: str = getattr(self, "base_url", "") or ""
+        source_url = metadata.url or ""
+
+        try:
+            full_html = build_article_html(
+                body_html,
+                title=metadata.title or "",
+                date=metadata.publication_date or "",
+                organization=metadata.organization or "",
+                source_url=source_url,
+                base_url=base_url,
+            )
+        except Exception:
+            self.logger.warning("Failed to build article HTML, using raw fragment")
+            return body_html
+
+        # Inline images using the scraper's HTTP session if available
+        session = getattr(self, "_session", None)
+        try:
+            full_html = inline_images(
+                full_html,
+                session=session,
+                base_url=base_url,
+            )
+        except Exception:
+            self.logger.warning("Failed to inline images, continuing without")
+
+        return full_html
+
 
 class WebDriverLifecycleMixin:
     # Expected attributes

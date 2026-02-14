@@ -444,39 +444,20 @@ class Pipeline:
         Raises:
             ParserBackendError: If parsing fails (FAIL FAST)
         """
-        md_path: Path
+        content_path: Path
         parse_metadata: dict = {}
 
         if doc_type == "html":
-            # HTML — send through parser backend (docling handles HTML
-            # with hybrid chunking for proper structure-aware splitting)
-            self.logger.info(f"Parsing HTML document: {file_path.name}")
-            parser = self.container.parser_backend
-            parse_result = parser.parse_document(file_path, doc_metadata)
-
-            if not parse_result.success:
-                raise ParserBackendError(
-                    parse_result.error or "Parser failed on HTML document"
-                )
-
-            if not parse_result.markdown_path:
-                error_msg = (
-                    f"Parser '{parse_result.parser_name}' succeeded "
-                    f"but returned no markdown_path for HTML"
-                )
-                if parse_result.error:
-                    error_msg += f": {parse_result.error}"
-                raise ParserBackendError(error_msg)
-
-            md_path = parse_result.markdown_path
-            parse_metadata = parse_result.metadata or {}
+            # HTML passes through as-is. Docling-serve handles HTML natively
+            # via the chunker (text/html) — no parser conversion needed.
+            content_path = file_path
             self.logger.info(
-                f"HTML parse successful: {md_path.name} ({parse_result.parser_name})"
+                f"HTML document, passing through: {file_path.name}"
             )
 
         elif doc_type == "markdown":
             # Markdown already exists — skip parsing
-            md_path = file_path
+            content_path = file_path
             self.logger.info(
                 f"Markdown file detected, skipping parse: {file_path.name}"
             )
@@ -509,10 +490,10 @@ class Pipeline:
                 or file_path.stem
             )
             md_content = self._text_to_markdown(text, title=title)
-            md_path = file_path.with_suffix(".md")
-            md_path.write_text(md_content, encoding="utf-8")
+            content_path = file_path.with_suffix(".md")
+            content_path.write_text(md_content, encoding="utf-8")
 
-            self.logger.info(f"Tika parse successful: {md_path.name}")
+            self.logger.info(f"Tika parse successful: {content_path.name}")
 
         else:
             # PDF path — use configured parser backend
@@ -534,19 +515,19 @@ class Pipeline:
                     error_msg += f": {parse_result.error}"
                 raise ParserBackendError(error_msg)
 
-            md_path = parse_result.markdown_path
+            content_path = parse_result.markdown_path
             parse_metadata = parse_result.metadata or {}
             self.logger.info(
-                f"Parse successful: {md_path.name} ({parse_result.parser_name})"
+                f"Parse successful: {content_path.name} ({parse_result.parser_name})"
             )
 
         # Tika enrichment (optional, after parse, before archive)
         self._run_tika_enrichment(file_path, parse_metadata, doc_type)
 
         # LLM enrichment (optional, after parse, before archive)
-        self._run_llm_enrichment(md_path, parse_metadata)
+        self._run_llm_enrichment(content_path, parse_metadata)
 
-        return md_path, parse_metadata
+        return content_path, parse_metadata
 
     def _prepare_archive_file(
         self,

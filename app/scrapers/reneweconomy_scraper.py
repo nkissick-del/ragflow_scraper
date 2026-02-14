@@ -412,6 +412,8 @@ class RenewEconomyScraper(BaseScraper):
             return
 
         # Save article (HTML directly)
+        body_html = self._build_article_html(body_html, metadata)
+
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1

@@ -248,6 +248,8 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
             result.failed_count += 1
             return
 
+        content_html = self._build_article_html(content_html, metadata)
+
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1
@@ -444,6 +446,8 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
 
             # Extract article body HTML
             content = self._extract_article_html(article_html)
+
+            content = self._build_article_html(content, metadata)
 
             if self.dry_run:
                 self.logger.info(f"[DRY RUN] Would save: {title}")

@@ -412,7 +412,9 @@ class GuardianScraper(BaseScraper):
             result.failed_count += 1
             return
 
-        # Save article (HTML directly)
+        # Build self-contained article HTML and save
+        body_html = self._build_article_html(body_html, metadata)
+
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1

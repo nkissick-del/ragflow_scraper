@@ -295,6 +295,8 @@ class TheConversationScraper(BaseScraper):
             return
 
         # Save article (HTML directly)
+        content_html = self._build_article_html(content_html, metadata)
+
         if self.dry_run:
             self.logger.info(f"[DRY RUN] Would save: {title}")
             result.downloaded_count += 1
