@@ -63,7 +63,7 @@ class TestDocumentMetadata:
         assert merged.url == "http://example.com/doc.pdf"  # scraper wins
         assert merged.publication_date == "2024-01-15"  # scraper wins
         assert merged.organization == "AEMO"  # scraper wins
-        assert merged.extra.get("author") == "John Doe"
+        assert merged.author == "John Doe"
         assert merged.page_count == 42
 
     def test_merge_parser_wins_strategy(self):

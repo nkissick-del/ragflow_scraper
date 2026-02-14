@@ -389,6 +389,9 @@ class RenewEconomyScraper(BaseScraper):
             },
         )
 
+        # Fetch article page for structured metadata enrichment
+        self._fetch_and_enrich_page(url, metadata)
+
         # Check exclusion
         exclusion_reason = self.should_exclude_document(metadata)
         if exclusion_reason:

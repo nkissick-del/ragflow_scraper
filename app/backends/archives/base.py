@@ -42,6 +42,7 @@ class ArchiveBackend(ABC):
         title: str,
         created: Optional[str] = None,
         correspondent: Optional[str] = None,
+        document_type: Optional[str] = None,
         tags: list[str] | None = None,
         metadata: Optional[Mapping[str, Any]] = None,
     ) -> ArchiveResult:
@@ -53,6 +54,7 @@ class ArchiveBackend(ABC):
             title: Document title
             created: Document creation date (ISO format)
             correspondent: Source organization
+            document_type: Document type (e.g. "Article", "Report")
             tags: List of tags
             metadata: Additional metadata mapping
 

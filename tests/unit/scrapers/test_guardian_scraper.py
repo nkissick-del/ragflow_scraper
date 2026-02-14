@@ -124,7 +124,7 @@ class TestProcessApiResult:
 
         assert result.downloaded_count == 1
         doc = docs[0]
-        assert doc["extra"]["author"] == "John Doe"
+        assert doc["author"] == "John Doe"
 
 
 class TestParseIsoDateGuardian:
@@ -435,7 +435,7 @@ class TestProcessApiResultNew:
         assert result.downloaded_count == 1
         doc = docs[0]
         assert doc["title"] == "New Test Article"
-        assert doc["extra"]["author"] == "Alice Reporter"
+        assert doc["author"] == "Alice Reporter"
         assert "Solar power" in doc["tags"]
         assert "Australia news" in doc["tags"]
         assert "The Guardian Australia" in doc["tags"]

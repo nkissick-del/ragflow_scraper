@@ -21,16 +21,49 @@ from app.utils import get_logger
 # Maps metadata dict keys to (Paperless custom field name, Paperless data type)
 CUSTOM_FIELD_MAPPING: dict[str, tuple[str, str]] = {
     "url": ("Original URL", "url"),
-    "scraped_at": ("Scraped Date", "string"),
-    "page_count": ("Page Count", "integer"),
-    "file_size": ("File Size", "integer"),
     "source_page": ("Source Page", "url"),
+    "scraped_at": ("Scraped Date", "string"),
     "scraper_name": ("Scraper Name", "string"),
+    "organization": ("Organization", "string"),
+    "author": ("Author", "string"),
+    "description": ("Description", "string"),
+    "language": ("Language", "string"),
     "llm_summary": ("LLM Summary", "string"),
     "llm_keywords": ("LLM Keywords", "string"),
     "llm_entities": ("LLM Entities", "string"),
     "llm_topics": ("LLM Topics", "string"),
 }
+
+
+def flatten_metadata_extras(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Flatten the 'extra' dict into top-level metadata for custom field lookup.
+
+    LLM enrichment fields are stored in metadata["extra"]["llm_summary"] etc.
+    This flattens them to the top level so CUSTOM_FIELD_MAPPING can find them.
+    Does not overwrite existing top-level keys.
+    """
+    flattened = dict(metadata)
+    extra = metadata.get("extra", {})
+    if isinstance(extra, dict):
+        for key, value in extra.items():
+            if key in CUSTOM_FIELD_MAPPING and key not in flattened:
+                flattened[key] = value
+    return flattened
+
+
+def build_paperless_native_fields(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Build Paperless-ngx native field values from document metadata.
+
+    Returns dict with keys: title, created, correspondent, document_type, tags.
+    Correspondent uses author with organization as fallback.
+    """
+    return {
+        "title": metadata.get("title"),
+        "created": metadata.get("publication_date"),
+        "correspondent": metadata.get("author") or metadata.get("organization"),
+        "document_type": metadata.get("document_type"),
+        "tags": metadata.get("tags", []),
+    }
 
 
 class PaperlessClient:
@@ -78,6 +111,9 @@ class PaperlessClient:
         self._tag_cache: dict[str, int] = {}
         self._tag_cache_populated = False
         self._tag_lock = threading.RLock()
+        self._document_type_cache: dict[str, int] = {}
+        self._document_type_cache_populated = False
+        self._document_type_lock = threading.RLock()
         self._custom_field_cache: dict[str, int] = {}
         self._custom_field_cache_populated = False
         self._custom_field_lock = threading.RLock()
@@ -174,6 +210,95 @@ class PaperlessClient:
 
             except Exception as e:
                 self.logger.error(f"Failed to create correspondent '{name}': {e}")
+
+        return None
+
+    def _fetch_document_types(self) -> dict[str, int]:
+        """
+        Fetch all document types from Paperless API with pagination.
+
+        Returns:
+            Dict mapping document type names to IDs
+        """
+        if not self.is_configured:
+            return {}
+
+        doc_types: dict[str, int] = {}
+        next_url: Optional[str] = f"{self.url}/api/document_types/"
+
+        while next_url:
+            response = self.session.get(next_url, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            for item in data.get("results", []):
+                name = item.get("name")
+                dt_id = item.get("id")
+                if name and dt_id:
+                    doc_types[name] = dt_id
+
+            next_url = data.get("next")
+
+        return doc_types
+
+    def get_or_create_document_type(self, name: str) -> Optional[int]:
+        """
+        Get document type ID by name, creating if not exists.
+
+        Args:
+            name: Document type name (e.g. "Article", "Report")
+
+        Returns:
+            Document type ID, or None if lookup/creation failed
+        """
+        if not self.is_configured or not name:
+            return None
+
+        with self._document_type_lock:
+            # Check cache first
+            if name in self._document_type_cache:
+                return self._document_type_cache[name]
+
+            # Populate cache if not yet fetched
+            if not self._document_type_cache_populated:
+                try:
+                    fetched = self._fetch_document_types()
+                    self._document_type_cache = fetched
+                    self._document_type_cache_populated = True
+                except Exception as e:
+                    self.logger.error(f"Failed to populate document type cache: {e}")
+
+            # Check again after potential fetch
+            if name in self._document_type_cache:
+                return self._document_type_cache[name]
+
+            # Create new document type
+            try:
+                response = self.session.post(
+                    f"{self.url}/api/document_types/",
+                    json={"name": name},
+                    timeout=30,
+                )
+                if response.status_code == 409:
+                    self.logger.debug(
+                        f"Document type '{name}' already exists (409 Conflict), re-fetching..."
+                    )
+                    self._document_type_cache = self._fetch_document_types()
+                    return self._document_type_cache.get(name)
+
+                response.raise_for_status()
+                data = response.json()
+                dt_id = data.get("id")
+
+                if dt_id:
+                    self._document_type_cache[name] = dt_id
+                    self.logger.info(
+                        f"Created document type '{name}' with ID {dt_id}"
+                    )
+                    return dt_id
+
+            except Exception as e:
+                self.logger.error(f"Failed to create document type '{name}': {e}")
 
         return None
 
@@ -367,10 +492,13 @@ class PaperlessClient:
         if not self.is_configured or not metadata:
             return not metadata  # True if empty/None, False if has data but not configured
 
+        # Flatten extra dict into top level so LLM fields are discoverable
+        flattened = flatten_metadata_extras(metadata)
+
         custom_fields_payload: list[dict] = []
 
         for meta_key, (field_name, data_type) in CUSTOM_FIELD_MAPPING.items():
-            value = metadata.get(meta_key)
+            value = flattened.get(meta_key)
             if value is None or value == "":
                 continue
 
@@ -477,6 +605,7 @@ class PaperlessClient:
         title: str,
         created: Optional[datetime] = None,
         correspondent: Optional[Union[str, int]] = None,
+        document_type: Optional[Union[str, int]] = None,
         tags: Optional[list[Union[str, int]]] = None,
     ) -> Optional[str]:
         """
@@ -487,6 +616,7 @@ class PaperlessClient:
             title: Document title
             created: Document creation date
             correspondent: Sender/Author (name or numeric ID)
+            document_type: Document type (name or numeric ID)
             tags: List of tags
 
         Returns:
@@ -521,6 +651,20 @@ class PaperlessClient:
                 else:
                     self.logger.warning(
                         f"Could not resolve correspondent '{correspondent}', skipping"
+                    )
+
+        if document_type:
+            if isinstance(document_type, int):
+                data["document_type"] = document_type
+            elif isinstance(document_type, str) and document_type.isdigit():
+                data["document_type"] = int(document_type)
+            else:
+                dt_id = self.get_or_create_document_type(document_type)
+                if dt_id:
+                    data["document_type"] = dt_id
+                else:
+                    self.logger.warning(
+                        f"Could not resolve document type '{document_type}', skipping"
                     )
 
         if tags:

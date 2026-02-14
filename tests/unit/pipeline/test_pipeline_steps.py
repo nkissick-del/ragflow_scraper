@@ -359,7 +359,9 @@ class TestArchiveDocument:
         merged = Mock()
         merged.title = "Test"
         merged.publication_date = "2024-01-15"
+        merged.author = None
         merged.organization = "TestOrg"
+        merged.document_type = None
         merged.tags = ["tag1"]
         merged.to_dict.return_value = {"title": "Test"}
 
@@ -381,7 +383,9 @@ class TestArchiveDocument:
         merged = Mock()
         merged.title = "Test"
         merged.publication_date = None
+        merged.author = None
         merged.organization = None
+        merged.document_type = None
         merged.tags = []
         merged.to_dict.return_value = {"title": "Test"}
 
@@ -401,7 +405,9 @@ class TestArchiveDocument:
         merged = Mock()
         merged.title = "Test"
         merged.publication_date = None
+        merged.author = None
         merged.organization = None
+        merged.document_type = None
         merged.tags = []
         merged.to_dict.return_value = {"title": "Test"}
 
@@ -411,7 +417,7 @@ class TestArchiveDocument:
         assert call_kwargs["metadata"]["scraper_name"] == "test"
 
     def test_metadata_fields_passed_correctly(self, pipeline, tmp_path):
-        """Title, created, correspondent, tags are passed to archive backend."""
+        """Title, created, correspondent, document_type, tags are passed to archive backend."""
         pdf_file = tmp_path / "doc.pdf"
         pdf_file.write_bytes(b"%PDF-1.4")
 
@@ -423,7 +429,9 @@ class TestArchiveDocument:
         merged = Mock()
         merged.title = "My Document"
         merged.publication_date = "2024-06-01"
+        merged.author = None
         merged.organization = "ACME Corp"
+        merged.document_type = "Article"
         merged.tags = ["finance", "q2"]
         merged.to_dict.return_value = {"title": "My Document"}
 
@@ -432,8 +440,33 @@ class TestArchiveDocument:
         call_kwargs = pipeline.container.archive_backend.archive_document.call_args[1]
         assert call_kwargs["title"] == "My Document"
         assert call_kwargs["created"] == "2024-06-01"
-        assert call_kwargs["correspondent"] == "ACME Corp"
+        assert call_kwargs["correspondent"] == "ACME Corp"  # Fallback to org when no author
+        assert call_kwargs["document_type"] == "Article"
         assert call_kwargs["tags"] == ["finance", "q2"]
+
+    def test_author_as_correspondent(self, pipeline, tmp_path):
+        """Author should be used as correspondent when available."""
+        pdf_file = tmp_path / "doc.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4")
+
+        archive_result = ArchiveResult(
+            success=True, document_id="790", archive_name="paperless"
+        )
+        pipeline.container.archive_backend.archive_document.return_value = archive_result
+
+        merged = Mock()
+        merged.title = "My Document"
+        merged.publication_date = "2024-06-01"
+        merged.author = "Jane Doe"
+        merged.organization = "ACME Corp"
+        merged.document_type = "Article"
+        merged.tags = []
+        merged.to_dict.return_value = {"title": "My Document"}
+
+        pipeline._archive_document(pdf_file, merged)
+
+        call_kwargs = pipeline.container.archive_backend.archive_document.call_args[1]
+        assert call_kwargs["correspondent"] == "Jane Doe"  # Author takes priority
 
 
 # ── TestVerifyDocument ───────────────────────────────────────────────────

@@ -27,6 +27,11 @@ class DocumentMetadata:
     source_page: Optional[str] = None
     organization: Optional[str] = None
     document_type: Optional[str] = None
+    author: Optional[str] = None
+    description: Optional[str] = None
+    language: Optional[str] = None
+    keywords: list[str] = field(default_factory=list)
+    image_url: Optional[str] = None
     scraped_at: str = field(default_factory=lambda: datetime.now().isoformat())
     local_path: Optional[str] = None
     hash: Optional[str] = None
@@ -48,11 +53,10 @@ class DocumentMetadata:
         }
         if self.publication_date:
             metadata["publication_date"] = self.publication_date
-        if self.extra.get("author"):
-            metadata["author"] = self.extra["author"]
-        abstract = self.extra.get("abstract") or self.extra.get("description")
-        if abstract:
-            metadata["abstract"] = abstract
+        if self.author:
+            metadata["author"] = self.author
+        if self.description:
+            metadata["abstract"] = self.description
         return metadata
 
     def merge_parser_metadata(
@@ -86,9 +90,9 @@ class DocumentMetadata:
             if parser_metadata.get("title"):
                 merged["title"] = parser_metadata["title"]
 
-            # Add author to extra if available
+            # Parser wins for author (first-class field)
             if parser_metadata.get("author"):
-                merged["extra"]["author"] = parser_metadata["author"]
+                merged["author"] = parser_metadata["author"]
 
             # Scraper wins for context fields (URL, date, org) - already in merged
             # Add other parser fields to extra, but protect top-level page_count

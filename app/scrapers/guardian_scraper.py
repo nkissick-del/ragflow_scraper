@@ -380,16 +380,18 @@ class GuardianScraper(BaseScraper):
             source_page=self.base_url,
             organization="The Guardian Australia",
             document_type="Article",
+            author=author or None,
+            description=fields.get("trailText") or None,
             extra={
-                "author": author,
                 "subject_tag": source_tag,
                 "api_id": item.get("id", ""),
                 "section": item.get("sectionName", ""),
-                "trail_text": fields.get("trailText", ""),
-                "abstract": fields.get("trailText", ""),  # Use trail text as abstract
                 "content_type": "article",
             },
         )
+
+        # Fetch article page for structured metadata enrichment
+        self._fetch_and_enrich_page(url, metadata)
 
         # Check exclusion
         exclusion_reason = self.should_exclude_document(metadata)

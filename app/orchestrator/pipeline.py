@@ -596,11 +596,15 @@ class Pipeline:
         metadata_dict = merged_metadata.to_dict()
         metadata_dict["scraper_name"] = self.scraper_name
 
+        # Use author as correspondent, fallback to organization
+        correspondent = merged_metadata.author or merged_metadata.organization
+
         archive_result = archive.archive_document(
             file_path=archive_file_path,
             title=merged_metadata.title,
             created=merged_metadata.publication_date,
-            correspondent=merged_metadata.organization,
+            correspondent=correspondent,
+            document_type=merged_metadata.document_type,
             tags=merged_metadata.tags,
             metadata=metadata_dict,
         )

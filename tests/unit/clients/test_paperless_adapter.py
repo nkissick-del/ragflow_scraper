@@ -163,6 +163,34 @@ class TestArchiveDocument:
         assert call_kwargs["correspondent"] == "AEMO"
         assert call_kwargs["tags"] == ["energy", "report"]
 
+    def test_archive_with_document_type(self, backend, mock_client, tmp_path):
+        """Should pass document_type to client."""
+        test_file = tmp_path / "test.pdf"
+        test_file.write_bytes(b"%PDF-1.4 test")
+        mock_client.post_document.return_value = "task-dt"
+
+        result = backend.archive_document(
+            test_file,
+            "Test",
+            document_type="Article",
+        )
+
+        assert result.success is True
+        call_kwargs = mock_client.post_document.call_args[1]
+        assert call_kwargs["document_type"] == "Article"
+
+    def test_archive_without_document_type(self, backend, mock_client, tmp_path):
+        """Should pass None for document_type when not provided."""
+        test_file = tmp_path / "test.pdf"
+        test_file.write_bytes(b"%PDF-1.4 test")
+        mock_client.post_document.return_value = "task-nodt"
+
+        result = backend.archive_document(test_file, "Test")
+
+        assert result.success is True
+        call_kwargs = mock_client.post_document.call_args[1]
+        assert call_kwargs["document_type"] is None
+
     def test_archive_upload_returns_none(self, backend, mock_client, tmp_path):
         """Should return error when client returns None task_id."""
         test_file = tmp_path / "test.pdf"

@@ -60,7 +60,7 @@ class TestScraperFixes:
         merged = doc.merge_parser_metadata(parser_meta, strategy="smart")
 
         assert merged.page_count == 5
-        assert merged.extra.get("author") == "Me"
+        assert merged.author == "Me"
         assert "page_count" not in merged.extra
 
     def test_extra_clobber_protection(self):

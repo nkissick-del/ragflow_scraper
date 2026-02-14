@@ -201,6 +201,74 @@ class MetadataIOMixin:
                 temp_json_path.unlink()
             return None
 
+    def _enrich_metadata_from_html(
+        self,
+        html: str,
+        metadata: "DocumentMetadata",
+    ) -> None:
+        """Enrich metadata from structured data in an HTML page.
+
+        Uses JSON-LD > Open Graph > meta tag cascade. Fill-gaps only:
+        does not overwrite existing non-None/non-empty values.
+        Non-fatal: logs and continues on any error.
+        """
+        try:
+            from app.utils.metadata_extractor import extract_structured_metadata
+
+            extracted = extract_structured_metadata(html)
+            if not extracted:
+                return
+
+            # Fill-gaps for simple string fields
+            if not metadata.author and extracted.get("author"):
+                metadata.author = extracted["author"]
+            if not metadata.description and extracted.get("description"):
+                metadata.description = extracted["description"]
+            if not metadata.language and extracted.get("language"):
+                metadata.language = extracted["language"]
+            if not metadata.image_url and extracted.get("image_url"):
+                metadata.image_url = extracted["image_url"]
+            if not metadata.publication_date and extracted.get("publication_date"):
+                metadata.publication_date = extracted["publication_date"]
+
+            # Merge keywords (deduped, case-insensitive)
+            if extracted.get("keywords"):
+                existing_lower = {k.lower() for k in metadata.keywords}
+                for kw in extracted["keywords"]:
+                    if isinstance(kw, str) and kw.lower() not in existing_lower:
+                        metadata.keywords.append(kw)
+                        existing_lower.add(kw.lower())
+
+        except Exception as exc:
+            if self.logger:
+                self.logger.debug(f"Metadata enrichment from HTML failed: {exc}")
+
+    def _fetch_and_enrich_page(
+        self,
+        url: str,
+        metadata: "DocumentMetadata",
+    ) -> Optional[str]:
+        """Fetch an article page and enrich metadata from structured data.
+
+        Uses self._session.get() for HTTP fetch. Scrapers that need
+        FlareSolverr should override or call _enrich_metadata_from_html
+        directly.
+
+        Returns the page HTML if successful, None on failure.
+        Non-fatal: logs and continues on any error.
+        """
+        try:
+            _session = getattr(self, "_session", None)
+            if _session:
+                page_resp = _session.get(url, timeout=30)
+                if page_resp.ok:
+                    self._enrich_metadata_from_html(page_resp.text, metadata)
+                    return page_resp.text
+        except Exception as exc:
+            if self.logger:
+                self.logger.debug(f"Page metadata extraction failed: {exc}")
+        return None
+
     def _build_article_html(
         self,
         body_html: str,
@@ -239,6 +307,9 @@ class MetadataIOMixin:
             )
         except Exception:
             self.logger.warning("Failed to inline images, continuing without")
+
+        # Backfill metadata from the generated HTML (secondary pass)
+        self._enrich_metadata_from_html(full_html, metadata)
 
         return full_html
 

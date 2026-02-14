@@ -166,13 +166,49 @@ Two-tier LLM enrichment using local Ollama models (7-8B params, 128k context). U
 
 ---
 
-## 8. New Scrapers
+## 8. Scrapers
 
-**Priority:** LOW | **Effort:** 2-3h each | **Type:** [Code]
+**Priority:** High | **Effort:** 2-3h each | **Type:** [Code]
+
+Confirm that the metadata collected extracts authors where possible from websites.
+
+Several of the scrapers in their config have missed that the website to be scraped either offers RSS or API access. As an example, here is an audit of the Renew Economy site access:
+
+> Excellent news! RenewEconomy has both **RSS feeds** and a **WordPress REST API** available for scraping:
+>
+> ## RSS Feeds (Easiest Option)
+>
+> - **Main feed**: https://reneweconomy.com.au/feed/
+> - **Comments feed**: https://reneweconomy.com.au/comments/feed/
+> - **Stories feed**: https://reneweconomy.com.au/web-stories/feed/
+>
+> ## WordPress REST API (More Powerful)
+>
+> The site has a fully functional WordPress REST API at:
+>
+> - **Base URL**: https://reneweconomy.com.au/wp-json/
+> - **Posts endpoint**: https://reneweconomy.com.au/wp-json/wp/v2/posts
+>
+> ### API Features:
+>
+> - Returns JSON data (easier to parse than RSS)
+> - Supports pagination with `per_page` and `page` parameters
+> - Can filter by date, categories, tags, author
+> - Returns rich metadata including full content, excerpts, featured images, etc.
+>
+> ### Example API calls:
+>
+> - Get latest posts: `https://reneweconomy.com.au/wp-json/wp/v2/posts?per_page=10`
+> - Get posts after a date: `https://reneweconomy.com.au/wp-json/wp/v2/posts?after=2026-01-01T00:00:00`
+> - Get categories: `https://reneweconomy.com.au/wp-json/wp/v2/categories`
+>
+> **Recommendation**: Use the WordPress REST API for more structured data and better filtering options. The RSS feed is simpler but less flexible. Both are legitimate methods that don't require authentication for public content.
 
 The scraper pattern is well-established (9 scrapers, documented walkthrough). Adding new sources is straightforward.
 
 - [ ] blog.energy-insights.com.au (per [websites_to_add.md](plans/websites_to_add.md))
+
+****
 
 ---
 

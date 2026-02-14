@@ -219,7 +219,10 @@ class TestFetchTags:
 
     def test_fetch_tags_not_configured(self):
         """Should return empty dict when not configured."""
-        client = PaperlessClient(url=None, token=None)
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_API_URL = None
+            mock_config.PAPERLESS_API_TOKEN = None
+            client = PaperlessClient(url=None, token=None)
         result = client._fetch_tags()
         assert result == {}
 
@@ -551,13 +554,13 @@ class TestSetCustomFields:
 
     def test_successful_patch(self, client):
         """Should PATCH document with resolved custom field IDs."""
-        client._custom_field_cache = {"Original URL": 1, "Page Count": 2}
+        client._custom_field_cache = {"Original URL": 1, "Scraper Name": 2}
         client._custom_field_cache_populated = True
 
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
 
-        metadata = {"url": "https://example.com/doc.pdf", "page_count": 42}
+        metadata = {"url": "https://example.com/doc.pdf", "scraper_name": "test"}
 
         with patch.object(client.session, "patch", return_value=mock_response) as mock_patch:
             result = client.set_custom_fields(123, metadata)
@@ -580,7 +583,7 @@ class TestSetCustomFields:
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
 
-        metadata = {"url": "https://example.com", "scraped_at": None, "page_count": ""}
+        metadata = {"url": "https://example.com", "scraped_at": None, "scraper_name": ""}
 
         with patch.object(client.session, "patch", return_value=mock_response) as mock_patch:
             result = client.set_custom_fields(123, metadata)
@@ -636,15 +639,15 @@ class TestSetCustomFields:
         assert len(payload) == 1
         assert payload[0]["field"] == 1
 
-    def test_coerces_integer_types(self, client):
-        """Should coerce string values to int for integer fields."""
-        client._custom_field_cache = {"Page Count": 1, "File Size": 2}
+    def test_string_field_values_passed_as_is(self, client):
+        """Should pass string values without coercion."""
+        client._custom_field_cache = {"Author": 1, "Language": 2}
         client._custom_field_cache_populated = True
 
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
 
-        metadata = {"page_count": "42", "file_size": "1024"}
+        metadata = {"author": "Jane Doe", "language": "en"}
 
         with patch.object(client.session, "patch", return_value=mock_response) as mock_patch:
             result = client.set_custom_fields(123, metadata)
@@ -652,22 +655,8 @@ class TestSetCustomFields:
         assert result is True
         payload = mock_patch.call_args[1]["json"]["custom_fields"]
         values = {item["field"]: item["value"] for item in payload}
-        assert values[1] == 42
-        assert values[2] == 1024
-
-    def test_skips_non_numeric_integer_field(self, client):
-        """Should skip integer fields with non-numeric values."""
-        client._custom_field_cache = {"Page Count": 1}
-        client._custom_field_cache_populated = True
-
-        metadata = {"page_count": "not-a-number"}
-
-        with patch.object(client.session, "patch") as mock_patch:
-            result = client.set_custom_fields(123, metadata)
-
-        # No fields to set, so returns True without PATCH
-        assert result is True
-        mock_patch.assert_not_called()
+        assert values[1] == "Jane Doe"
+        assert values[2] == "en"
 
 
 class TestRetryAdapter:
@@ -769,12 +758,12 @@ class TestSetCustomFieldsEdgeCases:
             result = client.set_custom_fields(123, {"url": "https://example.com"})
             assert result is False
 
-    def test_integer_coercion_skips_invalid(self, client):
-        """Should skip integer fields with None values."""
-        client._custom_field_cache = {"Page Count": 1}
+    def test_string_field_skips_none(self, client):
+        """Should skip fields with None values."""
+        client._custom_field_cache = {"Author": 1}
         client._custom_field_cache_populated = True
 
-        metadata = {"page_count": None}
+        metadata = {"author": None}
 
         result = client.set_custom_fields(123, metadata)
         assert result is True  # No fields to set
@@ -957,6 +946,249 @@ class TestTaskIdExtraction:
         """Should return None for empty/None task_id."""
         assert client._validate_task_id(None) is None
         assert client._validate_task_id("") is None
+
+
+class TestDocumentTypes:
+    """Test document type fetching and creation."""
+
+    def test_fetch_document_types(self, client):
+        """Should parse paginated response correctly."""
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.json.return_value = {
+            "results": [
+                {"id": 1, "name": "Article"},
+                {"id": 2, "name": "Report"},
+            ],
+            "next": None,
+        }
+
+        with patch.object(client.session, "get", return_value=mock_response):
+            result = client._fetch_document_types()
+
+        assert result == {"Article": 1, "Report": 2}
+
+    def test_get_or_create_returns_cached(self, client):
+        """Should return cached ID without API call."""
+        client._document_type_cache = {"Article": 5}
+        client._document_type_cache_populated = True
+
+        with patch.object(client.session, "get") as mock_get:
+            result = client.get_or_create_document_type("Article")
+
+        assert result == 5
+        mock_get.assert_not_called()
+
+    def test_get_or_create_creates_new(self, client):
+        """Should create new document type when not found."""
+        fetch_response = Mock()
+        fetch_response.raise_for_status = Mock()
+        fetch_response.json.return_value = {"results": [], "next": None}
+
+        create_response = Mock()
+        create_response.status_code = 201
+        create_response.raise_for_status = Mock()
+        create_response.json.return_value = {"id": 10, "name": "Article"}
+
+        with patch.object(client.session, "get", return_value=fetch_response):
+            with patch.object(client.session, "post", return_value=create_response):
+                result = client.get_or_create_document_type("Article")
+
+        assert result == 10
+        assert client._document_type_cache["Article"] == 10
+
+    def test_get_or_create_handles_409(self, client):
+        """Should re-fetch on 409 conflict."""
+        fetch_empty = Mock()
+        fetch_empty.raise_for_status = Mock()
+        fetch_empty.json.return_value = {"results": [], "next": None}
+
+        conflict = Mock()
+        conflict.status_code = 409
+
+        fetch_after = Mock()
+        fetch_after.raise_for_status = Mock()
+        fetch_after.json.return_value = {
+            "results": [{"id": 3, "name": "Article"}],
+            "next": None,
+        }
+
+        with patch.object(
+            client.session, "get", side_effect=[fetch_empty, fetch_after]
+        ):
+            with patch.object(client.session, "post", return_value=conflict):
+                result = client.get_or_create_document_type("Article")
+
+        assert result == 3
+
+    def test_get_or_create_empty_name(self, client):
+        """Should return None for empty name."""
+        result = client.get_or_create_document_type("")
+        assert result is None
+
+
+class TestPostDocumentWithDocumentType:
+    """Test post_document with document_type parameter."""
+
+    def test_resolves_string_document_type(self, client, tmp_path):
+        """Should resolve string document type to ID."""
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("PDF content")
+
+        client._document_type_cache = {"Article": 7}
+        client._document_type_cache_populated = True
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.headers = {"Content-Type": "text/plain"}
+        mock_response.text = "12345678-1234-1234-1234-123456789abc"
+
+        with patch.object(
+            client.session, "post", return_value=mock_response
+        ) as mock_post:
+            result = client.post_document(
+                file_path=test_file,
+                title="Test Doc",
+                document_type="Article",
+            )
+
+        assert result == "12345678-1234-1234-1234-123456789abc"
+        call_args = mock_post.call_args
+        assert call_args[1]["data"]["document_type"] == 7
+
+    def test_passes_integer_document_type(self, client, tmp_path):
+        """Should pass integer document type directly."""
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("PDF content")
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.headers = {"Content-Type": "text/plain"}
+        mock_response.text = "12345678-1234-1234-1234-123456789abc"
+
+        with patch.object(
+            client.session, "post", return_value=mock_response
+        ) as mock_post:
+            client.post_document(
+                file_path=test_file,
+                title="Test Doc",
+                document_type=7,
+            )
+
+        call_args = mock_post.call_args
+        assert call_args[1]["data"]["document_type"] == 7
+
+    def test_passes_numeric_string_document_type(self, client, tmp_path):
+        """Should convert numeric string document type to int."""
+        test_file = tmp_path / "test.pdf"
+        test_file.write_text("PDF content")
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.headers = {"Content-Type": "text/plain"}
+        mock_response.text = "12345678-1234-1234-1234-123456789abc"
+
+        with patch.object(
+            client.session, "post", return_value=mock_response
+        ) as mock_post:
+            client.post_document(
+                file_path=test_file,
+                title="Test Doc",
+                document_type="7",
+            )
+
+        call_args = mock_post.call_args
+        assert call_args[1]["data"]["document_type"] == 7
+
+
+class TestSetCustomFieldsLLMFlattening:
+    """Test that set_custom_fields flattens extra dict for LLM fields."""
+
+    def test_llm_fields_in_extra_are_found(self, client):
+        """Should find LLM fields stored in extra dict."""
+        client._custom_field_cache = {
+            "LLM Summary": 10,
+            "LLM Keywords": 11,
+            "LLM Entities": 12,
+            "LLM Topics": 13,
+        }
+        client._custom_field_cache_populated = True
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+
+        metadata = {
+            "extra": {
+                "llm_summary": "A summary",
+                "llm_keywords": "key1, key2",
+                "llm_entities": "entity1",
+                "llm_topics": "topic1",
+            }
+        }
+
+        with patch.object(client.session, "patch", return_value=mock_response) as mock_patch:
+            result = client.set_custom_fields(123, metadata)
+
+        assert result is True
+        payload = mock_patch.call_args[1]["json"]["custom_fields"]
+        assert len(payload) == 4
+        values = {item["field"]: item["value"] for item in payload}
+        assert values[10] == "A summary"
+        assert values[11] == "key1, key2"
+
+    def test_top_level_takes_priority_over_extra(self, client):
+        """Top-level keys should not be overwritten by extra dict."""
+        client._custom_field_cache = {"Author": 1}
+        client._custom_field_cache_populated = True
+
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+
+        metadata = {
+            "author": "Top Level Author",
+            "extra": {
+                "author": "Extra Author",
+            },
+        }
+
+        with patch.object(client.session, "patch", return_value=mock_response) as mock_patch:
+            client.set_custom_fields(123, metadata)
+
+        payload = mock_patch.call_args[1]["json"]["custom_fields"]
+        assert len(payload) == 1
+        assert payload[0]["value"] == "Top Level Author"
+
+
+class TestCustomFieldMappingUpdated:
+    """Test that CUSTOM_FIELD_MAPPING includes new fields."""
+
+    def test_mapping_includes_organization(self):
+        from app.services.paperless_client import CUSTOM_FIELD_MAPPING
+        assert "organization" in CUSTOM_FIELD_MAPPING
+        assert CUSTOM_FIELD_MAPPING["organization"] == ("Organization", "string")
+
+    def test_mapping_includes_author(self):
+        from app.services.paperless_client import CUSTOM_FIELD_MAPPING
+        assert "author" in CUSTOM_FIELD_MAPPING
+        assert CUSTOM_FIELD_MAPPING["author"] == ("Author", "string")
+
+    def test_mapping_includes_description(self):
+        from app.services.paperless_client import CUSTOM_FIELD_MAPPING
+        assert "description" in CUSTOM_FIELD_MAPPING
+        assert CUSTOM_FIELD_MAPPING["description"] == ("Description", "string")
+
+    def test_mapping_includes_language(self):
+        from app.services.paperless_client import CUSTOM_FIELD_MAPPING
+        assert "language" in CUSTOM_FIELD_MAPPING
+        assert CUSTOM_FIELD_MAPPING["language"] == ("Language", "string")
+
+    def test_mapping_removed_page_count(self):
+        from app.services.paperless_client import CUSTOM_FIELD_MAPPING
+        assert "page_count" not in CUSTOM_FIELD_MAPPING
+
+    def test_mapping_removed_file_size(self):
+        from app.services.paperless_client import CUSTOM_FIELD_MAPPING
+        assert "file_size" not in CUSTOM_FIELD_MAPPING
 
 
 class TestGetTaskStatusEdgeCases:

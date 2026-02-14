@@ -231,6 +231,14 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
             },
         )
 
+        # Fetch article page for structured metadata enrichment
+        try:
+            page_html = self.fetch_rendered_page(url)
+            if page_html:
+                self._enrich_metadata_from_html(page_html, metadata)
+        except Exception as e:
+            self.logger.debug(f"Page metadata extraction failed: {e}")
+
         # Exclusion check
         exclusion_reason = self.should_exclude_document(metadata)
         if exclusion_reason:
@@ -431,6 +439,9 @@ class TheEnergyScraper(FlareSolverrPageFetchMixin, JSONLDDateExtractionMixin, Ba
                     "lastmod": lastmod,
                 },
             )
+
+            # Enrich metadata from the fetched article page
+            self._enrich_metadata_from_html(article_html, metadata)
 
             # Exclusion check
             exclusion_reason = self.should_exclude_document(metadata)

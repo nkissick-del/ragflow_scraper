@@ -236,12 +236,15 @@ class TheConversationScraper(BaseScraper):
                 result.skipped_count += 1
                 return
 
-        # Extract author
+        # Extract author (strip title/affiliation from Atom bylines
+        # e.g. "Jane Doe, Professor, University of X" → "Jane Doe")
         author = ""
         if entry.get("authors"):
             author = entry["authors"][0].get("name", "")
         elif entry.get("author"):
             author = entry["author"]
+        if author and "," in author:
+            author = author.split(",", 1)[0].strip()
 
         # Extract article ID from feed ID
         article_id = self._extract_article_id(entry.get("id", ""))
@@ -263,15 +266,17 @@ class TheConversationScraper(BaseScraper):
             source_page=self.FEED_URL,
             organization="The Conversation",
             document_type="Article",
+            author=author or None,
+            description=entry.get("summary") or None,
             extra={
-                "author": author,
                 "article_id": article_id,
                 "updated_date": updated_date,
-                "summary": entry.get("summary", ""),
-                "abstract": entry.get("summary", ""),  # Use summary as abstract
                 "content_type": "article",
             },
         )
+
+        # Fetch article page for structured metadata enrichment
+        self._fetch_and_enrich_page(url, metadata)
 
         # Check exclusion
         exclusion_reason = self.should_exclude_document(metadata)

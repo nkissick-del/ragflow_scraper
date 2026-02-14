@@ -38,8 +38,9 @@ class PaperlessArchiveBackend(ArchiveBackend):
         title: str,
         created: Optional[str] = None,
         correspondent: Optional[str] = None,
+        document_type: Optional[str] = None,
         tags: Optional[list[str]] = None,
-        metadata: Optional[dict] = None,  # Reserved for future use
+        metadata: Optional[dict] = None,
     ) -> ArchiveResult:
         """
         Archive document to Paperless-ngx.
@@ -49,6 +50,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
             title: Document title
             created: ISO format date string
             correspondent: Source organization
+            document_type: Document type (e.g. "Article", "Report")
             tags: List of tags
             metadata: Additional metadata (applied as custom fields after verification)
 
@@ -84,6 +86,7 @@ class PaperlessArchiveBackend(ArchiveBackend):
             title=title,
             created=created_dt,
             correspondent=correspondent,  # type: ignore[arg-type]
+            document_type=document_type,  # type: ignore[arg-type]
             tags=tags,  # type: ignore[arg-type]
         )
 

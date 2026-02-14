@@ -608,7 +608,7 @@ class TestMetadataIntegration:
             url="https://example.com/article",
             title="Energy Update",
             filename="energy.md",
-            extra={"description": "Short description"},
+            description="Short description",
         )
 
         rag_meta = metadata.to_ragflow_metadata()
