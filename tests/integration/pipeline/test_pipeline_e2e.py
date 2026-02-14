@@ -430,9 +430,8 @@ class TestE2EPipelineMetadata:
         assert merged_metadata.get("publication_date") == "2024-01-15"
 
         # Verify merged metadata contains expected parser fields
-        # 'author' is not a standard DocumentMetadata field, so it goes to extra
-        extra = merged_metadata.get("extra", {})
-        assert extra.get("author") == "Extracted Author"
+        # 'author' is a standard DocumentMetadata field (promoted from extra)
+        assert merged_metadata.get("author") == "Extracted Author"
         assert merged_metadata.get("page_count") == 10
 
         # Verify the title (could be from scraper or parser depending on merge strategy)

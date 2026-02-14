@@ -756,7 +756,7 @@ class TestPaperlessCustomFields:
             json={
                 "results": [
                     {"id": 1, "name": "Original URL"},
-                    {"id": 2, "name": "Page Count"},
+                    {"id": 2, "name": "Author"},
                 ],
                 "next": None,
             },
@@ -771,7 +771,7 @@ class TestPaperlessCustomFields:
             status=200,
         )
 
-        metadata = {"url": "https://example.com/doc.pdf", "page_count": 10}
+        metadata = {"url": "https://example.com/doc.pdf", "author": "Jane Doe"}
         result = paperless_client.set_custom_fields(456, metadata)
         assert result is True
 
@@ -786,7 +786,7 @@ class TestPaperlessCustomFields:
         assert len(fields) == 2
         field_map = {f["field"]: f["value"] for f in fields}
         assert field_map[1] == "https://example.com/doc.pdf"
-        assert field_map[2] == 10
+        assert field_map[2] == "Jane Doe"
 
     @responses.activate
     def test_full_flow_archive_verify_custom_fields(
