@@ -2,7 +2,12 @@
 
 from unittest.mock import Mock, patch
 
-from app.utils.html_utils import build_article_html, inline_images, inject_metadata_stamp
+from app.utils.html_utils import (
+    _strip_duplicate_title,
+    build_article_html,
+    inline_images,
+    inject_metadata_stamp,
+)
 
 
 # ── build_article_html ──────────────────────────────────────────────────
@@ -16,20 +21,15 @@ class TestBuildArticleHtml:
         html = build_article_html(
             body_html="<p>Article body</p>",
             title="Test Title",
-            date="2026-01-15",
-            organization="Test Org",
-            source_url="https://example.com/article",
             base_url="https://example.com",
         )
 
         assert "<!DOCTYPE html>" in html
         assert "<h1>Test Title</h1>" in html
-        assert "2026-01-15" in html
-        assert "Test Org" in html
-        assert 'href="https://example.com/article"' in html
-        assert "Original article" in html
         assert '<base href="https://example.com">' in html
         assert "<p>Article body</p>" in html
+        # article-meta removed — metadata stamp handles it now
+        assert "article-meta" not in html
 
     def test_minimal_fields(self):
         """Only body_html provided — no title/meta header, still valid HTML."""
@@ -74,26 +74,94 @@ class TestBuildArticleHtml:
         assert "font-family" in html
         assert "max-width: 800px" in html
 
-    def test_metadata_header_with_all_parts(self):
-        """Date, org, and source link joined by middot."""
+    def test_no_article_meta_rendered(self):
+        """article-meta div is no longer generated (replaced by metadata stamp)."""
         html = build_article_html(
             body_html="<p>Test</p>",
             date="2026-01-01",
             organization="Org",
             source_url="https://example.com",
         )
-        assert "article-meta" in html
-        assert "&middot;" in html
-
-    def test_metadata_header_single_field(self):
-        """Single metadata field renders without separators."""
-        html = build_article_html(
-            body_html="<p>Test</p>",
-            date="2026-01-01",
-        )
-        assert "article-meta" in html
-        assert "2026-01-01" in html
+        assert "article-meta" not in html
         assert "&middot;" not in html
+
+    def test_strips_duplicate_title_from_body(self):
+        """Leading <h1> matching the title is removed from body."""
+        html = build_article_html(
+            body_html="<h1>My Title</h1><p>Content</p>",
+            title="My Title",
+        )
+        # Should have exactly one h1
+        assert html.count("<h1>") == 1
+        assert "<h1>My Title</h1>" in html
+        assert "<p>Content</p>" in html
+
+    def test_keeps_non_matching_h1(self):
+        """Leading <h1> with different text is preserved."""
+        html = build_article_html(
+            body_html="<h1>Different Heading</h1><p>Content</p>",
+            title="Article Title",
+        )
+        # Both should be present
+        assert "<h1>Article Title</h1>" in html
+        assert "Different Heading" in html
+
+
+# ── _strip_duplicate_title ─────────────────────────────────────────────
+
+
+class TestStripDuplicateTitle:
+    """Tests for _strip_duplicate_title()."""
+
+    def test_exact_match(self):
+        """Matching h1 is stripped."""
+        result = _strip_duplicate_title("<h1>My Title</h1><p>Body</p>", "My Title")
+        assert "<h1>" not in result
+        assert "<p>Body</p>" in result
+
+    def test_case_insensitive(self):
+        """Match is case-insensitive."""
+        result = _strip_duplicate_title("<h1>my title</h1><p>Body</p>", "My Title")
+        assert "<h1>" not in result
+
+    def test_no_match_preserved(self):
+        """Non-matching h1 is left intact."""
+        body = "<h1>Other Heading</h1><p>Body</p>"
+        result = _strip_duplicate_title(body, "My Title")
+        assert result == body
+
+    def test_h1_with_attributes(self):
+        """h1 with class/id attributes is still matched."""
+        result = _strip_duplicate_title(
+            '<h1 class="entry-title">My Title</h1><p>Body</p>', "My Title"
+        )
+        assert "<h1" not in result
+
+    def test_h1_with_inner_tags(self):
+        """h1 containing inline tags (e.g. <a>, <span>) is matched on text."""
+        result = _strip_duplicate_title(
+            '<h1><a href="#">My Title</a></h1><p>Body</p>', "My Title"
+        )
+        assert "<h1>" not in result
+
+    def test_empty_title_noop(self):
+        """Empty title skips stripping."""
+        body = "<h1>Something</h1><p>Body</p>"
+        assert _strip_duplicate_title(body, "") == body
+
+    def test_empty_body_noop(self):
+        """Empty body returns empty string."""
+        assert _strip_duplicate_title("", "Title") == ""
+
+    def test_non_leading_h1_ignored(self):
+        """h1 that is NOT the first element is not stripped."""
+        body = "<p>Intro</p><h1>My Title</h1><p>Body</p>"
+        assert _strip_duplicate_title(body, "My Title") == body
+
+    def test_whitespace_before_h1(self):
+        """Leading whitespace before h1 is handled."""
+        result = _strip_duplicate_title("  \n<h1>My Title</h1><p>Body</p>", "My Title")
+        assert "<h1>" not in result
 
 
 # ── inline_images ───────────────────────────────────────────────────────

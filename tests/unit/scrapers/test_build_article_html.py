@@ -33,14 +33,14 @@ class TestBuildArticleHtml:
     """Tests for _build_article_html mixin method."""
 
     def test_basic_wrapping(self, mixin, metadata):
-        """Body HTML is wrapped in full document with title and metadata."""
+        """Body HTML is wrapped in full document with title."""
         result = mixin._build_article_html("<p>Hello world</p>", metadata)
 
         assert "<!DOCTYPE html>" in result
         assert "<h1>Test Article Title</h1>" in result
-        assert "2026-01-15" in result
-        assert "Test Org" in result
         assert "<p>Hello world</p>" in result
+        # article-meta removed — metadata stamp handles date/org now
+        assert "article-meta" not in result
 
     def test_uses_base_url_attribute(self, mixin, metadata):
         """base_url from scraper attribute is passed to build_article_html."""

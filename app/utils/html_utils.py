@@ -45,8 +45,6 @@ img { max-width: 100%; height: auto; border-radius: 4px; margin: 20px 0; }
 blockquote { border-left: 4px solid #eee; padding-left: 15px; color: #666; margin: 20px 0; font-style: italic; }
 pre { background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; }
 code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; background: #f5f5f5; padding: 2px 5px; border-radius: 2px; }
-.article-meta { color: #666; font-size: 0.9em; margin-bottom: 2em; }
-.article-meta a { color: #0066cc; }
 .metadata-stamp { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 16px 20px; margin-bottom: 2em; font-size: 0.85em; color: #495057; page-break-inside: avoid; }
 .metadata-stamp h3 { margin: 0 0 10px 0; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.05em; color: #6c757d; border-bottom: 1px solid #dee2e6; padding-bottom: 8px; }
 .metadata-stamp table { width: 100%; border-collapse: collapse; }
@@ -180,6 +178,29 @@ def _apply_extra_removal(soup: BeautifulSoup, removal: dict[str, str]) -> None:
         target.decompose()
 
 
+def _strip_duplicate_title(body_html: str, title: str) -> str:
+    """Remove a leading <h1> from body_html if it duplicates the article title.
+
+    Some source websites include the title inside their article/content div,
+    which would duplicate the <h1> that build_article_html() adds.
+    """
+    if not title or not body_html:
+        return body_html
+
+    match = _re.match(r"\s*<h1[^>]*>(.*?)</h1>\s*", body_html, _re.IGNORECASE | _re.DOTALL)
+    if not match:
+        return body_html
+
+    # Compare normalised text (strip tags, collapse whitespace)
+    h1_text = _re.sub(r"<[^>]+>", "", match.group(1)).strip()
+    title_text = title.strip()
+
+    if h1_text.lower() == title_text.lower():
+        return body_html[match.end():]
+
+    return body_html
+
+
 def build_article_html(
     body_html: str,
     title: str = "",
@@ -204,18 +225,8 @@ def build_article_html(
     safe_title = html_escape(title) if title else ""
     base_tag = f'<base href="{html_escape(base_url)}">' if base_url else ""
 
-    # Build metadata header
-    meta_parts: list[str] = []
-    if date:
-        meta_parts.append(html_escape(date))
-    if organization:
-        meta_parts.append(html_escape(organization))
-    if source_url:
-        meta_parts.append(
-            f'<a href="{html_escape(source_url)}">Original article</a>'
-        )
-    meta_line = " &middot; ".join(meta_parts)
-    meta_html = f'<div class="article-meta">{meta_line}</div>' if meta_line else ""
+    # Strip duplicate title from body if the source HTML already has one
+    body_html = _strip_duplicate_title(body_html, title)
 
     title_html = f"<h1>{safe_title}</h1>" if safe_title else ""
 
@@ -230,7 +241,6 @@ def build_article_html(
         "</head>\n"
         "<body>\n"
         f"{title_html}\n"
-        f"{meta_html}\n"
         f"{body_html}\n"
         "</body>\n"
         "</html>"
