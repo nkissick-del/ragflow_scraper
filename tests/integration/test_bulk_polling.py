@@ -43,6 +43,7 @@ def app():
     """Create test Flask app with mocked dependencies."""
     mock_container = MagicMock()
     mock_container.settings.get_all.return_value = {}
+    mock_container._get_state_store.return_value = None  # no batch DB path
     mock_container.state_tracker.return_value = _make_mock_state()
     mock_container.settings.get_scraper_cloudflare_enabled.return_value = False
     mock_container.settings.get_scraper_ragflow_settings.return_value = {
