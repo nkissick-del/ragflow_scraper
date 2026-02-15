@@ -72,7 +72,7 @@ class TikaClient:
         if not self.url:
             return False
         try:
-            resp = requests.get(f"{self.url}/tika", timeout=10)
+            resp = requests.get(f"{self.url}/tika", timeout=Config.HEALTH_CHECK_TIMEOUT)
             return resp.ok
         except Exception:
             return False

@@ -101,7 +101,7 @@ class GotenbergClient:
         if not self.url:
             return False
         try:
-            resp = requests.get(f"{self.url}/health", timeout=10)
+            resp = requests.get(f"{self.url}/health", timeout=Config.HEALTH_CHECK_TIMEOUT)
             return resp.ok
         except Exception:
             return False

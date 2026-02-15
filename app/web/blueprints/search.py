@@ -6,6 +6,7 @@ import re
 
 from flask import Blueprint, render_template, request, jsonify
 
+from app.config import Config
 from app.utils import get_logger
 from app.utils.logging_config import log_exception
 from app.web.limiter import limiter
@@ -56,10 +57,10 @@ def search():
             if not isinstance(src, str) or not _SAFE_NAME_RE.match(src):
                 return jsonify({"error": "Invalid source name"}), 400
     try:
-        limit = int(data.get("limit", 10))
+        limit = int(data.get("limit", Config.SEARCH_DEFAULT_LIMIT))
     except (TypeError, ValueError):
-        limit = 10
-    limit = max(1, min(limit, 50))
+        limit = Config.SEARCH_DEFAULT_LIMIT
+    limit = max(1, min(limit, Config.SEARCH_MAX_RESULTS))
     metadata_filter = data.get("metadata_filter", None)
     if metadata_filter is not None and not isinstance(metadata_filter, dict):
         return jsonify({"error": "metadata_filter must be an object"}), 400

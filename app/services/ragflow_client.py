@@ -72,11 +72,11 @@ class DatasetInfo:
 class HttpAdapter:
     """HTTP helper with shared retry/backoff."""
 
-    def __init__(self, api_url: str, api_key: Optional[str], timeout: int = 60, max_retries: int = 3):
+    def __init__(self, api_url: str, api_key: Optional[str], timeout: int = 60, max_retries: Optional[int] = None):
         self.base_url = api_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
-        self.max_retries = max_retries
+        self.max_retries = max_retries if max_retries is not None else Config.RAGFLOW_MAX_RETRIES
         self.session: Session = requests.Session()
         self.logger = get_logger("ragflow.http")
 
@@ -119,11 +119,11 @@ RNLJpL8w4D44sfth5RvZ3q9t+6RTArpEtc5sh5ChzvqPOzKGMXW83C95TxmXqpbK
 -----END PUBLIC KEY-----"""
     )
 
-    def __init__(self, api_url: str, username: str, password: str, timeout: int = 30):
+    def __init__(self, api_url: str, username: str, password: str, timeout: Optional[int] = None):
         self.api_url = api_url.rstrip("/")
         self.username = username
         self.password = password
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else Config.RAGFLOW_SESSION_TIMEOUT
         self._token: Optional[str] = None
         self._session = requests.Session()
         self.logger = get_logger("ragflow.session")
@@ -187,7 +187,7 @@ class RAGFlowClient:
         username: Optional[str] = None,
         password: Optional[str] = None,
         timeout: int = 60,
-        max_retries: int = 3,
+        max_retries: int = 0,
     ) -> None:
         self.api_url = (api_url or Config.RAGFLOW_API_URL).rstrip("/")
         self.api_key = api_key or Config.RAGFLOW_API_KEY
@@ -377,7 +377,9 @@ class RAGFlowClient:
         resp = self.http.request("POST", f"/api/v1/datasets/{dataset_id}/documents/parse", json=payload)
         return resp.ok
 
-    def wait_for_parsing(self, dataset_id: str, document_ids: Optional[list[str]] = None, timeout: float = 120.0, poll_interval: float = 2.0) -> bool:
+    def wait_for_parsing(self, dataset_id: str, document_ids: Optional[list[str]] = None, timeout: Optional[float] = None, poll_interval: Optional[float] = None) -> bool:
+        timeout = timeout if timeout is not None else Config.RAGFLOW_PARSE_TIMEOUT
+        poll_interval = poll_interval if poll_interval is not None else Config.RAGFLOW_POLL_INTERVAL
         start = time.time()
         target_ids = set(document_ids or [])
         while time.time() - start < timeout:

@@ -43,8 +43,8 @@ class AnythingLLMClient:
         api_url: Optional[str] = None,
         api_key: Optional[str] = None,
         workspace_id: Optional[str] = None,
-        timeout: int = 60,
-        max_attempts: int = 3,
+        timeout: Optional[int] = None,
+        max_attempts: Optional[int] = None,
     ) -> None:
         """
         Initialize AnythingLLM client.
@@ -55,8 +55,8 @@ class AnythingLLMClient:
                      If URL ends with '/api', it will be stripped.
             api_key: API key for authentication (defaults to Config.ANYTHINGLLM_API_KEY)
             workspace_id: Default workspace slug (defaults to Config.ANYTHINGLLM_WORKSPACE_ID)
-            timeout: Request timeout in seconds
-            max_attempts: Maximum number of attempts (including the first attempt)
+            timeout: Request timeout in seconds (None = use Config.ANYTHINGLLM_TIMEOUT)
+            max_attempts: Maximum number of attempts including the first (None = use Config.ANYTHINGLLM_MAX_RETRIES)
         """
         # Strip /api suffix if present to avoid double /api/api prefix
         api_url_clean = (api_url or Config.ANYTHINGLLM_API_URL or "").rstrip("/")
@@ -66,9 +66,9 @@ class AnythingLLMClient:
         self.api_url = api_url_clean
         self.api_key = api_key or Config.ANYTHINGLLM_API_KEY or ""
         self.workspace_id = workspace_id or Config.ANYTHINGLLM_WORKSPACE_ID or ""
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else Config.ANYTHINGLLM_TIMEOUT
         # Ensure at least one attempt is made
-        self.max_attempts = max(1, max_attempts)
+        self.max_attempts = max(1, max_attempts if max_attempts is not None else Config.ANYTHINGLLM_MAX_RETRIES)
         self.session: Session = requests.Session()
         self.logger = get_logger("anythingllm.client")
         self._closed = False

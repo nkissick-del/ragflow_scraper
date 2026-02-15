@@ -52,6 +52,8 @@ class TestIsConfigured:
             mock_config.ANYTHINGLLM_API_URL = ""
             mock_config.ANYTHINGLLM_API_KEY = ""
             mock_config.ANYTHINGLLM_WORKSPACE_ID = ""
+            mock_config.ANYTHINGLLM_TIMEOUT = 30
+            mock_config.ANYTHINGLLM_MAX_RETRIES = 3
             backend = AnythingLLMBackend(api_url="", api_key="test-key")
             assert backend.is_configured() is False
 
@@ -61,6 +63,8 @@ class TestIsConfigured:
             mock_config.ANYTHINGLLM_API_URL = ""
             mock_config.ANYTHINGLLM_API_KEY = ""
             mock_config.ANYTHINGLLM_WORKSPACE_ID = ""
+            mock_config.ANYTHINGLLM_TIMEOUT = 30
+            mock_config.ANYTHINGLLM_MAX_RETRIES = 3
             backend = AnythingLLMBackend(api_url="http://localhost:3001", api_key="")
             assert backend.is_configured() is False
 
@@ -86,6 +90,8 @@ class TestTestConnection:
             mock_config.ANYTHINGLLM_API_URL = ""
             mock_config.ANYTHINGLLM_API_KEY = ""
             mock_config.ANYTHINGLLM_WORKSPACE_ID = ""
+            mock_config.ANYTHINGLLM_TIMEOUT = 30
+            mock_config.ANYTHINGLLM_MAX_RETRIES = 3
             backend = AnythingLLMBackend(api_url="", api_key="")
             result = backend.test_connection()
             assert result is False
@@ -155,6 +161,8 @@ class TestIngestDocument:
             mock_config.ANYTHINGLLM_API_URL = ""
             mock_config.ANYTHINGLLM_API_KEY = ""
             mock_config.ANYTHINGLLM_WORKSPACE_ID = ""
+            mock_config.ANYTHINGLLM_TIMEOUT = 30
+            mock_config.ANYTHINGLLM_MAX_RETRIES = 3
             backend = AnythingLLMBackend(api_url="", api_key="")
             test_file = tmp_path / "test.md"
             test_file.write_text("# Test")

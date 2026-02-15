@@ -44,12 +44,26 @@ def _make_mock_settings():
         "services": {
             "gotenberg_url": "", "gotenberg_timeout": 0, "tika_url": "", "tika_timeout": 0,
             "docling_serve_url": "", "docling_serve_timeout": 0, "paperless_url": "",
-            "ragflow_url": "", "anythingllm_url": "", "embedding_url": "",
+            "paperless_timeout": 0, "ragflow_url": "", "ragflow_timeout": 0,
+            "anythingllm_url": "", "anythingllm_timeout": 0, "embedding_url": "",
             "embedding_timeout": 0, "pgvector_url": "", "llm_url": "", "llm_timeout": 0,
         },
         "application": {"name": "PDF Scraper", "version": "0.1.0"},
         "scrapers": {},
         "scheduler": {"enabled": False, "run_on_startup": False},
+        "advanced": {
+            "health_check_timeout": 0, "paperless_upload_timeout": 0,
+            "paperless_retry_attempts": 0, "paperless_retry_backoff": 0,
+            "paperless_poll_interval": 0, "paperless_poll_timeout": 0,
+            "ragflow_max_retries": 0, "ragflow_parse_timeout": 0,
+            "ragflow_poll_interval": 0, "ragflow_session_timeout": 0,
+            "anythingllm_max_retries": 0, "db_pool_min_size": 0,
+            "db_pool_max_size": 0, "db_pool_timeout": 0,
+            "flaresolverr_cache_ttl": 0, "flaresolverr_cache_max_size": 0,
+            "search_max_results": 0, "search_default_limit": 0,
+            "embedding_batch_size": 0, "retry_backoff_factor": 0,
+            "retry_jitter": 0,
+        },
     }
     mock.flaresolverr_enabled = False
 

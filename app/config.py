@@ -308,6 +308,47 @@ class Config:
     REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", 60))
     RETRY_ATTEMPTS = int(os.getenv("RETRY_ATTEMPTS", 3))
 
+    # Health Checks
+    HEALTH_CHECK_TIMEOUT = int(os.getenv("HEALTH_CHECK_TIMEOUT", "10"))
+
+    # Paperless-ngx Tuning
+    PAPERLESS_TIMEOUT = int(os.getenv("PAPERLESS_TIMEOUT", "30"))
+    PAPERLESS_UPLOAD_TIMEOUT = int(os.getenv("PAPERLESS_UPLOAD_TIMEOUT", "60"))
+    PAPERLESS_RETRY_ATTEMPTS = int(os.getenv("PAPERLESS_RETRY_ATTEMPTS", "3"))
+    PAPERLESS_RETRY_BACKOFF = float(os.getenv("PAPERLESS_RETRY_BACKOFF", "1.0"))
+    PAPERLESS_POLL_INTERVAL = float(os.getenv("PAPERLESS_POLL_INTERVAL", "2.0"))
+    PAPERLESS_POLL_TIMEOUT = int(os.getenv("PAPERLESS_POLL_TIMEOUT", "60"))
+
+    # RAGFlow Tuning
+    RAGFLOW_MAX_RETRIES = int(os.getenv("RAGFLOW_MAX_RETRIES", "3"))
+    RAGFLOW_PARSE_TIMEOUT = int(os.getenv("RAGFLOW_PARSE_TIMEOUT", "120"))
+    RAGFLOW_POLL_INTERVAL = float(os.getenv("RAGFLOW_POLL_INTERVAL", "2.0"))
+    RAGFLOW_SESSION_TIMEOUT = int(os.getenv("RAGFLOW_SESSION_TIMEOUT", "30"))
+
+    # AnythingLLM Tuning
+    ANYTHINGLLM_MAX_RETRIES = int(os.getenv("ANYTHINGLLM_MAX_RETRIES", "3"))
+    ANYTHINGLLM_TIMEOUT = int(os.getenv("ANYTHINGLLM_TIMEOUT", "30"))
+
+    # Database Pool
+    DB_POOL_MIN_SIZE = int(os.getenv("DB_POOL_MIN_SIZE", "2"))
+    DB_POOL_MAX_SIZE = int(os.getenv("DB_POOL_MAX_SIZE", "10"))
+    DB_POOL_TIMEOUT = float(os.getenv("DB_POOL_TIMEOUT", "10.0"))
+
+    # FlareSolverr Cache
+    FLARESOLVERR_CACHE_TTL = int(os.getenv("FLARESOLVERR_CACHE_TTL", "3600"))
+    FLARESOLVERR_CACHE_MAX_SIZE = int(os.getenv("FLARESOLVERR_CACHE_MAX_SIZE", "50"))
+
+    # Search & Pagination
+    SEARCH_MAX_RESULTS = int(os.getenv("SEARCH_MAX_RESULTS", "50"))
+    SEARCH_DEFAULT_LIMIT = int(os.getenv("SEARCH_DEFAULT_LIMIT", "10"))
+
+    # Embedding
+    EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
+
+    # Retry/Backoff Defaults
+    RETRY_BACKOFF_FACTOR = float(os.getenv("RETRY_BACKOFF_FACTOR", "2.0"))
+    RETRY_JITTER = float(os.getenv("RETRY_JITTER", "0.25"))
+
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     LOG_JSON_FORMAT = os.getenv("LOG_JSON_FORMAT", "true").lower() == "true"

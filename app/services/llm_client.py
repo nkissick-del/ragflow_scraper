@@ -13,6 +13,7 @@ from typing import Any, Optional
 
 import requests
 
+from app.config import Config
 from app.utils import get_logger
 
 
@@ -100,7 +101,7 @@ class OllamaLLMClient(LLMClient):
         if not self.is_configured():
             return False
         try:
-            resp = requests.get(f"{self._url}/api/tags", timeout=10)
+            resp = requests.get(f"{self._url}/api/tags", timeout=Config.HEALTH_CHECK_TIMEOUT)
             return resp.ok
         except Exception as e:
             self.logger.debug(f"Connection test failed: {e}")
@@ -188,7 +189,7 @@ class APILLMClient(LLMClient):
                     "max_tokens": 1,
                 },
                 headers=self._headers(),
-                timeout=10,
+                timeout=Config.HEALTH_CHECK_TIMEOUT,
             )
             return resp.ok
         except Exception as e:

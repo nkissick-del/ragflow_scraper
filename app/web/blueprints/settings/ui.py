@@ -34,8 +34,11 @@ def settings_page():
     eff_docling_serve_url = _get_effective_url("docling_serve", "DOCLING_SERVE_URL")
     eff_docling_serve_timeout = _get_effective_timeout("docling_serve", "DOCLING_SERVE_TIMEOUT")
     eff_paperless_url = _get_effective_url("paperless", "PAPERLESS_API_URL")
+    eff_paperless_timeout = _get_effective_timeout("paperless", "PAPERLESS_TIMEOUT")
     eff_ragflow_url = _get_effective_url("ragflow", "RAGFLOW_API_URL")
+    eff_ragflow_timeout = _get_effective_timeout("ragflow", "RAGFLOW_SESSION_TIMEOUT")
     eff_anythingllm_url = _get_effective_url("anythingllm", "ANYTHINGLLM_API_URL")
+    eff_anythingllm_timeout = _get_effective_timeout("anythingllm", "ANYTHINGLLM_TIMEOUT")
     eff_embedding_url = _get_effective_url("embedding", "EMBEDDING_URL")
     eff_embedding_timeout = _get_effective_timeout("embedding", "EMBEDDING_TIMEOUT")
     eff_pgvector_url = _get_effective_url("pgvector", "DATABASE_URL")
@@ -112,7 +115,7 @@ def settings_page():
             resp = http_requests.get(
                 f"{eff_paperless_url}/api/",
                 headers={"Authorization": f"Token {Config.PAPERLESS_API_TOKEN}"},
-                timeout=10,
+                timeout=Config.HEALTH_CHECK_TIMEOUT,
             )
             return resp.status_code == 200
         paperless_status = _check_service_status(_check_paperless, "paperless")
@@ -120,7 +123,7 @@ def settings_page():
     docling_serve_status = "not_configured"
     if eff_docling_serve_url:
         def _check_docling():
-            resp = http_requests.get(f"{eff_docling_serve_url}/health", timeout=10)
+            resp = http_requests.get(f"{eff_docling_serve_url}/health", timeout=Config.HEALTH_CHECK_TIMEOUT)
             return resp.ok
         docling_serve_status = _check_service_status(_check_docling, "docling_serve")
 
@@ -217,8 +220,11 @@ def settings_page():
         eff_docling_serve_url=eff_docling_serve_url,
         eff_docling_serve_timeout=eff_docling_serve_timeout,
         eff_paperless_url=eff_paperless_url,
+        eff_paperless_timeout=eff_paperless_timeout,
         eff_ragflow_url=eff_ragflow_url,
+        eff_ragflow_timeout=eff_ragflow_timeout,
         eff_anythingllm_url=eff_anythingllm_url,
+        eff_anythingllm_timeout=eff_anythingllm_timeout,
         eff_embedding_url=eff_embedding_url,
         eff_embedding_timeout=eff_embedding_timeout,
         eff_pgvector_url=eff_pgvector_url,

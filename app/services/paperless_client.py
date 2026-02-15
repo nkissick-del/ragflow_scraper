@@ -88,13 +88,16 @@ class PaperlessClient:
         self.token = token or Config.PAPERLESS_API_TOKEN
         self.logger = get_logger("services.paperless")
 
+        self._timeout = Config.PAPERLESS_TIMEOUT
+        self._upload_timeout = Config.PAPERLESS_UPLOAD_TIMEOUT
+
         self.session = requests.Session()
         if self.token:
             self.session.headers.update({"Authorization": f"Token {self.token}"})
 
         retry_strategy = Retry(
-            total=3,
-            backoff_factor=1,
+            total=Config.PAPERLESS_RETRY_ATTEMPTS,
+            backoff_factor=Config.PAPERLESS_RETRY_BACKOFF,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["GET"],
             raise_on_status=False,
@@ -147,7 +150,7 @@ class PaperlessClient:
         next_url: Optional[str] = f"{self.url}/api/correspondents/"
 
         while next_url:
-            response = self.session.get(next_url, timeout=30)
+            response = self.session.get(next_url, timeout=self._timeout)
             response.raise_for_status()
             data = response.json()
 
@@ -197,7 +200,7 @@ class PaperlessClient:
                 response = self.session.post(
                     f"{self.url}/api/correspondents/",
                     json={"name": name, **self._owner_payload},
-                    timeout=30,
+                    timeout=self._timeout,
                 )
                 if response.status_code == 409:
                     self.logger.debug(
@@ -237,7 +240,7 @@ class PaperlessClient:
         next_url: Optional[str] = f"{self.url}/api/document_types/"
 
         while next_url:
-            response = self.session.get(next_url, timeout=30)
+            response = self.session.get(next_url, timeout=self._timeout)
             response.raise_for_status()
             data = response.json()
 
@@ -287,7 +290,7 @@ class PaperlessClient:
                 response = self.session.post(
                     f"{self.url}/api/document_types/",
                     json={"name": name, **self._owner_payload},
-                    timeout=30,
+                    timeout=self._timeout,
                 )
                 if response.status_code == 409:
                     self.logger.debug(
@@ -326,7 +329,7 @@ class PaperlessClient:
         next_url: Optional[str] = f"{self.url}/api/tags/"
 
         while next_url:
-            response = self.session.get(next_url, timeout=30)
+            response = self.session.get(next_url, timeout=self._timeout)
             response.raise_for_status()
             data = response.json()
 
@@ -379,7 +382,7 @@ class PaperlessClient:
                 response = self.session.post(
                     f"{self.url}/api/tags/",
                     json={"name": name, **self._owner_payload},
-                    timeout=30,
+                    timeout=self._timeout,
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -409,7 +412,7 @@ class PaperlessClient:
         next_url: Optional[str] = f"{self.url}/api/custom_fields/"
 
         while next_url:
-            response = self.session.get(next_url, timeout=30)
+            response = self.session.get(next_url, timeout=self._timeout)
             response.raise_for_status()
             data = response.json()
 
@@ -460,7 +463,7 @@ class PaperlessClient:
                 response = self.session.post(
                     f"{self.url}/api/custom_fields/",
                     json={"name": name, "data_type": data_type, **self._owner_payload},
-                    timeout=30,
+                    timeout=self._timeout,
                 )
                 if response.status_code == 409:
                     self.logger.debug(
@@ -543,7 +546,7 @@ class PaperlessClient:
             response = self.session.patch(
                 f"{self.url}/api/documents/{document_id}/",
                 json={"custom_fields": custom_fields_payload},
-                timeout=30,
+                timeout=self._timeout,
             )
             response.raise_for_status()
             self.logger.info(
@@ -703,7 +706,7 @@ class PaperlessClient:
             with open(path, "rb") as f:
                 files = {"document": (path.name, f)}
                 response = self.session.post(
-                    endpoint, data=data, files=files, timeout=60
+                    endpoint, data=data, files=files, timeout=self._upload_timeout
                 )
 
             response.raise_for_status()
@@ -729,7 +732,7 @@ class PaperlessClient:
         if not self.is_configured:
             return False
         try:
-            res = self.session.get(f"{self.url}/api/", timeout=5)
+            res = self.session.get(f"{self.url}/api/", timeout=Config.HEALTH_CHECK_TIMEOUT)
             return res.status_code == 200
         except Exception:
             return False
@@ -760,7 +763,7 @@ class PaperlessClient:
         next_url: Optional[str] = f"{self.url}/api/tasks/"
         try:
             while next_url:
-                response = self.session.get(next_url, timeout=10)
+                response = self.session.get(next_url, timeout=self._timeout)
                 response.raise_for_status()
                 data = response.json()
 
@@ -787,7 +790,7 @@ class PaperlessClient:
             return None
 
     def verify_document_exists(
-        self, task_id: str, timeout: int = 60, poll_interval: int = 2
+        self, task_id: str, timeout: int = 0, poll_interval: float = 0,
     ) -> Optional[str]:
         """
         Poll task status until document is verified (Sonarr-style).
@@ -803,6 +806,9 @@ class PaperlessClient:
 
         if not self.is_configured:
             return None
+
+        timeout = timeout or Config.PAPERLESS_POLL_TIMEOUT
+        poll_interval = poll_interval or Config.PAPERLESS_POLL_INTERVAL
 
         start_time = time.time()
         self.logger.info(f"Verifying document for task {task_id}...")
@@ -871,7 +877,7 @@ class PaperlessClient:
 
         try:
             while next_url:
-                response = self.session.get(next_url, params=params, timeout=30)
+                response = self.session.get(next_url, params=params, timeout=self._timeout)
                 response.raise_for_status()
                 data = response.json()
 
@@ -903,7 +909,7 @@ class PaperlessClient:
         try:
             response = self.session.get(
                 f"{self.url}/api/documents/{document_id}/download/",
-                timeout=60,
+                timeout=self._upload_timeout,
             )
             response.raise_for_status()
             return response.content
@@ -1032,7 +1038,7 @@ class PaperlessClient:
 
         try:
             while next_url:
-                response = self.session.get(next_url, params=params, timeout=30)
+                response = self.session.get(next_url, params=params, timeout=self._timeout)
                 response.raise_for_status()
                 data = response.json()
 
@@ -1056,7 +1062,7 @@ class PaperlessClient:
             response = self.session.post(
                 f"{self.url}/api/documents/bulk_edit/",
                 json={"documents": doc_ids, "method": "delete", "parameters": {}},
-                timeout=60,
+                timeout=self._upload_timeout,
             )
             response.raise_for_status()
             self.logger.info(

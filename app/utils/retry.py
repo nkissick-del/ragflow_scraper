@@ -8,6 +8,7 @@ import random
 from functools import wraps
 from typing import Callable, Iterable, Optional, Type
 
+from app.config import Config
 from app.utils.errors import ScraperError
 
 logger = logging.getLogger(__name__)
@@ -25,8 +26,8 @@ def _resolve_attempts(max_attempts: Optional[int], args: tuple) -> int:
 def retry_on_error(
     *,
     max_attempts: Optional[int] = None,
-    backoff_factor: float = 2.0,
-    jitter: float = 0.25,
+    backoff_factor: Optional[float] = None,
+    jitter: Optional[float] = None,
     max_delay: Optional[float] = None,
     exceptions: Iterable[Type[BaseException]] = (ScraperError,),
     on_retry: Optional[Callable[[BaseException, int, float], None]] = None,
@@ -37,11 +38,15 @@ def retry_on_error(
         max_attempts: Max attempts including the first call. Defaults to the callee's
             ``retry_attempts`` attribute when used on bound methods, otherwise 3.
         backoff_factor: Base for exponential backoff (seconds). Delay grows as factor**(attempt-1).
+            Defaults to Config.RETRY_BACKOFF_FACTOR.
         jitter: Max random seconds added to each delay to avoid thundering herds.
+            Defaults to Config.RETRY_JITTER.
         max_delay: Optional ceiling for any individual delay.
         exceptions: Exception types that trigger a retry.
         on_retry: Optional callback invoked as ``on_retry(exc, attempt_number, delay_seconds)``.
     """
+    effective_backoff = backoff_factor if backoff_factor is not None else Config.RETRY_BACKOFF_FACTOR
+    effective_jitter = jitter if jitter is not None else Config.RETRY_JITTER
 
     def decorator(func: Callable):
         @wraps(func)
@@ -62,9 +67,9 @@ def retry_on_error(
                     if attempt >= attempts:
                         raise
 
-                    delay = backoff_factor ** (attempt - 1)
-                    if jitter:
-                        delay += random.uniform(0, max(jitter, 0))
+                    delay = effective_backoff ** (attempt - 1)
+                    if effective_jitter:
+                        delay += random.uniform(0, max(effective_jitter, 0))
                     if max_delay is not None:
                         delay = min(delay, max_delay)
                     logger.warning(

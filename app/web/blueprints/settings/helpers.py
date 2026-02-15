@@ -89,6 +89,15 @@ def _validate_url_ssrf(url: str) -> str | None:
     return None
 
 
+def _get_effective_advanced(key: str, config_attr: str) -> int | float:
+    """Get effective advanced setting from settings override (if >0) or Config fallback."""
+    from app.config import Config
+    override = container.settings.get(f"advanced.{key}", 0)
+    if override and override > 0:
+        return override
+    return getattr(Config, config_attr, 0)
+
+
 def _validate_scraper_name(name: str) -> bool:
     """Validate scraper name to prevent injection."""
     return bool(re.match(r"^[a-zA-Z0-9_-]+$", name))

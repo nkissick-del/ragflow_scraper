@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import requests
 
+from app.config import Config
 from app.utils import get_logger
 
 
@@ -92,13 +93,13 @@ class OllamaEmbeddingClient(EmbeddingClient):
         model: str = "nomic-embed-text",
         dimensions: int = 768,
         timeout: int = 60,
-        batch_size: int = 32,
+        batch_size: int = 0,
     ):
         self._url = url.rstrip("/") if url else ""
         self._model = model
         self._dimensions = dimensions
         self._timeout = timeout
-        self._batch_size = batch_size
+        self._batch_size = batch_size or Config.EMBEDDING_BATCH_SIZE
         self.logger = get_logger("embedding.ollama")
 
     @property
@@ -113,7 +114,7 @@ class OllamaEmbeddingClient(EmbeddingClient):
             return False
         try:
             # Ollama responds to GET /api/tags
-            resp = requests.get(f"{self._url}/api/tags", timeout=10)
+            resp = requests.get(f"{self._url}/api/tags", timeout=Config.HEALTH_CHECK_TIMEOUT)
             return resp.ok
         except Exception as e:
             self.logger.debug(f"Connection test failed: {e}")
@@ -167,14 +168,14 @@ class APIEmbeddingClient(EmbeddingClient):
         api_key: str = "",
         dimensions: int = 768,
         timeout: int = 60,
-        batch_size: int = 32,
+        batch_size: int = 0,
     ):
         self._url = url.rstrip("/") if url else ""
         self._model = model
         self._api_key = api_key
         self._dimensions = dimensions
         self._timeout = timeout
-        self._batch_size = batch_size
+        self._batch_size = batch_size or Config.EMBEDDING_BATCH_SIZE
         self.logger = get_logger("embedding.api")
 
     @property
@@ -199,7 +200,7 @@ class APIEmbeddingClient(EmbeddingClient):
                 f"{self._url}/v1/embeddings",
                 json={"model": self._model, "input": ["test"]},
                 headers=self._headers(),
-                timeout=10,
+                timeout=Config.HEALTH_CHECK_TIMEOUT,
             )
             return resp.ok
         except Exception as e:

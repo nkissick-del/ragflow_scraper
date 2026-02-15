@@ -45,13 +45,28 @@ def _make_mock_settings():
             "gotenberg_url": "", "gotenberg_timeout": 0,
             "tika_url": "", "tika_timeout": 0,
             "docling_serve_url": "", "docling_serve_timeout": 0,
-            "paperless_url": "", "ragflow_url": "", "anythingllm_url": "",
+            "paperless_url": "", "paperless_timeout": 0,
+            "ragflow_url": "", "ragflow_timeout": 0,
+            "anythingllm_url": "", "anythingllm_timeout": 0,
             "embedding_url": "", "embedding_timeout": 0,
             "pgvector_url": "", "llm_url": "", "llm_timeout": 0,
         },
         "application": {"name": "PDF Scraper", "version": "0.1.0"},
         "scrapers": {},
         "scheduler": {"enabled": False, "run_on_startup": False},
+        "advanced": {
+            "health_check_timeout": 0, "paperless_upload_timeout": 0,
+            "paperless_retry_attempts": 0, "paperless_retry_backoff": 0,
+            "paperless_poll_interval": 0, "paperless_poll_timeout": 0,
+            "ragflow_max_retries": 0, "ragflow_parse_timeout": 0,
+            "ragflow_poll_interval": 0, "ragflow_session_timeout": 0,
+            "anythingllm_max_retries": 0, "db_pool_min_size": 0,
+            "db_pool_max_size": 0, "db_pool_timeout": 0,
+            "flaresolverr_cache_ttl": 0, "flaresolverr_cache_max_size": 0,
+            "search_max_results": 0, "search_default_limit": 0,
+            "embedding_batch_size": 0, "retry_backoff_factor": 0,
+            "retry_jitter": 0,
+        },
     }
     mock.flaresolverr_enabled = False
 
@@ -763,10 +778,11 @@ class TestSaveServiceSettings:
             "gotenberg_url": "", "gotenberg_timeout": "0",
             "tika_url": "", "tika_timeout": "0",
             "docling_serve_url": "", "docling_serve_timeout": "0",
-            "paperless_url": "", "ragflow_url": "",
-            "anythingllm_url": "", "embedding_url": "",
-            "embedding_timeout": "0", "pgvector_url": "",
-            "llm_url": "", "llm_timeout": "0",
+            "paperless_url": "", "paperless_timeout": "0",
+            "ragflow_url": "", "ragflow_timeout": "0",
+            "anythingllm_url": "", "anythingllm_timeout": "0",
+            "embedding_url": "", "embedding_timeout": "0",
+            "pgvector_url": "", "llm_url": "", "llm_timeout": "0",
         }
         data.update(overrides)
         return data
@@ -990,6 +1006,79 @@ class TestPreviewFilename:
 # ===================================================================
 # IOError handler
 # ===================================================================
+
+
+class TestSaveAdvancedSettings:
+    """POST /settings/advanced"""
+
+    def _valid_data(self, **overrides):
+        """Return baseline valid form data (all zeros = use defaults)."""
+        data = {
+            "health_check_timeout": "0", "paperless_upload_timeout": "0",
+            "paperless_retry_attempts": "0", "paperless_retry_backoff": "0",
+            "paperless_poll_interval": "0", "paperless_poll_timeout": "0",
+            "ragflow_max_retries": "0", "ragflow_parse_timeout": "0",
+            "ragflow_poll_interval": "0", "ragflow_session_timeout": "0",
+            "anythingllm_max_retries": "0", "db_pool_min_size": "0",
+            "db_pool_max_size": "0", "db_pool_timeout": "0",
+            "flaresolverr_cache_ttl": "0", "flaresolverr_cache_max_size": "0",
+            "search_max_results": "0", "search_default_limit": "0",
+            "embedding_batch_size": "0", "retry_backoff_factor": "0",
+            "retry_jitter": "0",
+        }
+        data.update(overrides)
+        return data
+
+    def test_success_all_defaults(self, client, mock_container):
+        resp = client.post("/settings/advanced", data=self._valid_data())
+        assert resp.status_code == 200
+        assert b"saved successfully" in resp.data.lower()
+        mock_container.settings.update_section.assert_called_once()
+
+    def test_success_with_values(self, client, mock_container):
+        resp = client.post("/settings/advanced", data=self._valid_data(
+            health_check_timeout="15",
+            paperless_upload_timeout="120",
+            retry_backoff_factor="3.0",
+        ))
+        assert resp.status_code == 200
+        assert b"saved successfully" in resp.data.lower()
+        call_args = mock_container.settings.update_section.call_args
+        assert call_args[0][0] == "advanced"
+        values = call_args[0][1]
+        assert values["health_check_timeout"] == 15
+        assert values["paperless_upload_timeout"] == 120
+        assert values["retry_backoff_factor"] == 3.0
+
+    def test_int_field_out_of_range(self, client):
+        resp = client.post("/settings/advanced", data=self._valid_data(
+            health_check_timeout="700",
+        ))
+        assert resp.status_code == 200
+        assert b"must be 0 (use default) or between 1 and 600" in resp.data
+
+    def test_float_field_out_of_range(self, client):
+        resp = client.post("/settings/advanced", data=self._valid_data(
+            retry_backoff_factor="100",
+        ))
+        assert resp.status_code == 200
+        assert b"must be 0 (use default) or between 0.01 and 60" in resp.data
+
+    def test_pool_size_at_boundary(self, client, mock_container):
+        """Boundary: pool sizes at max allowed value (100)."""
+        resp = client.post("/settings/advanced", data=self._valid_data(
+            db_pool_min_size="100",
+            db_pool_max_size="100",
+        ))
+        assert resp.status_code == 200
+        assert b"saved successfully" in resp.data.lower()
+
+    def test_pool_size_over_max(self, client):
+        resp = client.post("/settings/advanced", data=self._valid_data(
+            db_pool_max_size="101",
+        ))
+        assert resp.status_code == 200
+        assert b"must be 0 (use default) or between 1 and 100" in resp.data
 
 
 class TestIOErrorHandler:

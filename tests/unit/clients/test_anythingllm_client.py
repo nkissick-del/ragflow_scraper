@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 import requests
 
+from app.config import Config
 from app.services.anythingllm_client import AnythingLLMClient
 
 
@@ -44,6 +45,8 @@ class TestClientInitialization:
         mock_config.ANYTHINGLLM_API_URL = "http://config-url.com"
         mock_config.ANYTHINGLLM_API_KEY = "config-key"
         mock_config.ANYTHINGLLM_WORKSPACE_ID = "config-workspace"
+        mock_config.ANYTHINGLLM_TIMEOUT = 30
+        mock_config.ANYTHINGLLM_MAX_RETRIES = 3
 
         client = AnythingLLMClient()
         assert client.api_url == "http://config-url.com"
@@ -534,11 +537,28 @@ class TestApiUrlStripping:
         client = AnythingLLMClient(api_url="http://localhost:3001/api")
         assert client.api_url == "http://localhost:3001"
 
-    def test_max_attempts_minimum_one(self):
-        """Should enforce minimum of 1 attempt."""
+    def test_max_attempts_none_uses_config_default(self):
+        """max_attempts=None should fall back to Config.ANYTHINGLLM_MAX_RETRIES."""
+        client = AnythingLLMClient(
+            api_url="http://localhost:3001",
+            api_key="key",
+        )
+        assert client.max_attempts == Config.ANYTHINGLLM_MAX_RETRIES
+
+    def test_max_attempts_zero_clamped_to_one(self):
+        """max_attempts=0 should be clamped to at least 1."""
         client = AnythingLLMClient(
             api_url="http://localhost:3001",
             api_key="key",
             max_attempts=0,
+        )
+        assert client.max_attempts == 1
+
+    def test_max_attempts_negative_clamped_to_one(self):
+        """Negative max_attempts should be clamped to at least 1."""
+        client = AnythingLLMClient(
+            api_url="http://localhost:3001",
+            api_key="key",
+            max_attempts=-1,
         )
         assert client.max_attempts == 1

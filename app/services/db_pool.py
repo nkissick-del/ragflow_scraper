@@ -41,9 +41,9 @@ def get_pool():
 
                 _pool = ConnectionPool(
                     Config.DATABASE_URL,
-                    min_size=2,
-                    max_size=10,
-                    timeout=10.0,
+                    min_size=Config.DB_POOL_MIN_SIZE,
+                    max_size=Config.DB_POOL_MAX_SIZE,
+                    timeout=Config.DB_POOL_TIMEOUT,
                     open=True,
                     check=ConnectionPool.check_connection,
                 )

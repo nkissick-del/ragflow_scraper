@@ -40,8 +40,13 @@ class FlareSolverrClient:
     along with cookies that can be used for subsequent requests.
     """
 
-    _CACHE_TTL_SECONDS: int = 3600
-    _CACHE_MAX_SIZE: int = 50
+    @property
+    def _CACHE_TTL_SECONDS(self) -> int:
+        return Config.FLARESOLVERR_CACHE_TTL
+
+    @property
+    def _CACHE_MAX_SIZE(self) -> int:
+        return Config.FLARESOLVERR_CACHE_MAX_SIZE
 
     def __init__(
         self,
@@ -93,7 +98,7 @@ class FlareSolverrClient:
         try:
             response = requests.get(
                 f"{self.url}/health",
-                timeout=10,
+                timeout=Config.HEALTH_CHECK_TIMEOUT,
             )
             if response.status_code == 200:
                 self.logger.info("FlareSolverr connection successful")

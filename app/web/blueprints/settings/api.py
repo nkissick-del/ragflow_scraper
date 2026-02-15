@@ -113,7 +113,7 @@ def test_paperless():
         resp = http_requests.get(
             f"{eff_url}/api/",
             headers={"Authorization": f"Token {Config.PAPERLESS_API_TOKEN}"},
-            timeout=10,
+            timeout=Config.HEALTH_CHECK_TIMEOUT,
         )
         if resp.status_code == 200:
             return '<span class="status-badge status-connected">Connected</span>'
@@ -215,7 +215,7 @@ def test_docling_serve():
     try:
         resp = http_requests.get(
             f"{eff_url}/health",
-            timeout=10,
+            timeout=Config.HEALTH_CHECK_TIMEOUT,
         )
         if resp.ok:
             return '<span class="status-badge status-connected">Connected</span>'
@@ -417,6 +417,9 @@ def save_service_settings():
     gotenberg_timeout = request.form.get("gotenberg_timeout", 0, type=int)
     tika_timeout = request.form.get("tika_timeout", 0, type=int)
     docling_serve_timeout = request.form.get("docling_serve_timeout", 0, type=int)
+    paperless_timeout = request.form.get("paperless_timeout", 0, type=int)
+    ragflow_timeout = request.form.get("ragflow_timeout", 0, type=int)
+    anythingllm_timeout = request.form.get("anythingllm_timeout", 0, type=int)
     embedding_timeout = request.form.get("embedding_timeout", 0, type=int)
     llm_timeout = request.form.get("llm_timeout", 0, type=int)
 
@@ -479,6 +482,9 @@ def save_service_settings():
         ("Gotenberg", gotenberg_timeout),
         ("Tika", tika_timeout),
         ("Docling-serve", docling_serve_timeout),
+        ("Paperless", paperless_timeout),
+        ("RAGFlow", ragflow_timeout),
+        ("AnythingLLM", anythingllm_timeout),
         ("Embedding", embedding_timeout),
         ("LLM", llm_timeout),
     ]:
@@ -497,8 +503,11 @@ def save_service_settings():
         "docling_serve_url": docling_serve_url,
         "docling_serve_timeout": docling_serve_timeout,
         "paperless_url": paperless_url,
+        "paperless_timeout": paperless_timeout,
         "ragflow_url": ragflow_url,
+        "ragflow_timeout": ragflow_timeout,
         "anythingllm_url": anythingllm_url,
+        "anythingllm_timeout": anythingllm_timeout,
         "embedding_url": embedding_url,
         "embedding_timeout": embedding_timeout,
         "pgvector_url": pgvector_url,
@@ -642,6 +651,72 @@ def save_pipeline_settings():
     return '''
         <div class="alert alert-success">
             Pipeline settings saved successfully!
+        </div>
+    '''
+
+
+@bp.route("/settings/advanced", methods=["POST"])
+def save_advanced_settings():
+    settings_mgr = container.settings
+
+    # Integer fields with their max constraints
+    int_fields = {
+        "health_check_timeout": 600,
+        "paperless_upload_timeout": 600,
+        "paperless_retry_attempts": 20,
+        "paperless_poll_timeout": 600,
+        "ragflow_max_retries": 20,
+        "ragflow_parse_timeout": 600,
+        "ragflow_session_timeout": 600,
+        "anythingllm_max_retries": 20,
+        "db_pool_min_size": 100,
+        "db_pool_max_size": 100,
+        "flaresolverr_cache_ttl": 86400,
+        "flaresolverr_cache_max_size": 1000,
+        "search_max_results": 500,
+        "search_default_limit": 100,
+        "embedding_batch_size": 1000,
+    }
+
+    # Float fields with their max constraints
+    float_fields = {
+        "paperless_retry_backoff": 60.0,
+        "paperless_poll_interval": 60.0,
+        "ragflow_poll_interval": 60.0,
+        "db_pool_timeout": 600.0,
+        "retry_backoff_factor": 60.0,
+        "retry_jitter": 60.0,
+    }
+
+    values: dict = {}
+
+    for field, max_val in int_fields.items():
+        raw = request.form.get(field, 0, type=int)
+        if raw != 0 and not (1 <= raw <= max_val):
+            return f'''
+                <div class="alert alert-danger">
+                    {escape(field.replace("_", " ").title())} must be 0 (use default) or between 1 and {max_val}.
+                </div>
+            '''
+        values[field] = raw
+
+    for field, max_val in float_fields.items():
+        raw = request.form.get(field, 0, type=float)
+        if raw != 0 and not (0.01 <= raw <= max_val):
+            return f'''
+                <div class="alert alert-danger">
+                    {escape(field.replace("_", " ").title())} must be 0 (use default) or between 0.01 and {max_val}.
+                </div>
+            '''
+        values[field] = raw
+
+    settings_mgr.update_section("advanced", values)
+
+    logger.info("Advanced tuning settings updated")
+
+    return '''
+        <div class="alert alert-success">
+            Advanced tuning settings saved successfully!
         </div>
     '''
 
