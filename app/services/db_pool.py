@@ -43,7 +43,9 @@ def get_pool():
                     Config.DATABASE_URL,
                     min_size=2,
                     max_size=10,
+                    timeout=10.0,
                     open=True,
+                    check=ConnectionPool.check_connection,
                 )
     return _pool
 

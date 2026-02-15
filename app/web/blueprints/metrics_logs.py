@@ -133,12 +133,27 @@ def pipeline_metrics():
     total_processed = 0
     total_failed = 0
 
-    for scraper in ScraperRegistry.list_scrapers():
-        name = scraper.get("name")
-        if not isinstance(name, str):
-            continue
-        state = container.state_tracker(name)
-        last_run = state.get_last_run_info() or {}
+    scrapers = ScraperRegistry.list_scrapers()
+    names = [s["name"] for s in scrapers if isinstance(s.get("name"), str)]
+
+    # Batch-fetch all scrapers' state in one DB round-trip
+    all_info: dict = {}
+    store = container._get_state_store()
+    if store is not None and hasattr(store, "get_all_last_run_info"):
+        try:
+            all_info = store.get_all_last_run_info(names)
+        except Exception:
+            pass
+
+    for name in names:
+        last_run = all_info.get(name)
+        if last_run is None:
+            # Fallback: per-scraper query
+            try:
+                state = container.state_tracker(name)
+                last_run = state.get_last_run_info() or {}
+            except Exception:
+                last_run = {}
         processed = last_run.get("processed_count", 0)
         failed = last_run.get("failed_count", 0)
         total_processed += processed

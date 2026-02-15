@@ -3,22 +3,33 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Optional
 
 from app.config import Config
 from app.scrapers import ScraperRegistry
 from app.utils.logging_config import log_exception
 from app.web.runtime import container, job_queue
 
+_SENTINEL: Any = object()  # distinguishes "not passed" from None
 
-def get_scraper_status(name: str) -> str:
-    """Resolve scraper status using in-flight jobs then persisted state."""
+
+def get_scraper_status(name: str, *, info: Optional[dict] = _SENTINEL) -> str:
+    """Resolve scraper status using in-flight jobs then persisted state.
+
+    Args:
+        name: Scraper name.
+        info: Pre-fetched ``get_last_run_info()`` dict.  Pass explicitly
+              to avoid a redundant DB round-trip when the caller already
+              has the data.  ``None`` means "no data" (different from
+              *not passed*).
+    """
     in_flight = job_queue.status(name)
     if in_flight != "idle":
         return in_flight
 
-    state = container.state_tracker(name)
-    info = state.get_last_run_info()
+    if info is _SENTINEL:
+        state = container.state_tracker(name)
+        info = state.get_last_run_info()
 
     if not info or not info.get("last_updated"):
         return "idle"
@@ -44,7 +55,7 @@ def load_scraper_configs(scrapers: list[dict]) -> None:
 
         state = container.state_tracker(scraper["name"])
         scraper["state"] = state.get_last_run_info()
-        scraper["status"] = get_scraper_status(scraper["name"])
+        scraper["status"] = get_scraper_status(scraper["name"], info=scraper["state"])
 
         scraper["cloudflare_enabled"] = settings_mgr.get_scraper_cloudflare_enabled(scraper["name"])
 
@@ -98,5 +109,5 @@ def build_scraper_metadata(scraper_name: str) -> dict:
     metadata = scraper_class.get_metadata()
     state = container.state_tracker(scraper_name)
     metadata["state"] = state.get_last_run_info()
-    metadata["status"] = get_scraper_status(scraper_name)
+    metadata["status"] = get_scraper_status(scraper_name, info=metadata["state"])
     return metadata

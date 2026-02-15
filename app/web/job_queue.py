@@ -152,6 +152,7 @@ class JobQueue:
         self._started = False
         self._job_store = job_store
         self._redis_dispatch = redis_dispatch
+        self._idle_cache: set[str] = set()  # scrapers confirmed idle in store
 
         try:
             _instances.add(self)
@@ -216,6 +217,7 @@ class JobQueue:
                 max_pages=max_pages,
             )
             self._jobs[scraper_name] = job
+            self._idle_cache.discard(scraper_name)
             self._queue.put(job)
 
         # Persist to store (outside lock — I/O should not hold the mutex)
@@ -273,6 +275,10 @@ class JobQueue:
             if job:
                 return job.status
 
+        # Skip DB lookup for scrapers already confirmed idle
+        if scraper_name in self._idle_cache:
+            return "idle"
+
         # Fall back to persistent store
         if self._job_store is not None:
             try:
@@ -282,6 +288,8 @@ class JobQueue:
             except Exception:
                 pass
 
+        # Cache the idle result to avoid repeated DB lookups
+        self._idle_cache.add(scraper_name)
         return "idle"
 
     def get(self, scraper_name: str) -> Optional[ScraperJob]:

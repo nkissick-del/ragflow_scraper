@@ -52,7 +52,9 @@ class TestDbPool:
                 "postgresql://localhost/test",
                 min_size=2,
                 max_size=10,
+                timeout=10.0,
                 open=True,
+                check=mock_pool_cls.check_connection,
             )
 
     def test_get_pool_raises_when_unconfigured(self):

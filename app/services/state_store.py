@@ -235,6 +235,50 @@ class StateStore:
             "processed_count": count_row[0] if count_row else 0,
         }
 
+    def get_all_last_run_info(
+        self, scraper_names: list[str]
+    ) -> dict[str, Optional[dict[str, Any]]]:
+        """Batch-fetch last run info for multiple scrapers in one connection.
+
+        Returns a dict keyed by scraper name.  Scrapers with no state row
+        are mapped to ``None``.
+        """
+        if not scraper_names:
+            return {}
+        self.ensure_schema()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT scraper_name, last_updated, statistics "
+                    "FROM scraper_state "
+                    "WHERE scraper_name = ANY(%s)",
+                    (scraper_names,),
+                )
+                state_rows = {row[0]: row for row in cur.fetchall()}
+
+                cur.execute(
+                    "SELECT scraper_name, COUNT(*) "
+                    "FROM processed_urls "
+                    "WHERE scraper_name = ANY(%s) "
+                    "GROUP BY scraper_name",
+                    (scraper_names,),
+                )
+                counts = {row[0]: row[1] for row in cur.fetchall()}
+
+        result: dict[str, Optional[dict[str, Any]]] = {}
+        for name in scraper_names:
+            row = state_rows.get(name)
+            if row is None:
+                result[name] = None
+                continue
+            stats = row[2] if isinstance(row[2], dict) else json.loads(row[2] or "{}")
+            result[name] = {
+                "last_updated": row[1].isoformat() if row[1] else None,
+                "statistics": stats,
+                "processed_count": counts.get(name, 0),
+            }
+        return result
+
     # ── custom values ───────────────────────────────────────────────
 
     def set_value(self, scraper_name: str, key: str, value: Any) -> None:

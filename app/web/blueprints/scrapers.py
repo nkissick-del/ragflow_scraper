@@ -24,6 +24,30 @@ bp = Blueprint("scrapers", __name__)
 logger = get_logger("web.scrapers")
 
 
+def _bulk_last_run_info(names: list[str]) -> dict[str, dict | None]:
+    """Fetch last-run info for multiple scrapers in one DB round-trip.
+
+    Falls back to per-scraper queries if the store doesn't support batch,
+    or if the DB is unreachable (returns None for that scraper).
+    """
+    store = container._get_state_store()
+    if store is not None and hasattr(store, "get_all_last_run_info"):
+        try:
+            return store.get_all_last_run_info(names)
+        except Exception:
+            pass
+
+    # Fallback: per-scraper queries with error tolerance
+    result: dict[str, dict | None] = {}
+    for name in names:
+        try:
+            state = container.state_tracker(name)
+            result[name] = state.get_last_run_info()
+        except Exception:
+            result[name] = None
+    return result
+
+
 @bp.route("/")
 def index():
     scrapers = ScraperRegistry.list_scrapers()
@@ -59,10 +83,10 @@ def scrapers_page():
 def bulk_scraper_cards():
     """Return all scraper cards with OOB attributes for bulk dashboard polling."""
     scrapers = ScraperRegistry.list_scrapers()
+    all_info = _bulk_last_run_info([s["name"] for s in scrapers])
     for scraper in scrapers:
-        state = container.state_tracker(scraper["name"])
-        scraper["state"] = state.get_last_run_info()
-        scraper["status"] = get_scraper_status(scraper["name"])
+        scraper["state"] = all_info.get(scraper["name"])
+        scraper["status"] = get_scraper_status(scraper["name"], info=scraper["state"])
     return render_template("components/bulk-cards.html", scrapers=scrapers, oob=True)
 
 
@@ -70,10 +94,11 @@ def bulk_scraper_cards():
 def bulk_scraper_status():
     """Return all status badges with OOB attributes for bulk scrapers page polling."""
     scrapers = ScraperRegistry.list_scrapers()
+    all_info = _bulk_last_run_info([s["name"] for s in scrapers])
     badges = []
     for scraper in scrapers:
         name = scraper["name"]
-        status = get_scraper_status(name)
+        status = get_scraper_status(name, info=all_info.get(name))
         badges.append({
             "scraper_name": name,
             "status": status,

@@ -71,6 +71,7 @@ def _make_mock_settings():
 def _make_mock_container():
     mock = MagicMock()
     mock.settings = _make_mock_settings()
+    mock._get_state_store.return_value = None  # no batch DB path
     mock.ragflow_client.test_connection.return_value = False
     mock.ragflow_client.list_embedding_models.return_value = []
     mock.ragflow_client.list_chunk_methods.return_value = []
