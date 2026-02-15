@@ -1,8 +1,8 @@
-"""Unit tests for app.utils.html_utils — build_article_html and inline_images."""
+"""Unit tests for app.utils.html_utils — build_article_html, inline_images, inject_metadata_stamp."""
 
 from unittest.mock import Mock, patch
 
-from app.utils.html_utils import build_article_html, inline_images
+from app.utils.html_utils import build_article_html, inline_images, inject_metadata_stamp
 
 
 # ── build_article_html ──────────────────────────────────────────────────
@@ -235,3 +235,108 @@ class TestInlineImages:
 
         assert mock_session.get.call_count == 2
         assert result.count("data:image/jpeg;base64,") == 2
+
+
+# ── inject_metadata_stamp ──────────────────────────────────────────────
+
+
+class TestInjectMetadataStamp:
+    """Tests for inject_metadata_stamp()."""
+
+    MINIMAL_HTML = "<html><body><p>Content</p></body></html>"
+
+    def test_all_fields(self):
+        """All core fields render in the stamp."""
+        result = inject_metadata_stamp(
+            self.MINIMAL_HTML,
+            author="Jane Doe",
+            date="2026-02-15",
+            organization="AEMO",
+            document_type="Article",
+            tags=["energy", "climate"],
+            source_url="https://example.com/article",
+        )
+        assert 'class="metadata-stamp"' in result
+        assert "Jane Doe" in result
+        assert "2026-02-15" in result
+        assert "AEMO" in result
+        assert "Article" in result
+        assert "<span>energy</span>" in result
+        assert "<span>climate</span>" in result
+        assert "https://example.com/article" in result
+
+    def test_no_fields_returns_original(self):
+        """Empty metadata produces no stamp."""
+        result = inject_metadata_stamp(self.MINIMAL_HTML)
+        assert result == self.MINIMAL_HTML
+
+    def test_partial_fields(self):
+        """Only provided fields appear in the stamp."""
+        result = inject_metadata_stamp(
+            self.MINIMAL_HTML,
+            author="John",
+            date="2026-01-01",
+        )
+        assert "John" in result
+        assert "2026-01-01" in result
+        assert "Organisation" not in result
+        assert "Tags" not in result
+
+    def test_stamp_before_content(self):
+        """Stamp is inserted after <body>, before article content."""
+        result = inject_metadata_stamp(
+            self.MINIMAL_HTML,
+            author="Test",
+        )
+        body_pos = result.index("<body>")
+        stamp_pos = result.index("metadata-stamp")
+        content_pos = result.index("<p>Content</p>")
+        assert body_pos < stamp_pos < content_pos
+
+    def test_html_escaping(self):
+        """Special characters in metadata values are HTML-escaped."""
+        result = inject_metadata_stamp(
+            self.MINIMAL_HTML,
+            author='O\'Brien & "Partners"',
+            organization="Org <script>alert(1)</script>",
+        )
+        assert "&amp;" in result
+        assert "&lt;script&gt;" in result
+        assert "<script>" not in result
+
+    def test_no_body_tag_returns_original(self):
+        """HTML without <body> is returned unchanged."""
+        no_body = "<div>No body tag</div>"
+        result = inject_metadata_stamp(no_body, author="Test")
+        assert result == no_body
+
+    def test_empty_tags_list_omitted(self):
+        """Empty tags list does not render a Tags row."""
+        result = inject_metadata_stamp(
+            self.MINIMAL_HTML,
+            author="Test",
+            tags=[],
+        )
+        assert "Tags" not in result
+
+    def test_stamp_heading(self):
+        """Stamp contains the Document Metadata heading."""
+        result = inject_metadata_stamp(self.MINIMAL_HTML, author="X")
+        assert "Document Metadata" in result
+
+    def test_works_with_build_article_html(self):
+        """Stamp integrates with build_article_html output."""
+        html = build_article_html(
+            body_html="<p>Article body</p>",
+            title="Test Title",
+            date="2026-02-15",
+        )
+        result = inject_metadata_stamp(
+            html,
+            author="Author Name",
+            date="2026-02-15",
+            tags=["policy"],
+        )
+        assert "metadata-stamp" in result
+        assert "Author Name" in result
+        assert "<h1>Test Title</h1>" in result

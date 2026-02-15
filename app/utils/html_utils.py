@@ -47,6 +47,12 @@ pre { background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; 
 code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; background: #f5f5f5; padding: 2px 5px; border-radius: 2px; }
 .article-meta { color: #666; font-size: 0.9em; margin-bottom: 2em; }
 .article-meta a { color: #0066cc; }
+.metadata-stamp { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 16px 20px; margin-bottom: 2em; font-size: 0.85em; color: #495057; page-break-inside: avoid; }
+.metadata-stamp h3 { margin: 0 0 10px 0; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.05em; color: #6c757d; border-bottom: 1px solid #dee2e6; padding-bottom: 8px; }
+.metadata-stamp table { width: 100%; border-collapse: collapse; }
+.metadata-stamp td { padding: 4px 0; vertical-align: top; }
+.metadata-stamp td:first-child { font-weight: 600; color: #6c757d; white-space: nowrap; width: 120px; padding-right: 16px; }
+.metadata-stamp .tags span { display: inline-block; background: #e9ecef; border-radius: 3px; padding: 1px 8px; margin: 1px 4px 1px 0; font-size: 0.9em; }
 """
 
 
@@ -309,3 +315,82 @@ def inline_images(
             continue
 
     return str(soup)
+
+
+def inject_metadata_stamp(
+    html: str,
+    *,
+    author: str = "",
+    date: str = "",
+    organization: str = "",
+    document_type: str = "",
+    tags: Optional[list[str]] = None,
+    source_url: str = "",
+) -> str:
+    """Inject a metadata provenance stamp into an HTML document.
+
+    Inserts a styled box after the opening ``<body>`` tag (before article
+    content) showing key document metadata.  Fields with empty/None values
+    are omitted.  The stamp uses CSS classes defined in ``_ARTICLE_CSS``.
+
+    Args:
+        html: Complete HTML document string.
+        author: Document author name.
+        date: Publication date string.
+        organization: Publisher / organization name.
+        document_type: E.g. "Article", "Report".
+        tags: List of tag strings.
+        source_url: Original article URL (rendered as plain text, not a link).
+
+    Returns:
+        HTML string with the stamp injected.  Returns the original HTML
+        unchanged if ``<body>`` is not found or no fields have values.
+    """
+    rows: list[str] = []
+    if author:
+        rows.append(
+            f"<tr><td>Author</td><td>{html_escape(author)}</td></tr>"
+        )
+    if date:
+        rows.append(
+            f"<tr><td>Date</td><td>{html_escape(date)}</td></tr>"
+        )
+    if organization:
+        rows.append(
+            f"<tr><td>Organisation</td><td>{html_escape(organization)}</td></tr>"
+        )
+    if document_type:
+        rows.append(
+            f"<tr><td>Type</td><td>{html_escape(document_type)}</td></tr>"
+        )
+    if tags:
+        tag_spans = "".join(
+            f"<span>{html_escape(t)}</span>" for t in tags
+        )
+        rows.append(
+            f'<tr><td>Tags</td><td class="tags">{tag_spans}</td></tr>'
+        )
+    if source_url:
+        rows.append(
+            f"<tr><td>Source</td><td>{html_escape(source_url)}</td></tr>"
+        )
+
+    if not rows:
+        return html
+
+    stamp = (
+        '<div class="metadata-stamp">\n'
+        "<h3>Document Metadata</h3>\n"
+        "<table>\n"
+        + "\n".join(rows)
+        + "\n</table>\n"
+        "</div>\n"
+    )
+
+    # Insert after <body> tag (case-insensitive)
+    body_match = _re.search(r"<body[^>]*>", html, _re.IGNORECASE)
+    if not body_match:
+        return html
+
+    insert_pos = body_match.end()
+    return html[:insert_pos] + "\n" + stamp + html[insert_pos:]

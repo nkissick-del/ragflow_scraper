@@ -302,7 +302,9 @@ class TestPrepareArchiveFile:
         mock_config.GOTENBERG_URL = "http://gotenberg:3156"
 
         html_file = tmp_path / "doc.html"
-        html_file.write_text("<h1>Test</h1><p>Content</p>")
+        html_file.write_text(
+            "<html><body><h1>Test</h1><p>Content</p></body></html>"
+        )
 
         mock_gotenberg = Mock()
         mock_gotenberg.convert_html_to_pdf.return_value = b"%PDF-1.4 html"
@@ -310,6 +312,12 @@ class TestPrepareArchiveFile:
 
         merged = Mock()
         merged.title = "Test Doc"
+        merged.author = "Test Author"
+        merged.publication_date = "2026-01-01"
+        merged.organization = "Test Org"
+        merged.document_type = "Article"
+        merged.tags = ["energy"]
+        merged.url = "https://example.com"
 
         archive_path, cleanup_path = pipeline._prepare_archive_file(
             html_file, html_file, "html", merged
@@ -319,6 +327,10 @@ class TestPrepareArchiveFile:
         assert archive_path == cleanup_path
         assert archive_path.exists()
         mock_gotenberg.convert_html_to_pdf.assert_called_once()
+        # Verify stamp was injected into the HTML sent to Gotenberg
+        call_html = mock_gotenberg.convert_html_to_pdf.call_args[0][0]
+        assert "metadata-stamp" in call_html
+        assert "Test Author" in call_html
 
     @patch("app.orchestrator.pipeline.Config")
     def test_gotenberg_failure_falls_back(self, mock_config, pipeline, tmp_path):

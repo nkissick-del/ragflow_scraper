@@ -18,6 +18,7 @@ from app.scrapers.models import DocumentMetadata
 from app.utils import get_logger
 from app.utils.errors import ParserBackendError, ArchiveError
 from app.utils.file_utils import generate_filename_from_template
+from app.utils.html_utils import inject_metadata_stamp
 from app.utils.logging_config import log_exception, log_event
 
 
@@ -551,8 +552,18 @@ class Pipeline:
             try:
                 gotenberg = self.container.gotenberg_client
                 if doc_type == "html":
+                    html_content = content_path.read_text(encoding="utf-8")
+                    html_content = inject_metadata_stamp(
+                        html_content,
+                        author=merged_metadata.author or "",
+                        date=merged_metadata.publication_date or "",
+                        organization=merged_metadata.organization or "",
+                        document_type=merged_metadata.document_type or "",
+                        tags=merged_metadata.tags or [],
+                        source_url=merged_metadata.url or "",
+                    )
                     pdf_bytes = gotenberg.convert_html_to_pdf(
-                        content_path.read_text(encoding="utf-8"),
+                        html_content,
                         title=merged_metadata.title or "",
                     )
                 elif doc_type == "markdown":
