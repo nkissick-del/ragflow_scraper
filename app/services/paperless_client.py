@@ -25,7 +25,6 @@ CUSTOM_FIELD_MAPPING: dict[str, tuple[str, str]] = {
     "scraped_at": ("Scraped Date", "string"),
     "scraper_name": ("Scraper Name", "string"),
     "organization": ("Organization", "string"),
-    "author": ("Author", "string"),
     "description": ("Description", "string"),
     "language": ("Language", "string"),
     "llm_summary": ("LLM Summary", "string"),
@@ -123,20 +122,16 @@ class PaperlessClient:
         """Check if client has necessary credentials."""
         return bool(self.url and self.token)
 
-    def _ensure_public(self, endpoint: str, item_id: int, name: str) -> None:
-        """PATCH an object to set owner=null if currently private."""
-        try:
-            response = self.session.patch(
-                f"{self.url}/api/{endpoint}/{item_id}/",
-                json={"owner": None},
-                timeout=30,
-            )
-            response.raise_for_status()
-            self.logger.info(f"Made {endpoint} '{name}' (ID {item_id}) public")
-        except Exception as e:
-            self.logger.warning(
-                f"Failed to make {endpoint} '{name}' (ID {item_id}) public: {e}"
-            )
+    @property
+    def _owner_payload(self) -> dict[str, Any]:
+        """Return owner dict for API payloads, or empty dict if not configured."""
+        owner_id = Config.PAPERLESS_OWNER_ID
+        if owner_id:
+            try:
+                return {"owner": int(owner_id)}
+            except ValueError:
+                return {}
+        return {}
 
     def _fetch_correspondents(self) -> dict[str, int]:
         """
@@ -161,8 +156,6 @@ class PaperlessClient:
                 corr_id = item.get("id")
                 if name and corr_id:
                     correspondents[name] = corr_id
-                    if item.get("owner") is not None:
-                        self._ensure_public("correspondents", corr_id, name)
 
             next_url = data.get("next")
 
@@ -203,7 +196,7 @@ class PaperlessClient:
             try:
                 response = self.session.post(
                     f"{self.url}/api/correspondents/",
-                    json={"name": name, "owner": None},
+                    json={"name": name, **self._owner_payload},
                     timeout=30,
                 )
                 if response.status_code == 409:
@@ -253,8 +246,6 @@ class PaperlessClient:
                 dt_id = item.get("id")
                 if name and dt_id:
                     doc_types[name] = dt_id
-                    if item.get("owner") is not None:
-                        self._ensure_public("document_types", dt_id, name)
 
             next_url = data.get("next")
 
@@ -295,7 +286,7 @@ class PaperlessClient:
             try:
                 response = self.session.post(
                     f"{self.url}/api/document_types/",
-                    json={"name": name, "owner": None},
+                    json={"name": name, **self._owner_payload},
                     timeout=30,
                 )
                 if response.status_code == 409:
@@ -344,8 +335,6 @@ class PaperlessClient:
                 tag_id = item.get("id")
                 if name and tag_id:
                     tags[name] = tag_id
-                    if item.get("owner") is not None:
-                        self._ensure_public("tags", tag_id, name)
 
             next_url = data.get("next")
 
@@ -389,7 +378,7 @@ class PaperlessClient:
             try:
                 response = self.session.post(
                     f"{self.url}/api/tags/",
-                    json={"name": name, "owner": None},
+                    json={"name": name, **self._owner_payload},
                     timeout=30,
                 )
                 response.raise_for_status()
@@ -429,8 +418,6 @@ class PaperlessClient:
                 field_id = item.get("id")
                 if name and field_id:
                     fields[name] = field_id
-                    if item.get("owner") is not None:
-                        self._ensure_public("custom_fields", field_id, name)
 
             next_url = data.get("next")
 
@@ -472,7 +459,7 @@ class PaperlessClient:
             try:
                 response = self.session.post(
                     f"{self.url}/api/custom_fields/",
-                    json={"name": name, "data_type": data_type, "owner": None},
+                    json={"name": name, "data_type": data_type, **self._owner_payload},
                     timeout=30,
                 )
                 if response.status_code == 409:

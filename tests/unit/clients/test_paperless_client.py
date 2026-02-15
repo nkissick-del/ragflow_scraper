@@ -641,13 +641,13 @@ class TestSetCustomFields:
 
     def test_string_field_values_passed_as_is(self, client):
         """Should pass string values without coercion."""
-        client._custom_field_cache = {"Author": 1, "Language": 2}
+        client._custom_field_cache = {"Organization": 1, "Language": 2}
         client._custom_field_cache_populated = True
 
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
 
-        metadata = {"author": "Jane Doe", "language": "en"}
+        metadata = {"organization": "AEMO", "language": "en"}
 
         with patch.object(client.session, "patch", return_value=mock_response) as mock_patch:
             result = client.set_custom_fields(123, metadata)
@@ -655,7 +655,7 @@ class TestSetCustomFields:
         assert result is True
         payload = mock_patch.call_args[1]["json"]["custom_fields"]
         values = {item["field"]: item["value"] for item in payload}
-        assert values[1] == "Jane Doe"
+        assert values[1] == "AEMO"
         assert values[2] == "en"
 
 
@@ -805,10 +805,10 @@ class TestSetCustomFieldsEdgeCases:
 
     def test_string_field_skips_none(self, client):
         """Should skip fields with None values."""
-        client._custom_field_cache = {"Author": 1}
+        client._custom_field_cache = {"Organization": 1}
         client._custom_field_cache_populated = True
 
-        metadata = {"author": None}
+        metadata = {"organization": None}
 
         result = client.set_custom_fields(123, metadata)
         assert result is True  # No fields to set
@@ -1183,16 +1183,16 @@ class TestSetCustomFieldsLLMFlattening:
 
     def test_top_level_takes_priority_over_extra(self, client):
         """Top-level keys should not be overwritten by extra dict."""
-        client._custom_field_cache = {"Author": 1}
+        client._custom_field_cache = {"LLM Summary": 1}
         client._custom_field_cache_populated = True
 
         mock_response = Mock()
         mock_response.raise_for_status = Mock()
 
         metadata = {
-            "author": "Top Level Author",
+            "llm_summary": "Top Level Summary",
             "extra": {
-                "author": "Extra Author",
+                "llm_summary": "Extra Summary",
             },
         }
 
@@ -1201,14 +1201,14 @@ class TestSetCustomFieldsLLMFlattening:
 
         payload = mock_patch.call_args[1]["json"]["custom_fields"]
         assert len(payload) == 1
-        assert payload[0]["value"] == "Top Level Author"
+        assert payload[0]["value"] == "Top Level Summary"
 
 
-class TestOwnerNullOnCreation:
-    """Test that POST payloads include owner: null for public objects."""
+class TestOwnerOnCreation:
+    """Test that POST payloads use _owner_payload for configurable ownership."""
 
-    def test_correspondent_created_with_owner_null(self, client):
-        """Correspondent creation should include owner: null."""
+    def test_correspondent_no_owner_when_empty(self, client):
+        """Correspondent creation should omit owner when PAPERLESS_OWNER_ID is empty."""
         fetch_response = Mock()
         fetch_response.raise_for_status = Mock()
         fetch_response.json.return_value = {"results": [], "next": None}
@@ -1218,17 +1218,21 @@ class TestOwnerNullOnCreation:
         create_response.raise_for_status = Mock()
         create_response.json.return_value = {"id": 1, "name": "Test"}
 
-        with patch.object(client.session, "get", return_value=fetch_response):
-            with patch.object(
-                client.session, "post", return_value=create_response
-            ) as mock_post:
-                client.get_or_create_correspondent("Test")
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_OWNER_ID = ""
+            mock_config.PAPERLESS_API_URL = "http://localhost:8000"
+            mock_config.PAPERLESS_API_TOKEN = "test-token"
+            with patch.object(client.session, "get", return_value=fetch_response):
+                with patch.object(
+                    client.session, "post", return_value=create_response
+                ) as mock_post:
+                    client.get_or_create_correspondent("Test")
 
         call_args = mock_post.call_args
-        assert call_args[1]["json"]["owner"] is None
+        assert "owner" not in call_args[1]["json"]
 
-    def test_document_type_created_with_owner_null(self, client):
-        """Document type creation should include owner: null."""
+    def test_correspondent_with_owner_id(self, client):
+        """Correspondent creation should include owner when PAPERLESS_OWNER_ID is set."""
         fetch_response = Mock()
         fetch_response.raise_for_status = Mock()
         fetch_response.json.return_value = {"results": [], "next": None}
@@ -1236,19 +1240,23 @@ class TestOwnerNullOnCreation:
         create_response = Mock()
         create_response.status_code = 201
         create_response.raise_for_status = Mock()
-        create_response.json.return_value = {"id": 1, "name": "Article"}
+        create_response.json.return_value = {"id": 1, "name": "Test"}
 
-        with patch.object(client.session, "get", return_value=fetch_response):
-            with patch.object(
-                client.session, "post", return_value=create_response
-            ) as mock_post:
-                client.get_or_create_document_type("Article")
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_OWNER_ID = "3"
+            mock_config.PAPERLESS_API_URL = "http://localhost:8000"
+            mock_config.PAPERLESS_API_TOKEN = "test-token"
+            with patch.object(client.session, "get", return_value=fetch_response):
+                with patch.object(
+                    client.session, "post", return_value=create_response
+                ) as mock_post:
+                    client.get_or_create_correspondent("Test")
 
         call_args = mock_post.call_args
-        assert call_args[1]["json"]["owner"] is None
+        assert call_args[1]["json"]["owner"] == 3
 
-    def test_tag_created_with_owner_null(self, client):
-        """Tag creation should include owner: null."""
+    def test_tag_no_owner_when_empty(self, client):
+        """Tag creation should omit owner when PAPERLESS_OWNER_ID is empty."""
         client._tag_cache = {}
         client._tag_cache_populated = True
 
@@ -1256,16 +1264,18 @@ class TestOwnerNullOnCreation:
         create_response.raise_for_status = Mock()
         create_response.json.return_value = {"id": 1, "name": "Energy"}
 
-        with patch.object(
-            client.session, "post", return_value=create_response
-        ) as mock_post:
-            client.get_or_create_tags(["Energy"])
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_OWNER_ID = ""
+            with patch.object(
+                client.session, "post", return_value=create_response
+            ) as mock_post:
+                client.get_or_create_tags(["Energy"])
 
         call_args = mock_post.call_args
-        assert call_args[1]["json"]["owner"] is None
+        assert "owner" not in call_args[1]["json"]
 
-    def test_custom_field_created_with_owner_null(self, client):
-        """Custom field creation should include owner: null."""
+    def test_custom_field_with_owner_id(self, client):
+        """Custom field creation should include owner when PAPERLESS_OWNER_ID is set."""
         fetch_response = Mock()
         fetch_response.raise_for_status = Mock()
         fetch_response.json.return_value = {"results": [], "next": None}
@@ -1277,14 +1287,18 @@ class TestOwnerNullOnCreation:
             "id": 1, "name": "Test Field", "data_type": "string"
         }
 
-        with patch.object(client.session, "get", return_value=fetch_response):
-            with patch.object(
-                client.session, "post", return_value=create_response
-            ) as mock_post:
-                client.get_or_create_custom_field("Test Field", "string")
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_OWNER_ID = "5"
+            mock_config.PAPERLESS_API_URL = "http://localhost:8000"
+            mock_config.PAPERLESS_API_TOKEN = "test-token"
+            with patch.object(client.session, "get", return_value=fetch_response):
+                with patch.object(
+                    client.session, "post", return_value=create_response
+                ) as mock_post:
+                    client.get_or_create_custom_field("Test Field", "string")
 
         call_args = mock_post.call_args
-        assert call_args[1]["json"]["owner"] is None
+        assert call_args[1]["json"]["owner"] == 5
 
 
 class TestCustomFieldMappingUpdated:
@@ -1295,10 +1309,10 @@ class TestCustomFieldMappingUpdated:
         assert "organization" in CUSTOM_FIELD_MAPPING
         assert CUSTOM_FIELD_MAPPING["organization"] == ("Organization", "string")
 
-    def test_mapping_includes_author(self):
+    def test_mapping_removed_author(self):
+        """Author is captured as correspondent, not as a custom field."""
         from app.services.paperless_client import CUSTOM_FIELD_MAPPING
-        assert "author" in CUSTOM_FIELD_MAPPING
-        assert CUSTOM_FIELD_MAPPING["author"] == ("Author", "string")
+        assert "author" not in CUSTOM_FIELD_MAPPING
 
     def test_mapping_includes_description(self):
         from app.services.paperless_client import CUSTOM_FIELD_MAPPING
@@ -1371,153 +1385,33 @@ class TestGetTaskStatusEdgeCases:
         assert result is None
 
 
-class TestEnsurePublic:
-    """Test _ensure_public() helper."""
+class TestOwnerPayload:
+    """Test _owner_payload property."""
 
-    def test_patches_with_owner_null(self, client):
-        """Should PATCH the object with owner=null."""
-        mock_response = Mock()
-        mock_response.raise_for_status = Mock()
+    def test_returns_owner_int_when_configured(self, client):
+        """Should return owner dict with integer ID when PAPERLESS_OWNER_ID is set."""
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_OWNER_ID = "3"
+            result = client._owner_payload
+        assert result == {"owner": 3}
 
-        with patch.object(client.session, "patch", return_value=mock_response) as mock_patch:
-            client._ensure_public("correspondents", 42, "AEMO")
+    def test_returns_empty_when_not_configured(self, client):
+        """Should return empty dict when PAPERLESS_OWNER_ID is empty."""
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_OWNER_ID = ""
+            result = client._owner_payload
+        assert result == {}
 
-        mock_patch.assert_called_once_with(
-            "http://localhost:8000/api/correspondents/42/",
-            json={"owner": None},
-            timeout=30,
-        )
+    def test_returns_empty_for_non_numeric(self, client):
+        """Should return empty dict when PAPERLESS_OWNER_ID is non-numeric."""
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_OWNER_ID = "not-a-number"
+            result = client._owner_payload
+        assert result == {}
 
-    def test_logs_warning_on_failure(self, client):
-        """Should log warning but not raise on PATCH failure."""
-        with patch.object(
-            client.session, "patch", side_effect=Exception("Network error")
-        ):
-            # Should not raise
-            client._ensure_public("tags", 10, "Energy")
-
-    def test_handles_http_error_gracefully(self, client):
-        """Should handle HTTP error response without raising."""
-        mock_response = Mock()
-        mock_response.raise_for_status.side_effect = Exception("403 Forbidden")
-
-        with patch.object(client.session, "patch", return_value=mock_response):
-            # Should not raise
-            client._ensure_public("document_types", 5, "Article")
-
-
-class TestFetchEnsuresPublic:
-    """Test that _fetch_*() methods call _ensure_public for private objects."""
-
-    def test_fetch_correspondents_patches_private(self, client):
-        """Should PATCH correspondents with non-null owner."""
-        mock_response = Mock()
-        mock_response.raise_for_status = Mock()
-        mock_response.json.return_value = {
-            "results": [
-                {"id": 1, "name": "PublicOrg", "owner": None},
-                {"id": 2, "name": "PrivateOrg", "owner": 3},
-            ],
-            "next": None,
-        }
-
-        with patch.object(client.session, "get", return_value=mock_response):
-            with patch.object(client, "_ensure_public") as mock_ensure:
-                result = client._fetch_correspondents()
-
-        assert result == {"PublicOrg": 1, "PrivateOrg": 2}
-        mock_ensure.assert_called_once_with("correspondents", 2, "PrivateOrg")
-
-    def test_fetch_tags_patches_private(self, client):
-        """Should PATCH tags with non-null owner."""
-        mock_response = Mock()
-        mock_response.raise_for_status = Mock()
-        mock_response.json.return_value = {
-            "results": [
-                {"id": 10, "name": "Public", "owner": None},
-                {"id": 20, "name": "Private", "owner": 1},
-            ],
-            "next": None,
-        }
-
-        with patch.object(client.session, "get", return_value=mock_response):
-            with patch.object(client, "_ensure_public") as mock_ensure:
-                result = client._fetch_tags()
-
-        assert result == {"Public": 10, "Private": 20}
-        mock_ensure.assert_called_once_with("tags", 20, "Private")
-
-    def test_fetch_document_types_patches_private(self, client):
-        """Should PATCH document types with non-null owner."""
-        mock_response = Mock()
-        mock_response.raise_for_status = Mock()
-        mock_response.json.return_value = {
-            "results": [
-                {"id": 1, "name": "Article", "owner": 5},
-            ],
-            "next": None,
-        }
-
-        with patch.object(client.session, "get", return_value=mock_response):
-            with patch.object(client, "_ensure_public") as mock_ensure:
-                result = client._fetch_document_types()
-
-        assert result == {"Article": 1}
-        mock_ensure.assert_called_once_with("document_types", 1, "Article")
-
-    def test_fetch_custom_fields_patches_private(self, client):
-        """Should PATCH custom fields with non-null owner."""
-        mock_response = Mock()
-        mock_response.raise_for_status = Mock()
-        mock_response.json.return_value = {
-            "results": [
-                {"id": 1, "name": "Original URL", "owner": 2},
-                {"id": 2, "name": "Scraped Date", "owner": None},
-            ],
-            "next": None,
-        }
-
-        with patch.object(client.session, "get", return_value=mock_response):
-            with patch.object(client, "_ensure_public") as mock_ensure:
-                result = client._fetch_custom_fields()
-
-        assert result == {"Original URL": 1, "Scraped Date": 2}
-        mock_ensure.assert_called_once_with("custom_fields", 1, "Original URL")
-
-    def test_fetch_skips_items_without_owner_key(self, client):
-        """Should not PATCH items missing the owner key entirely."""
-        mock_response = Mock()
-        mock_response.raise_for_status = Mock()
-        mock_response.json.return_value = {
-            "results": [
-                {"id": 1, "name": "NoOwnerKey"},  # No owner key
-            ],
-            "next": None,
-        }
-
-        with patch.object(client.session, "get", return_value=mock_response):
-            with patch.object(client, "_ensure_public") as mock_ensure:
-                result = client._fetch_correspondents()
-
-        assert result == {"NoOwnerKey": 1}
-        mock_ensure.assert_not_called()
-
-    def test_fetch_still_caches_on_patch_failure(self, client):
-        """Cache should be populated even if PATCH to make public fails."""
-        get_response = Mock()
-        get_response.raise_for_status = Mock()
-        get_response.json.return_value = {
-            "results": [
-                {"id": 1, "name": "PrivateTag", "owner": 5},
-            ],
-            "next": None,
-        }
-
-        with patch.object(client.session, "get", return_value=get_response):
-            with patch.object(
-                client.session, "patch", side_effect=Exception("PATCH failed")
-            ):
-                result = client._fetch_tags()
-
-        # Cache populated despite PATCH failure (_ensure_public is fire-and-forget)
-        assert result == {"PrivateTag": 1}
+    def test_returns_owner_for_large_id(self, client):
+        """Should handle large user IDs."""
+        with patch("app.services.paperless_client.Config") as mock_config:
+            mock_config.PAPERLESS_OWNER_ID = "999"
+            result = client._owner_payload
+        assert result == {"owner": 999}

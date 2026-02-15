@@ -148,6 +148,7 @@ class Config:
     # Paperless-ngx
     PAPERLESS_API_URL = os.getenv("PAPERLESS_API_URL", "http://localhost:8000")
     PAPERLESS_API_TOKEN = os.getenv("PAPERLESS_API_TOKEN", "")
+    PAPERLESS_OWNER_ID = os.getenv("PAPERLESS_OWNER_ID", "")
 
     # RAGFlow
     RAGFLOW_API_URL = os.getenv("RAGFLOW_API_URL", "http://localhost:9380")
