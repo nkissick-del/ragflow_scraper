@@ -189,20 +189,19 @@ class ReconciliationService:
         rag_urls: set[str] = set()
         try:
             rag = self.container.rag_backend
-            dataset_id = Config.RAGFLOW_DATASET_ID
-            if dataset_id:
-                rag_docs = rag.list_documents(collection_id=dataset_id)
-                report.rag_document_count = len(rag_docs)
-                for doc in rag_docs:
-                    # Try to extract source URL from metadata
-                    meta = doc.get("metadata", {}) or {}
-                    source_url = meta.get("source_url") or meta.get("url")
-                    if source_url:
-                        rag_urls.add(source_url)
-                    # Also try document name as fallback
-                    doc_name = doc.get("name", "")
-                    if doc_name:
-                        rag_urls.add(doc_name)
+            dataset_id = Config.RAGFLOW_DATASET_ID or None
+            rag_docs = rag.list_documents(collection_id=dataset_id)
+            report.rag_document_count = len(rag_docs)
+            for doc in rag_docs:
+                # Try to extract source URL from metadata
+                meta = doc.get("metadata", {}) or {}
+                source_url = meta.get("source_url") or meta.get("url")
+                if source_url:
+                    rag_urls.add(source_url)
+                # Also try document name as fallback
+                doc_name = doc.get("name", "")
+                if doc_name:
+                    rag_urls.add(doc_name)
         except Exception as e:
             report.errors.append(f"RAG listing failed: {e}")
 
@@ -254,11 +253,9 @@ class ReconciliationService:
         paperless_urls = client.get_scraper_document_urls(scraper_name)
 
         from app.config import Config
-        dataset_id = Config.RAGFLOW_DATASET_ID
+        dataset_id = Config.RAGFLOW_DATASET_ID or None
 
         re_ingested: list[str] = []
-        parser = self.container.parser_backend
-        rag = self.container.rag_backend
 
         for url in gap_urls:
             doc_id = paperless_urls.get(url)
@@ -266,51 +263,87 @@ class ReconciliationService:
                 self.logger.warning(f"No Paperless doc ID for URL: {url}")
                 continue
 
-            try:
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    # Download from Paperless
-                    pdf_bytes = client.download_document(doc_id)
-                    if not pdf_bytes:
-                        self.logger.error(f"Failed to download document {doc_id}")
-                        continue
-
-                    temp_path = Path(tmpdir) / f"doc_{doc_id}.pdf"
-                    temp_path.write_bytes(pdf_bytes)
-
-                    # Parse (provide minimal context metadata)
-                    context = DocumentMetadata(
-                        url=url,
-                        title=temp_path.stem,
-                        filename=temp_path.name,
-                    )
-                    parse_result = parser.parse_document(temp_path, context)
-                    if not parse_result.success or not parse_result.markdown_path:
-                        self.logger.error(
-                            f"Parse failed for document {doc_id}: {parse_result.error}"
-                        )
-                        continue
-
-                    # Ingest to RAG
-                    metadata = {"url": url, "source": "reconciliation"}
-                    rag_result = rag.ingest_document(
-                        content_path=parse_result.markdown_path,
-                        metadata=metadata,
-                        collection_id=dataset_id,
-                    )
-
-                    if rag_result.success:
-                        re_ingested.append(url)
-                        self.logger.info(f"Re-ingested: {url}")
-                    else:
-                        self.logger.error(
-                            f"RAG ingest failed for {url}: {rag_result.error}"
-                        )
-
-            except Exception as e:
-                self.logger.error(f"Failed to re-ingest {url}: {e}")
+            success = self._reingest_document(
+                doc_id=doc_id,
+                url=url,
+                source="reconciliation",
+                client=client,
+                dataset_id=dataset_id,
+            )
+            if success:
+                re_ingested.append(url)
 
         self.logger.info(
             f"RAG sync for '{scraper_name}': "
             f"{len(re_ingested)}/{len(gap_urls)} documents re-ingested"
         )
         return re_ingested
+
+    def _reingest_document(
+        self,
+        doc_id: int,
+        url: str,
+        source: str,
+        client,
+        dataset_id: str | None = None,
+    ) -> bool:
+        """
+        Download a document from Paperless, parse it, and ingest into RAG.
+
+        Args:
+            doc_id: Paperless document ID
+            url: Source URL of the document
+            source: Source label for RAG metadata (e.g. "reconciliation", "manual")
+            client: Paperless client instance
+            dataset_id: Optional collection/dataset ID for RAG backend
+
+        Returns:
+            True if successfully re-ingested, False otherwise
+        """
+        parser = self.container.parser_backend
+        rag = self.container.rag_backend
+
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Download from Paperless
+                pdf_bytes = client.download_document(doc_id)
+                if not pdf_bytes:
+                    self.logger.error(f"Failed to download document {doc_id}")
+                    return False
+
+                temp_path = Path(tmpdir) / f"doc_{doc_id}.pdf"
+                temp_path.write_bytes(pdf_bytes)
+
+                # Parse (provide minimal context metadata)
+                context = DocumentMetadata(
+                    url=url,
+                    title=temp_path.stem,
+                    filename=temp_path.name,
+                )
+                parse_result = parser.parse_document(temp_path, context)
+                if not parse_result.success or not parse_result.markdown_path:
+                    self.logger.error(
+                        f"Parse failed for document {doc_id}: {parse_result.error}"
+                    )
+                    return False
+
+                # Ingest to RAG
+                metadata = {"url": url, "source": source}
+                rag_result = rag.ingest_document(
+                    content_path=parse_result.markdown_path,
+                    metadata=metadata,
+                    collection_id=dataset_id,
+                )
+
+                if rag_result.success:
+                    self.logger.info(f"Re-ingested: {url}")
+                    return True
+                else:
+                    self.logger.error(
+                        f"RAG ingest failed for {url}: {rag_result.error}"
+                    )
+                    return False
+
+        except Exception as e:
+            self.logger.error(f"Failed to re-ingest {url}: {e}")
+            return False

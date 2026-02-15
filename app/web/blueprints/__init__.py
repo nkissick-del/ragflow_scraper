@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Flask
 
-from app.web.blueprints import auth, scrapers, settings, metrics_logs, ragflow_api, api_scrapers, search, sse
+from app.web.blueprints import auth, scrapers, settings, metrics_logs, ragflow_api, api_scrapers, api_ingest, search, sse
 
 
 def register_blueprints(app: Flask) -> None:
@@ -20,5 +20,6 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(metrics_logs.bp)
     app.register_blueprint(ragflow_api.bp)
     app.register_blueprint(api_scrapers.bp)
+    app.register_blueprint(api_ingest.bp)
     app.register_blueprint(search.bp)
     app.register_blueprint(sse.bp)

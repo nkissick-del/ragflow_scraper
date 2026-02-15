@@ -418,9 +418,9 @@ class Config:
                 )
 
         if cls.RAG_BACKEND == "ragflow":
-            if not cls.RAGFLOW_API_KEY or not cls.RAGFLOW_DATASET_ID:
+            if not cls.RAGFLOW_API_KEY:
                 raise ValueError(
-                    "Invalid Config: RAG_BACKEND='ragflow' requires both RAGFLOW_API_KEY and RAGFLOW_DATASET_ID"
+                    "Invalid Config: RAG_BACKEND='ragflow' requires RAGFLOW_API_KEY"
                 )
 
         if cls.RAG_BACKEND == "anythingllm":

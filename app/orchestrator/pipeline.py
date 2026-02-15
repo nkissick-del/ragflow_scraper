@@ -98,7 +98,7 @@ class Pipeline:
             container: Optional service container (uses default if not provided)
         """
         self.scraper_name = scraper_name
-        self.dataset_id = dataset_id or Config.RAGFLOW_DATASET_ID
+        self.dataset_id = dataset_id or Config.RAGFLOW_DATASET_ID or None
         self.max_pages = max_pages
         self.upload_to_ragflow = upload_to_ragflow
         self.upload_to_paperless = upload_to_paperless
@@ -422,7 +422,7 @@ class Pipeline:
                 result["error"] = error_msg
 
         # Step 6: RAG ingestion (if enabled)
-        if self.upload_to_ragflow and self.dataset_id:
+        if self.upload_to_ragflow:
             result["rag_indexed"] = self._ingest_to_rag(content_path, merged_metadata)
 
         # Step 7: Cleanup
@@ -673,7 +673,7 @@ class Pipeline:
         rag_result = rag.ingest_document(
             content_path=content_path,
             metadata=merged_metadata.to_dict(),
-            collection_id=self.dataset_id,
+            collection_id=self.dataset_id or None,
         )
 
         if rag_result.success:

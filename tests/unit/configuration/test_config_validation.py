@@ -41,22 +41,19 @@ class TestConfigValidation:
                 Config.validate()
 
     def test_ragflow_validation(self):
-        """Test that ragflow requires API_KEY and DATASET_ID."""
+        """Test that ragflow requires API_KEY (dataset_id is optional)."""
         with patch.object(Config, "RAG_BACKEND", "ragflow"):
             with patch.object(Config, "RAGFLOW_API_KEY", ""):
                 with pytest.raises(
                     ValueError,
-                    match="RAG_BACKEND='ragflow' requires both RAGFLOW_API_KEY and RAGFLOW_DATASET_ID",
+                    match="RAG_BACKEND='ragflow' requires RAGFLOW_API_KEY",
                 ):
                     Config.validate()
 
+            # API key present, dataset_id empty — should pass (auto-discover)
             with patch.object(Config, "RAGFLOW_API_KEY", "key"):
                 with patch.object(Config, "RAGFLOW_DATASET_ID", ""):
-                    with pytest.raises(
-                        ValueError,
-                        match="RAG_BACKEND='ragflow' requires both RAGFLOW_API_KEY and RAGFLOW_DATASET_ID",
-                    ):
-                        Config.validate()
+                    Config.validate()
 
                 with patch.object(Config, "RAGFLOW_DATASET_ID", "123"):
                     # Should not raise
