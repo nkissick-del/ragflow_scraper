@@ -224,7 +224,16 @@ def run_scraper(name):
 
 @bp.route("/scrapers/<name>/cancel", methods=["POST"])
 def cancel_scraper(name):
-    if not job_queue.cancel(name):
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return "Invalid scraper name", 400
+
+    cancelled = job_queue.cancel(name)
+
+    if cancelled:
+        log_event(logger, "warning", "scraper.cancel.requested", scraper=name)
+
+    scraper_class = ScraperRegistry.get_scraper_class(name)
+    if not scraper_class:
         return render_template(
             "components/status-badge.html",
             scraper_name=name,
@@ -232,13 +241,11 @@ def cancel_scraper(name):
             status_text="Not Running",
         )
 
-    log_event(logger, "warning", "scraper.cancel.requested", scraper=name)
-    return render_template(
-        "components/status-badge.html",
-        scraper_name=name,
-        status="cancelling",
-        status_text="Cancelling...",
-    )
+    metadata = scraper_class.get_metadata()
+    state = container.state_tracker(name)
+    metadata["state"] = state.get_last_run_info()
+    metadata["status"] = "cancelling" if cancelled else get_scraper_status(name)
+    return render_template("components/scraper-card.html", scraper=metadata)
 
 
 @bp.route("/scrapers/<name>/preview", methods=["POST"])

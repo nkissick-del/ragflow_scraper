@@ -299,13 +299,21 @@ class TestCancelScraper:
         mock_job_queue.cancel.return_value = True
         resp = client.post("/scrapers/aemo/cancel")
         assert resp.status_code == 200
-        assert b"Cancelling" in resp.data
+        assert b"cancelling" in resp.data
+        # Full card returned with cancel button disabled
+        assert b"scraper-card" in resp.data
 
     def test_not_running(self, client, mock_job_queue):
         mock_job_queue.cancel.return_value = False
+        mock_job_queue.status.return_value = "idle"
         resp = client.post("/scrapers/aemo/cancel")
         assert resp.status_code == 200
-        assert b"Not Running" in resp.data
+        # Returns a full card with the scraper's current status
+        assert b"scraper-card" in resp.data
+
+    def test_invalid_name(self, client):
+        resp = client.post("/scrapers/evil%20name/cancel")
+        assert resp.status_code == 400
 
 
 # ===================================================================
