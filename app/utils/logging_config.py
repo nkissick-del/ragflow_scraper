@@ -13,6 +13,14 @@ from typing import Any, Optional
 from app.config import Config
 
 
+class HealthCheckFilter(logging.Filter):
+    """Filter out health check requests from access logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return "/health" not in msg
+
+
 class JsonFormatter(logging.Formatter):
     """Simple JSON formatter for structured logs."""
 

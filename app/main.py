@@ -5,6 +5,7 @@ Main entry point for the PDF Scraper Flask application.
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -116,7 +117,15 @@ def main():
             "accesslog": "-",
             "errorlog": "-",
         }
-        StandaloneApplication(app, options).run()
+
+        gunicorn_app = StandaloneApplication(app, options)
+
+        # Filter health check noise from access logs
+        from app.utils.logging_config import HealthCheckFilter
+        access_logger = logging.getLogger("gunicorn.access")
+        access_logger.addFilter(HealthCheckFilter())
+
+        gunicorn_app.run()
 
 
 if __name__ == "__main__":

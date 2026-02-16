@@ -1,28 +1,26 @@
-"""Test Scheduler run_now triggers scraper via pipeline."""
+"""Test Scheduler run_now triggers scraper via JobQueue."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from app.orchestrator.pipeline import PipelineResult
 from app.orchestrator.scheduler import Scheduler
 
 
 def test_scheduler_run_now_triggers_scraper():
-    """Scheduler.run_now should invoke run_pipeline for the given scraper."""
-    mock_result = PipelineResult(
-        status="completed",
-        scraper_name="dummy",
-        downloaded_count=1,
-    )
+    """Scheduler.run_now should enqueue a Pipeline into the shared JobQueue."""
+    mock_pipeline = MagicMock()
+    mock_job_queue = MagicMock()
 
-    # run_pipeline is imported locally inside _run_scraper, so patch at source
-    with patch("app.orchestrator.pipeline.run_pipeline", return_value=mock_result) as mock_run:
+    with (
+        patch("app.orchestrator.pipeline.Pipeline", return_value=mock_pipeline) as mock_cls,
+        patch("app.web.runtime.job_queue", mock_job_queue),
+        patch("app.orchestrator.scheduler.Config") as mock_config,
+    ):
+        mock_config.DATABASE_URL = ""
+        mock_config.get_scraper_config_path.return_value = MagicMock(exists=lambda: False)
+
         scheduler = Scheduler()
-        thread = scheduler.run_now("dummy")
-        thread.join(timeout=5)
+        scheduler.run_now("dummy")
 
-        if thread.is_alive():
-            raise AssertionError("Scheduler thread did not complete within 5 seconds")
-
-        mock_run.assert_called_once()
-        call_kwargs = mock_run.call_args[1]
-        assert call_kwargs["scraper_name"] == "dummy"
+        mock_cls.assert_called_once()
+        assert mock_cls.call_args[1]["scraper_name"] == "dummy"
+        mock_job_queue.enqueue.assert_called_once_with("dummy", mock_pipeline)

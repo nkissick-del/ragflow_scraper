@@ -64,7 +64,7 @@ class Scheduler:
                 job_defaults={
                     "coalesce": True,
                     "max_instances": 1,
-                    "misfire_grace_time": 3600,
+                    "misfire_grace_time": 1,
                 },
             )
             self._scheduler.add_listener(
@@ -147,10 +147,18 @@ class Scheduler:
             self.logger.error(f"Failed to schedule '{scraper_name}' with cron '{cron}': {e}")
 
     def _run_scraper(self, scraper_name: str):
-        """Run a scraper (called by scheduler)."""
+        """Run a scraper via the shared JobQueue (called by scheduler).
+
+        Enqueues a Pipeline into the JobQueue so that scheduled runs get the
+        same cancellation, status tracking, and per-scraper exclusivity as
+        manual UI-triggered runs.
+        """
         log_event(self.logger, "info", "scheduler.run.start", scraper=scraper_name)
 
         try:
+            from app.orchestrator.pipeline import Pipeline
+            from app.web.runtime import job_queue
+
             # Load scraper config to get upload flags
             config_path = Config.get_scraper_config_path(scraper_name)
             scraper_config = {}
@@ -158,10 +166,7 @@ class Scheduler:
                 with open(config_path) as f:
                     scraper_config = json.load(f)
 
-            # Use Pipeline to handle scraping + upload + parsing
-            from app.orchestrator.pipeline import run_pipeline
-
-            result = run_pipeline(
+            pipeline = Pipeline(
                 scraper_name=scraper_name,
                 upload_to_ragflow=scraper_config.get("upload_to_ragflow", True),
                 upload_to_paperless=scraper_config.get("upload_to_paperless", True),
@@ -170,14 +175,21 @@ class Scheduler:
                 ),
             )
 
+            job_queue.enqueue(scraper_name, pipeline)
             log_event(
                 self.logger,
                 "info",
-                "scheduler.run.complete",
+                "scheduler.run.enqueued",
                 scraper=scraper_name,
-                downloaded=result.downloaded_count,
-                failed=result.failed_count,
-                status=result.status,
+            )
+        except ValueError:
+            # Already running — skip this scheduled trigger
+            log_event(
+                self.logger,
+                "warning",
+                "scheduler.run.skipped",
+                scraper=scraper_name,
+                reason="already running or queued",
             )
         except Exception as e:
             log_exception(
@@ -215,14 +227,11 @@ class Scheduler:
         log_event(self.logger, "info", "scheduler.started")
 
     def run_now(self, scraper_name: str):
-        """Trigger a scraper immediately without waiting for its next schedule."""
-        thread = threading.Thread(
-            target=self._run_scraper,
-            args=(scraper_name,),
-            daemon=True,
-        )
-        thread.start()
-        return thread
+        """Trigger a scraper immediately without waiting for its next schedule.
+
+        Delegates to _run_scraper which enqueues into the shared JobQueue.
+        """
+        self._run_scraper(scraper_name)
 
     def stop(self):
         """Stop the scheduler."""

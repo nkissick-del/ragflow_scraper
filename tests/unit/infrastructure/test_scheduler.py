@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.orchestrator.scheduler import Scheduler
 
@@ -165,6 +165,93 @@ class TestGetStatusAndNextRuns:
         next_runs = scheduler.get_next_runs()
 
         assert "scraper_a" in next_runs
+
+
+class TestRunScraper:
+    """Tests for _run_scraper() and run_now() — JobQueue integration."""
+
+    @patch("app.orchestrator.scheduler.Config")
+    def test_run_scraper_enqueues_into_job_queue(self, mock_config, tmp_path):
+        """_run_scraper creates a Pipeline and enqueues it."""
+        mock_config.DATABASE_URL = ""
+        mock_config.get_scraper_config_path.return_value = tmp_path / "test.json"
+
+        # Write a config file
+        config_data = {"upload_to_ragflow": False, "upload_to_paperless": True}
+        (tmp_path / "test.json").write_text(json.dumps(config_data))
+
+        mock_pipeline = MagicMock()
+        mock_job_queue = MagicMock()
+
+        scheduler = Scheduler()
+        with (
+            patch("app.orchestrator.pipeline.Pipeline", return_value=mock_pipeline) as mock_cls,
+            patch("app.web.runtime.job_queue", mock_job_queue),
+        ):
+            scheduler._run_scraper("test")
+
+            mock_cls.assert_called_once_with(
+                scraper_name="test",
+                upload_to_ragflow=False,
+                upload_to_paperless=True,
+                verify_document_timeout=60,
+            )
+            mock_job_queue.enqueue.assert_called_once_with("test", mock_pipeline)
+
+    @patch("app.orchestrator.scheduler.Config")
+    def test_run_scraper_skips_when_already_running(self, mock_config, tmp_path):
+        """_run_scraper logs warning when scraper is already queued."""
+        mock_config.DATABASE_URL = ""
+        mock_config.get_scraper_config_path.return_value = tmp_path / "test.json"
+        (tmp_path / "test.json").write_text(json.dumps({}))
+
+        mock_job_queue = MagicMock()
+        mock_job_queue.enqueue.side_effect = ValueError("already active")
+
+        scheduler = Scheduler()
+        with (
+            patch("app.orchestrator.pipeline.Pipeline"),
+            patch("app.web.runtime.job_queue", mock_job_queue),
+            patch("app.orchestrator.scheduler.log_event") as mock_log,
+        ):
+            scheduler._run_scraper("test")
+
+            # Should log a skip warning, not crash
+            calls = [c for c in mock_log.call_args_list if c[0][2] == "scheduler.run.skipped"]
+            assert len(calls) == 1
+
+    @patch("app.orchestrator.scheduler.Config")
+    def test_run_scraper_no_config_file_uses_defaults(self, mock_config, tmp_path):
+        """_run_scraper uses default upload flags when config file doesn't exist."""
+        mock_config.DATABASE_URL = ""
+        mock_config.get_scraper_config_path.return_value = tmp_path / "missing.json"
+
+        mock_pipeline = MagicMock()
+        mock_job_queue = MagicMock()
+
+        scheduler = Scheduler()
+        with (
+            patch("app.orchestrator.pipeline.Pipeline", return_value=mock_pipeline) as mock_cls,
+            patch("app.web.runtime.job_queue", mock_job_queue),
+        ):
+            scheduler._run_scraper("test")
+
+            mock_cls.assert_called_once_with(
+                scraper_name="test",
+                upload_to_ragflow=True,
+                upload_to_paperless=True,
+                verify_document_timeout=60,
+            )
+
+    @patch("app.orchestrator.scheduler.Config")
+    def test_run_now_delegates_to_run_scraper(self, mock_config):
+        """run_now() calls _run_scraper directly (no separate thread)."""
+        mock_config.DATABASE_URL = ""
+        scheduler = Scheduler()
+
+        with patch.object(scheduler, "_run_scraper") as mock_run:
+            scheduler.run_now("test_scraper")
+            mock_run.assert_called_once_with("test_scraper")
 
 
 class TestLoadSchedules:

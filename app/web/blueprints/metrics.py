@@ -74,8 +74,8 @@ def init_metrics_middleware(app):
 
     @app.after_request
     def _record_metrics(response):
-        # Skip metrics endpoint itself to avoid recursion
-        if request.endpoint == "metrics.metrics":
+        # Skip infrastructure endpoints (metrics, health checks)
+        if request.endpoint in ("metrics.metrics", "health"):
             return response
 
         endpoint = request.endpoint or "unknown"
