@@ -607,6 +607,8 @@ code {
 
 .input-field::placeholder {
     color: var(--text-muted);
+    opacity: 0.7;
+    font-style: italic;
 }
 
 .input-small {
@@ -1037,4 +1039,69 @@ code {
 /* Cascading dropdown - hidden options */
 .model-option-hidden {
     display: none;
+}
+
+/* Settings sidebar layout */
+.settings-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 32px;
+    align-items: start;
+}
+
+.settings-sidebar {
+    position: sticky;
+    top: 84px;
+}
+
+.settings-nav {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.settings-nav-item {
+    display: block;
+    padding: 10px 16px;
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+}
+
+.settings-nav-item:hover {
+    background: var(--border-color);
+    color: var(--text-color);
+}
+
+.settings-nav-item.active {
+    background: rgba(37, 99, 235, 0.08);
+    color: var(--primary-color);
+}
+
+/* Mobile: sidebar becomes horizontal scrolling tabs */
+@media (max-width: 768px) {
+    .settings-layout {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .settings-sidebar {
+        position: static;
+        overflow-x: auto;
+    }
+
+    .settings-nav {
+        flex-direction: row;
+        gap: 4px;
+    }
+
+    .settings-nav-item {
+        white-space: nowrap;
+        padding: 8px 14px;
+    }
 }

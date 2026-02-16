@@ -1093,3 +1093,65 @@ class TestIOErrorHandler:
         assert resp.status_code == 200
         assert b"Failed to save settings" in resp.data
         assert b"not writable" in resp.data
+
+
+# ===================================================================
+# Settings tab routes
+# ===================================================================
+
+
+class TestSettingsTabRoute:
+    """GET /settings/tab/<tab> — partial HTML fragments for HTMX."""
+
+    @pytest.mark.parametrize("tab", ["connections", "scraping", "pipeline", "maintenance", "advanced"])
+    def test_valid_tab_returns_200(self, client, tab):
+        resp = client.get(f"/settings/tab/{tab}")
+        assert resp.status_code == 200
+
+    def test_invalid_tab_returns_404(self, client):
+        resp = client.get("/settings/tab/nonexistent")
+        assert resp.status_code == 404
+
+    def test_invalid_tab_with_special_chars_returns_404(self, client):
+        resp = client.get("/settings/tab/a-b")
+        assert resp.status_code == 404
+
+    def test_connections_tab_contains_service_form(self, client):
+        resp = client.get("/settings/tab/connections")
+        assert b"Service Configuration" in resp.data
+
+    def test_scraping_tab_contains_defaults(self, client):
+        resp = client.get("/settings/tab/scraping")
+        assert b"Scraping Defaults" in resp.data
+
+    def test_pipeline_tab_contains_backends(self, client):
+        resp = client.get("/settings/tab/pipeline")
+        assert b"Pipeline Backends" in resp.data
+
+    def test_advanced_tab_contains_tuning(self, client):
+        resp = client.get("/settings/tab/advanced")
+        assert b"Advanced Tuning" in resp.data
+
+
+class TestSettingsPageTabParam:
+    """GET /settings?tab=<tab> — full page with correct tab loaded."""
+
+    def test_default_tab_is_connections(self, client):
+        resp = client.get("/settings")
+        assert resp.status_code == 200
+        assert b"Service Configuration" in resp.data
+
+    def test_tab_param_selects_pipeline(self, client):
+        resp = client.get("/settings?tab=pipeline")
+        assert resp.status_code == 200
+        assert b"Pipeline Backends" in resp.data
+
+    def test_invalid_tab_param_falls_back_to_connections(self, client):
+        resp = client.get("/settings?tab=invalid")
+        assert resp.status_code == 200
+        assert b"Service Configuration" in resp.data
+
+    def test_sidebar_nav_present(self, client):
+        resp = client.get("/settings")
+        assert b"settings-nav" in resp.data
+        assert b"settings-content" in resp.data

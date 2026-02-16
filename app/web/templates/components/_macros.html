@@ -1,0 +1,99 @@
+{# Reusable Jinja2 macros for settings and other pages #}
+
+{# --- Status badge --- #}
+{% macro status_badge(status) %}
+<span class="status-badge status-{{ status }}">{{ status | replace('_', ' ') }}</span>
+{% endmacro %}
+
+{# --- Service row: URL + timeout + status + test button --- #}
+{% macro service_row(name, label, url_value, url_placeholder, timeout_value, timeout_placeholder, status, test_url, hint="", has_timeout=true, url_autocomplete="on") %}
+<div class="setting-group">
+    <label>{{ label }}</label>
+    <div class="setting-row">
+        <div style="flex: 3">
+            <input type="text" name="{{ name }}_url" class="input-field"
+                   value="{{ url_value or '' }}"
+                   placeholder="{{ url_placeholder }}"
+                   {% if url_autocomplete != "on" %}autocomplete="{{ url_autocomplete }}"{% endif %}>
+        </div>
+        {% if has_timeout %}
+        <div style="flex: 1">
+            <input type="number" name="{{ name }}_timeout" class="input-field input-small"
+                   value="{% if timeout_value %}{{ timeout_value }}{% endif %}"
+                   min="0" max="600" placeholder="{{ timeout_placeholder }}">
+        </div>
+        {% else %}
+        <div style="flex: 1"></div>
+        {% endif %}
+        <div id="{{ name }}-status">
+            {{ status_badge(status) }}
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm"
+                hx-post="{{ test_url }}" hx-target="#{{ name }}-status" hx-swap="innerHTML">
+            Test
+        </button>
+    </div>
+    {% if hint %}<p class="text-muted text-small">{{ hint }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{# --- Ghost input: numeric field with placeholder showing default --- #}
+{% macro ghost_input(name, value, placeholder, label, type="number", min=0, max=600, step=None, id=None) %}
+<div class="setting-group">
+    <label for="{{ id or ('input-' ~ name) }}">{{ label }}</label>
+    <input type="{{ type }}" id="{{ id or ('input-' ~ name) }}" name="{{ name }}" class="input-field input-small"
+           value="{% if value %}{{ value }}{% endif %}"
+           placeholder="{{ placeholder }}"
+           {% if min is not none %}min="{{ min }}"{% endif %}
+           {% if max is not none %}max="{{ max }}"{% endif %}
+           {% if step %}step="{{ step }}"{% endif %}>
+</div>
+{% endmacro %}
+
+{# --- Settings card: card wrapper with form --- #}
+{% macro settings_card(title, save_url, message_id, description="") %}
+<section class="section">
+    <div class="card">
+        <div class="card-header"><h2>{{ title }}</h2></div>
+        <form hx-post="{{ save_url }}" hx-target="#{{ message_id }}" hx-swap="innerHTML">
+            <div class="card-body">
+                {% if description %}<p class="text-muted mb-3">{{ description }}</p>{% endif %}
+                {{ caller() }}
+                <div id="{{ message_id }}" class="mt-3"></div>
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</section>
+{% endmacro %}
+
+{# --- Tuning section: collapsible details group --- #}
+{% macro tuning_section(title, open=false) %}
+<details class="mt-3" {% if open %}open{% endif %}>
+    <summary><strong>{{ title }}</strong></summary>
+    <div class="setting-row mt-2">
+        {{ caller() }}
+    </div>
+</details>
+{% endmacro %}
+
+{# --- Read-only credential display --- #}
+{% macro credential_display(label, value, masked=false, hint="") %}
+<div class="setting-group">
+    <label>{{ label }}</label>
+    <p class="setting-value">
+        {% if value %}
+            {% if masked %}
+            <code>********{% if value | length > 4 %}{{ value[-4:] }}{% endif %}</code>
+            {% else %}
+            <code>{{ value }}</code>
+            {% endif %}
+        {% else %}
+        <span class="text-warning">Not configured</span>
+        {% if hint %}<span class="text-muted text-small">({{ hint }})</span>{% endif %}
+        {% endif %}
+    </p>
+</div>
+{% endmacro %}

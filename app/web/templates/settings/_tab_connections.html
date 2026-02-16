@@ -1,0 +1,233 @@
+{% from "components/_macros.html" import service_row, status_badge, credential_display %}
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>Service Configuration</h2>
+            <button type="button" class="btn btn-secondary btn-sm" id="test-all-btn"
+                    onclick="testAllServices()">
+                Test All
+            </button>
+        </div>
+        <form hx-post="{{ url_for('settings_api.save_service_settings') }}"
+              hx-target="#services-message"
+              hx-swap="innerHTML">
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Configure service URLs and timeouts. Leave blank to use .env defaults. Changes take effect immediately.
+                </p>
+
+                {{ service_row("gotenberg", "Gotenberg",
+                    settings.services.gotenberg_url,
+                    config.GOTENBERG_URL or 'http://localhost:3000',
+                    settings.services.gotenberg_timeout,
+                    config.GOTENBERG_TIMEOUT,
+                    gotenberg_status,
+                    url_for('settings_api.test_gotenberg')) }}
+
+                {{ service_row("tika", "Tika",
+                    settings.services.tika_url,
+                    config.TIKA_SERVER_URL or 'http://localhost:9998',
+                    settings.services.tika_timeout,
+                    config.TIKA_TIMEOUT,
+                    tika_status,
+                    url_for('settings_api.test_tika')) }}
+
+                {{ service_row("docling_serve", "Docling-serve",
+                    settings.services.docling_serve_url,
+                    config.DOCLING_SERVE_URL or 'http://localhost:4949',
+                    settings.services.docling_serve_timeout,
+                    config.DOCLING_SERVE_TIMEOUT,
+                    docling_serve_status,
+                    url_for('settings_api.test_docling_serve')) }}
+
+                {{ service_row("paperless", "Paperless-ngx",
+                    settings.services.paperless_url,
+                    config.PAPERLESS_API_URL or 'http://localhost:8000',
+                    settings.services.paperless_timeout,
+                    config.PAPERLESS_TIMEOUT,
+                    paperless_status,
+                    url_for('settings_api.test_paperless'),
+                    hint="API token remains in .env (PAPERLESS_API_TOKEN)") }}
+
+                {{ service_row("ragflow", "RAGFlow",
+                    settings.services.ragflow_url,
+                    config.RAGFLOW_API_URL or 'http://localhost:9380',
+                    settings.services.ragflow_timeout,
+                    config.RAGFLOW_SESSION_TIMEOUT,
+                    ragflow_status,
+                    url_for('settings_api.test_ragflow'),
+                    hint="API key remains in .env (RAGFLOW_API_KEY)") }}
+
+                {{ service_row("anythingllm", "AnythingLLM",
+                    settings.services.anythingllm_url,
+                    config.ANYTHINGLLM_API_URL or 'http://localhost:3001',
+                    settings.services.anythingllm_timeout,
+                    config.ANYTHINGLLM_TIMEOUT,
+                    anythingllm_status,
+                    url_for('settings_api.test_anythingllm'),
+                    hint="API key remains in .env (ANYTHINGLLM_API_KEY)") }}
+
+                {{ service_row("embedding", "Embedding Service (Ollama / OpenAI-compatible)",
+                    settings.services.embedding_url,
+                    config.EMBEDDING_URL or 'http://localhost:11434',
+                    settings.services.embedding_timeout,
+                    config.EMBEDDING_TIMEOUT,
+                    embedding_status,
+                    url_for('settings_api.test_embedding'),
+                    hint="API key remains in .env (EMBEDDING_API_KEY)") }}
+
+                {{ service_row("llm", "LLM Service (Ollama / OpenAI-compatible)",
+                    settings.services.llm_url,
+                    config.LLM_URL or eff_embedding_url or 'http://localhost:11434',
+                    settings.services.llm_timeout,
+                    config.LLM_TIMEOUT,
+                    llm_status,
+                    url_for('settings_api.test_llm'),
+                    hint="Leave blank to use Embedding Service URL (same Ollama server). API key remains in .env (LLM_API_KEY).") }}
+
+                {{ service_row("pgvector", "pgvector (PostgreSQL Database URL)",
+                    settings.services.pgvector_url,
+                    config.DATABASE_URL or 'postgresql://user:pass@host:5432/db',
+                    settings.services.pgvector_timeout if settings.services.pgvector_timeout is defined else 0,
+                    '',
+                    pgvector_status,
+                    url_for('settings_api.test_pgvector'),
+                    hint="Contains credentials. Override stored here takes precedence over .env DATABASE_URL. Leave blank to use .env value.",
+                    has_timeout=false,
+                    url_autocomplete="off") }}
+
+                <div id="services-message"></div>
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save Service Configuration</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>FlareSolverr</h2>
+            {{ status_badge(flaresolverr_status) }}
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                FlareSolverr helps bypass Cloudflare and other anti-bot protections.
+                <a href="https://github.com/FlareSolverr/FlareSolverr" target="_blank" rel="noopener">Learn more</a>
+            </p>
+
+            <div class="setting-group">
+                <label>URL</label>
+                <p class="setting-value">
+                    {% if config.FLARESOLVERR_URL %}
+                    <code>{{ config.FLARESOLVERR_URL }}</code>
+                    {% else %}
+                    <span class="text-warning">Not configured</span>
+                    <span class="text-muted text-small">(Set FLARESOLVERR_URL in .env)</span>
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="setting-group">
+                <label>Connection Status</label>
+                <div id="flaresolverr-status">
+                    {{ status_badge(flaresolverr_status) }}
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <button type="button" class="btn btn-secondary"
+                    hx-post="{{ url_for('settings_api.test_flaresolverr') }}"
+                    hx-target="#flaresolverr-status"
+                    hx-swap="innerHTML"
+                    {% if not config.FLARESOLVERR_URL %}disabled{% endif %}>
+                Test Connection
+            </button>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>RAGFlow Credentials</h2>
+            {{ status_badge(ragflow_status) }}
+        </div>
+        <div class="card-body">
+            {{ credential_display("API URL", config.RAGFLOW_API_URL, hint="Set RAGFLOW_API_URL in .env") }}
+            {{ credential_display("API Key", config.RAGFLOW_API_KEY, masked=true, hint="Set RAGFLOW_API_KEY in .env") }}
+            {{ credential_display("Session Auth (Username)", config.RAGFLOW_USERNAME, hint="Set RAGFLOW_USERNAME in .env for model listing") }}
+            {{ credential_display("Session Auth (Password)", config.RAGFLOW_PASSWORD, masked=true, hint="Set RAGFLOW_PASSWORD in .env for model listing") }}
+
+            <div class="setting-group">
+                <label>Connection Status</label>
+                <div id="ragflow-status">
+                    {{ status_badge(ragflow_status) }}
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <button type="button" class="btn btn-secondary"
+                    hx-post="{{ url_for('settings_api.test_ragflow') }}"
+                    hx-target="#ragflow-status"
+                    hx-swap="innerHTML">
+                Test Connection
+            </button>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>Directories</h2>
+        </div>
+        <div class="card-body">
+            <div class="setting-group">
+                <label>Download Directory</label>
+                <p class="setting-value"><code>{{ config.DOWNLOAD_DIR }}</code></p>
+            </div>
+            <div class="setting-group">
+                <label>Metadata Directory</label>
+                <p class="setting-value"><code>{{ config.METADATA_DIR }}</code></p>
+            </div>
+            <div class="setting-group">
+                <label>State Directory</label>
+                <p class="setting-value"><code>{{ config.STATE_DIR }}</code></p>
+            </div>
+            <div class="setting-group">
+                <label>Log Directory</label>
+                <p class="setting-value"><code>{{ config.LOG_DIR }}</code></p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+function testAllServices() {
+    var btn = document.getElementById('test-all-btn');
+    btn.disabled = true;
+    btn.textContent = 'Testing...';
+    var testButtons = document.querySelectorAll('[hx-post*="/test_"]');
+    var index = 0;
+
+    function triggerNext() {
+        if (index >= testButtons.length) {
+            btn.disabled = false;
+            btn.textContent = 'Test All';
+            showNotification('All service tests completed', 'info');
+            return;
+        }
+        var testBtn = testButtons[index];
+        index++;
+        if (!testBtn.disabled) {
+            htmx.trigger(testBtn, 'click');
+        }
+        setTimeout(triggerNext, 500);
+    }
+
+    triggerNext();
+}
+</script>

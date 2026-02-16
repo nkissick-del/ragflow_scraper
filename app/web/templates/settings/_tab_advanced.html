@@ -1,0 +1,84 @@
+{% from "components/_macros.html" import ghost_input, tuning_section %}
+
+<section class="section">
+    <div class="card">
+        <div class="card-header">
+            <h2>Advanced Tuning</h2>
+        </div>
+        <form hx-post="{{ url_for('settings_api.save_advanced_settings') }}"
+              hx-target="#advanced-message"
+              hx-swap="innerHTML">
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Fine-tune internal parameters. Leave fields empty to use the environment variable default.
+                    Most users won't need to change these.
+                </p>
+
+                {% call tuning_section("Database Pool") %}
+                    {{ ghost_input("db_pool_min_size", settings.advanced.db_pool_min_size, config.DB_POOL_MIN_SIZE, "Min Connections", min=0, max=100, id="adv-db-pool-min") }}
+                    {{ ghost_input("db_pool_max_size", settings.advanced.db_pool_max_size, config.DB_POOL_MAX_SIZE, "Max Connections", min=0, max=100, id="adv-db-pool-max") }}
+                    {{ ghost_input("db_pool_timeout", settings.advanced.db_pool_timeout, config.DB_POOL_TIMEOUT, "Pool Timeout (s)", min=0, max=600, step="0.5", id="adv-db-pool-timeout") }}
+                {% endcall %}
+
+                {% call tuning_section("Health Checks") %}
+                    {{ ghost_input("health_check_timeout", settings.advanced.health_check_timeout, config.HEALTH_CHECK_TIMEOUT, "Health Check Timeout (s)", min=0, max=600, id="adv-health-timeout") }}
+                {% endcall %}
+
+                {% call tuning_section("Paperless-ngx Tuning") %}
+                    {{ ghost_input("paperless_upload_timeout", settings.advanced.paperless_upload_timeout, config.PAPERLESS_UPLOAD_TIMEOUT, "Upload Timeout (s)", min=0, max=600, id="adv-paperless-upload-timeout") }}
+                    {{ ghost_input("paperless_retry_attempts", settings.advanced.paperless_retry_attempts, config.PAPERLESS_RETRY_ATTEMPTS, "Retry Attempts", min=0, max=20, id="adv-paperless-retry") }}
+                    {{ ghost_input("paperless_retry_backoff", settings.advanced.paperless_retry_backoff, config.PAPERLESS_RETRY_BACKOFF, "Retry Backoff (s)", min=0, max=60, step="0.5", id="adv-paperless-backoff") }}
+                {% endcall %}
+
+                <details class="mt-3">
+                    <summary><strong>Paperless-ngx Polling</strong></summary>
+                    <div class="setting-row mt-2">
+                        {{ ghost_input("paperless_poll_interval", settings.advanced.paperless_poll_interval, config.PAPERLESS_POLL_INTERVAL, "Poll Interval (s)", min=0, max=60, step="0.5", id="adv-paperless-poll-interval") }}
+                        {{ ghost_input("paperless_poll_timeout", settings.advanced.paperless_poll_timeout, config.PAPERLESS_POLL_TIMEOUT, "Poll Timeout (s)", min=0, max=600, id="adv-paperless-poll-timeout") }}
+                    </div>
+                </details>
+
+                {% call tuning_section("RAGFlow Tuning") %}
+                    {{ ghost_input("ragflow_max_retries", settings.advanced.ragflow_max_retries, config.RAGFLOW_MAX_RETRIES, "Max Retries", min=0, max=20, id="adv-ragflow-retries") }}
+                    {{ ghost_input("ragflow_parse_timeout", settings.advanced.ragflow_parse_timeout, config.RAGFLOW_PARSE_TIMEOUT, "Parse Timeout (s)", min=0, max=600, id="adv-ragflow-parse-timeout") }}
+                {% endcall %}
+
+                <details class="mt-3">
+                    <summary><strong>RAGFlow Polling</strong></summary>
+                    <div class="setting-row mt-2">
+                        {{ ghost_input("ragflow_poll_interval", settings.advanced.ragflow_poll_interval, config.RAGFLOW_POLL_INTERVAL, "Poll Interval (s)", min=0, max=60, step="0.5", id="adv-ragflow-poll-interval") }}
+                        {{ ghost_input("ragflow_session_timeout", settings.advanced.ragflow_session_timeout, config.RAGFLOW_SESSION_TIMEOUT, "Session Timeout (s)", min=0, max=600, id="adv-ragflow-session-timeout") }}
+                    </div>
+                </details>
+
+                {% call tuning_section("AnythingLLM Tuning") %}
+                    {{ ghost_input("anythingllm_max_retries", settings.advanced.anythingllm_max_retries, config.ANYTHINGLLM_MAX_RETRIES, "Max Retries", min=0, max=20, id="adv-anythingllm-retries") }}
+                {% endcall %}
+
+                {% call tuning_section("FlareSolverr Cache") %}
+                    {{ ghost_input("flaresolverr_cache_ttl", settings.advanced.flaresolverr_cache_ttl, config.FLARESOLVERR_CACHE_TTL, "Cache TTL (s)", min=0, max=86400, id="adv-fs-cache-ttl") }}
+                    {{ ghost_input("flaresolverr_cache_max_size", settings.advanced.flaresolverr_cache_max_size, config.FLARESOLVERR_CACHE_MAX_SIZE, "Cache Max Size", min=0, max=1000, id="adv-fs-cache-max") }}
+                {% endcall %}
+
+                {% call tuning_section("Search") %}
+                    {{ ghost_input("search_max_results", settings.advanced.search_max_results, config.SEARCH_MAX_RESULTS, "Max Results", min=0, max=500, id="adv-search-max") }}
+                    {{ ghost_input("search_default_limit", settings.advanced.search_default_limit, config.SEARCH_DEFAULT_LIMIT, "Default Limit", min=0, max=100, id="adv-search-default") }}
+                {% endcall %}
+
+                {% call tuning_section("Embedding") %}
+                    {{ ghost_input("embedding_batch_size", settings.advanced.embedding_batch_size, config.EMBEDDING_BATCH_SIZE, "Batch Size", min=0, max=1000, id="adv-embed-batch") }}
+                {% endcall %}
+
+                {% call tuning_section("Retry Defaults") %}
+                    {{ ghost_input("retry_backoff_factor", settings.advanced.retry_backoff_factor, config.RETRY_BACKOFF_FACTOR, "Backoff Factor", min=0, max=60, step="0.25", id="adv-retry-backoff") }}
+                    {{ ghost_input("retry_jitter", settings.advanced.retry_jitter, config.RETRY_JITTER, "Jitter (s)", min=0, max=60, step="0.05", id="adv-retry-jitter") }}
+                {% endcall %}
+
+                <div id="advanced-message" class="mt-3"></div>
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save Advanced Settings</button>
+            </div>
+        </form>
+    </div>
+</section>

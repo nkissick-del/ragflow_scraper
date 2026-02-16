@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
+
 import requests as http_requests
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request
 
 from app.config import Config
 from app.scrapers import ScraperRegistry
@@ -20,13 +22,27 @@ from app.web.blueprints.settings.helpers import (
 
 bp = Blueprint("settings_ui", __name__)
 
+VALID_TABS = frozenset({"connections", "scraping", "pipeline", "maintenance", "advanced"})
 
-@bp.route("/settings")
-def settings_page():
+
+# ---------------------------------------------------------------------------
+# Per-tab context builders
+# ---------------------------------------------------------------------------
+
+def _base_context():
+    """Context shared by every tab."""
     settings_mgr = container.settings
-    current_settings = settings_mgr.get_all()
+    return {
+        "settings": settings_mgr.get_all(),
+        "config": Config,
+    }
 
-    # Compute effective values for all services
+
+def _build_connections_context():
+    """Context for the Connections tab (service URLs, health checks, directories)."""
+    ctx = _base_context()
+
+    # Effective URLs and timeouts
     eff_gotenberg_url = _get_effective_url("gotenberg", "GOTENBERG_URL")
     eff_gotenberg_timeout = _get_effective_timeout("gotenberg", "GOTENBERG_TIMEOUT")
     eff_tika_url = _get_effective_url("tika", "TIKA_SERVER_URL")
@@ -47,56 +63,7 @@ def settings_page():
     llm_url_is_fallback = not eff_llm_url_direct and bool(eff_llm_url)
     eff_llm_timeout = _get_effective_timeout("llm", "LLM_TIMEOUT")
 
-    # Effective backend selections
-    eff_parser_backend = _get_effective_backend("parser")
-    eff_archive_backend = _get_effective_backend("archive")
-    eff_rag_backend = _get_effective_backend("rag")
-
-    ragflow_status = "unknown"
-    ragflow_models = []
-    ragflow_chunk_methods = []
-    ragflow_client = None
-
-    try:
-        ragflow_client = container.ragflow_client
-        if ragflow_client.test_connection():
-            ragflow_status = "connected"
-        else:
-            ragflow_status = "disconnected"
-    except Exception as exc:
-        log_exception(logger, exc, "ragflow.connection.error", page="settings")
-        ragflow_status = "error"
-
-    ragflow_providers = {}
-    if ragflow_client and Config.RAGFLOW_USERNAME and Config.RAGFLOW_PASSWORD:
-        try:
-            ragflow_models = ragflow_client.list_embedding_models()
-            ragflow_chunk_methods = ragflow_client.list_chunk_methods()
-            for model in ragflow_models:
-                provider = model.get("provider", "Unknown")
-                ragflow_providers.setdefault(provider, []).append(model)
-        except Exception as exc:
-            log_exception(logger, exc, "ragflow.models.fetch_failed", page="settings")
-
-    if not ragflow_chunk_methods:
-        from app.services.ragflow_client import CHUNK_METHODS
-        ragflow_chunk_methods = CHUNK_METHODS
-
-    flaresolverr_status = "unknown"
-    if Config.FLARESOLVERR_URL:
-        try:
-            client = container.flaresolverr_client
-            if client.test_connection():
-                flaresolverr_status = "connected"
-            else:
-                flaresolverr_status = "disconnected"
-        except Exception as exc:
-            log_exception(logger, exc, "flaresolverr.connection.error", page="settings")
-            flaresolverr_status = "error"
-    else:
-        flaresolverr_status = "not_configured"
-
-    # Service health checks — use effective URLs
+    # Service health checks
     gotenberg_status = "not_configured"
     if eff_gotenberg_url:
         gotenberg_status = _check_service_status(
@@ -126,6 +93,17 @@ def settings_page():
             resp = http_requests.get(f"{eff_docling_serve_url}/health", timeout=Config.HEALTH_CHECK_TIMEOUT)
             return resp.ok
         docling_serve_status = _check_service_status(_check_docling, "docling_serve")
+
+    ragflow_status = "unknown"
+    try:
+        ragflow_client = container.ragflow_client
+        if ragflow_client.test_connection():
+            ragflow_status = "connected"
+        else:
+            ragflow_status = "disconnected"
+    except Exception as exc:
+        log_exception(logger, exc, "ragflow.connection.error", page="settings")
+        ragflow_status = "error"
 
     pgvector_status = "not_configured"
     if eff_pgvector_url:
@@ -159,60 +137,31 @@ def settings_page():
             lambda: container.llm_client.test_connection(), "llm"
         )
 
-    # Current pipeline settings (with Config fallback)
-    pipeline_settings = current_settings.get("pipeline", {})
-    current_merge_strategy = pipeline_settings.get("metadata_merge_strategy", "") or Config.METADATA_MERGE_STRATEGY
-    current_filename_template = pipeline_settings.get("filename_template", "") or Config.FILENAME_TEMPLATE
-
-    # Tika enrichment toggle
-    tika_enrichment_override = pipeline_settings.get("tika_enrichment_enabled", "")
-    if tika_enrichment_override != "":
-        tika_enrichment_active = tika_enrichment_override == "true"
+    flaresolverr_status = "unknown"
+    if Config.FLARESOLVERR_URL:
+        try:
+            client = container.flaresolverr_client
+            if client.test_connection():
+                flaresolverr_status = "connected"
+            else:
+                flaresolverr_status = "disconnected"
+        except Exception as exc:
+            log_exception(logger, exc, "flaresolverr.connection.error", page="settings")
+            flaresolverr_status = "error"
     else:
-        tika_enrichment_active = Config.TIKA_ENRICHMENT_ENABLED
+        flaresolverr_status = "not_configured"
 
-    # LLM enrichment toggles
-    llm_enrichment_override = pipeline_settings.get("llm_enrichment_enabled", "")
-    if llm_enrichment_override != "":
-        llm_enrichment_active = llm_enrichment_override == "true"
-    else:
-        llm_enrichment_active = Config.LLM_ENRICHMENT_ENABLED
-
-    contextual_enrichment_override = pipeline_settings.get("contextual_enrichment_enabled", "")
-    if contextual_enrichment_override != "":
-        contextual_enrichment_active = contextual_enrichment_override == "true"
-    else:
-        contextual_enrichment_active = Config.CONTEXTUAL_ENRICHMENT_ENABLED
-
-    log_event(
-        logger,
-        "info",
-        "ui.page.settings",
-        ragflow_status=ragflow_status,
-        flaresolverr_status=flaresolverr_status,
-    )
-    return render_template(
-        "settings.html",
-        settings=current_settings,
-        ragflow_status=ragflow_status,
-        ragflow_models=ragflow_models,
-        ragflow_providers=ragflow_providers,
-        ragflow_chunk_methods=ragflow_chunk_methods,
-        flaresolverr_status=flaresolverr_status,
+    ctx.update(
         gotenberg_status=gotenberg_status,
         tika_status=tika_status,
         paperless_status=paperless_status,
         docling_serve_status=docling_serve_status,
+        ragflow_status=ragflow_status,
         anythingllm_status=anythingllm_status,
         pgvector_status=pgvector_status,
         embedding_status=embedding_status,
-        current_merge_strategy=current_merge_strategy,
-        current_filename_template=current_filename_template,
-        config=Config,
-        # Effective values for template
-        eff_parser_backend=eff_parser_backend,
-        eff_archive_backend=eff_archive_backend,
-        eff_rag_backend=eff_rag_backend,
+        llm_status=llm_status,
+        flaresolverr_status=flaresolverr_status,
         eff_gotenberg_url=eff_gotenberg_url,
         eff_gotenberg_timeout=eff_gotenberg_timeout,
         eff_tika_url=eff_tika_url,
@@ -228,12 +177,162 @@ def settings_page():
         eff_embedding_url=eff_embedding_url,
         eff_embedding_timeout=eff_embedding_timeout,
         eff_pgvector_url=eff_pgvector_url,
-        tika_enrichment_active=tika_enrichment_active,
-        llm_status=llm_status,
-        llm_enrichment_active=llm_enrichment_active,
-        contextual_enrichment_active=contextual_enrichment_active,
         eff_llm_url=eff_llm_url,
         llm_url_is_fallback=llm_url_is_fallback,
         eff_llm_timeout=eff_llm_timeout,
-        scraper_names=ScraperRegistry.get_scraper_names(),
     )
+    return ctx
+
+
+def _build_scraping_context():
+    """Context for the Scraping tab (FlareSolverr behavior, scraping defaults, RAGFlow dataset config)."""
+    ctx = _base_context()
+
+    flaresolverr_status = "unknown"
+    if Config.FLARESOLVERR_URL:
+        try:
+            client = container.flaresolverr_client
+            if client.test_connection():
+                flaresolverr_status = "connected"
+            else:
+                flaresolverr_status = "disconnected"
+        except Exception as exc:
+            log_exception(logger, exc, "flaresolverr.connection.error", page="settings")
+            flaresolverr_status = "error"
+    else:
+        flaresolverr_status = "not_configured"
+
+    # RAGFlow models for dataset config
+    ragflow_models = []
+    ragflow_chunk_methods = []
+    ragflow_providers = {}
+    ragflow_client = None
+
+    try:
+        ragflow_client = container.ragflow_client
+    except Exception as exc:
+        log_event(logger, "debug", "ragflow.client.unavailable", error=str(exc), page="settings")
+
+    if ragflow_client and Config.RAGFLOW_USERNAME and Config.RAGFLOW_PASSWORD:
+        try:
+            ragflow_models = ragflow_client.list_embedding_models()
+            ragflow_chunk_methods = ragflow_client.list_chunk_methods()
+            for model in ragflow_models:
+                provider = model.get("provider", "Unknown")
+                ragflow_providers.setdefault(provider, []).append(model)
+        except Exception as exc:
+            log_exception(logger, exc, "ragflow.models.fetch_failed", page="settings")
+
+    if not ragflow_chunk_methods:
+        from app.services.ragflow_client import CHUNK_METHODS
+        ragflow_chunk_methods = CHUNK_METHODS
+
+    ctx.update(
+        flaresolverr_status=flaresolverr_status,
+        ragflow_models=ragflow_models,
+        ragflow_providers=ragflow_providers,
+        ragflow_chunk_methods=ragflow_chunk_methods,
+    )
+    return ctx
+
+
+def _build_pipeline_context():
+    """Context for the Pipeline tab (backends, enrichment, chunking)."""
+    ctx = _base_context()
+    current_settings = ctx["settings"]
+
+    eff_parser_backend = _get_effective_backend("parser")
+    eff_archive_backend = _get_effective_backend("archive")
+    eff_rag_backend = _get_effective_backend("rag")
+
+    eff_gotenberg_url = _get_effective_url("gotenberg", "GOTENBERG_URL")
+
+    pipeline_settings = current_settings.get("pipeline", {})
+    current_merge_strategy = pipeline_settings.get("metadata_merge_strategy", "") or Config.METADATA_MERGE_STRATEGY
+    current_filename_template = pipeline_settings.get("filename_template", "") or Config.FILENAME_TEMPLATE
+
+    # Enrichment toggles
+    tika_enrichment_override = pipeline_settings.get("tika_enrichment_enabled", "")
+    if tika_enrichment_override != "":
+        tika_enrichment_active = tika_enrichment_override == "true"
+    else:
+        tika_enrichment_active = Config.TIKA_ENRICHMENT_ENABLED
+
+    llm_enrichment_override = pipeline_settings.get("llm_enrichment_enabled", "")
+    if llm_enrichment_override != "":
+        llm_enrichment_active = llm_enrichment_override == "true"
+    else:
+        llm_enrichment_active = Config.LLM_ENRICHMENT_ENABLED
+
+    contextual_enrichment_override = pipeline_settings.get("contextual_enrichment_enabled", "")
+    if contextual_enrichment_override != "":
+        contextual_enrichment_active = contextual_enrichment_override == "true"
+    else:
+        contextual_enrichment_active = Config.CONTEXTUAL_ENRICHMENT_ENABLED
+
+    ctx.update(
+        eff_parser_backend=eff_parser_backend,
+        eff_archive_backend=eff_archive_backend,
+        eff_rag_backend=eff_rag_backend,
+        eff_gotenberg_url=eff_gotenberg_url,
+        current_merge_strategy=current_merge_strategy,
+        current_filename_template=current_filename_template,
+        tika_enrichment_active=tika_enrichment_active,
+        llm_enrichment_active=llm_enrichment_active,
+        contextual_enrichment_active=contextual_enrichment_active,
+    )
+    return ctx
+
+
+def _build_maintenance_context():
+    """Context for the Maintenance tab (state reconciliation)."""
+    ctx = _base_context()
+    ctx["scraper_names"] = ScraperRegistry.get_scraper_names()
+    return ctx
+
+
+def _build_advanced_context():
+    """Context for the Advanced tab (tuning parameters)."""
+    return _base_context()
+
+
+_TAB_BUILDERS = {
+    "connections": _build_connections_context,
+    "scraping": _build_scraping_context,
+    "pipeline": _build_pipeline_context,
+    "maintenance": _build_maintenance_context,
+    "advanced": _build_advanced_context,
+}
+
+
+def _build_tab_context(tab: str) -> dict:
+    """Build template context for a specific tab."""
+    builder = _TAB_BUILDERS.get(tab, _build_connections_context)
+    return builder()
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+
+@bp.route("/settings")
+def settings_page():
+    tab = request.args.get("tab", "connections")
+    if tab not in VALID_TABS:
+        tab = "connections"
+
+    ctx = _build_tab_context(tab)
+    ctx["active_tab"] = tab
+
+    log_event(logger, "info", "ui.page.settings", tab=tab)
+    return render_template("settings.html", **ctx)
+
+
+@bp.route("/settings/tab/<tab>")
+def settings_tab(tab: str):
+    """Return partial HTML fragment for a settings tab (HTMX)."""
+    if not re.match(r'^[a-z]+$', tab) or tab not in VALID_TABS:
+        return "Not found", 404
+    ctx = _build_tab_context(tab)
+    return render_template(f"settings/_tab_{tab}.html", **ctx)
