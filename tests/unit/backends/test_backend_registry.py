@@ -74,10 +74,13 @@ class TestDefaultRegistry:
         with pytest.raises(ValueError, match="not yet implemented"):
             registry.create("parser", "mineru", MagicMock())
 
-    def test_unimplemented_s3_raises(self):
+    def test_s3_archive_backend_creates(self):
         registry = get_backend_registry()
-        with pytest.raises(ValueError, match="not yet implemented"):
-            registry.create("archive", "s3", MagicMock())
+        mock_container = MagicMock()
+        mock_container._get_config_attr.return_value = ""
+        backend = registry.create("archive", "s3", mock_container)
+        assert backend is not None
+        assert backend.name == "s3"
 
     def test_unimplemented_local_raises(self):
         registry = get_backend_registry()

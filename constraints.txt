@@ -10,7 +10,12 @@ requests==2.32.4
 Flask-WTF==1.2.2
 pycryptodome==3.20.0
 python-dotenv==1.0.1
-schedule==1.2.1
+apscheduler==3.10.4
+sqlalchemy==2.0.36
+boto3==1.35.81
+langchain-text-splitters==0.3.4
+prometheus_client==0.21.1
+alembic==1.14.1
 jsonschema==4.23.0
 pip-audit==2.8.0
 ruff==0.15.0

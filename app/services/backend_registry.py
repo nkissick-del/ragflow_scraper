@@ -77,8 +77,15 @@ def _create_paperless_archive(container: ServiceContainer) -> Any:
     return PaperlessArchiveBackend()
 
 
-def _create_s3_archive(container: ServiceContainer) -> Any:
-    raise ValueError("Archive backend 's3' not yet implemented")
+def _create_s3_archive(container: "ServiceContainer") -> Any:
+    from app.backends.archives.s3_adapter import S3ArchiveBackend
+    return S3ArchiveBackend(
+        endpoint_url=container._get_effective_url("s3", "S3_ENDPOINT_URL"),
+        access_key=container._get_config_attr("S3_ACCESS_KEY"),
+        secret_key=container._get_config_attr("S3_SECRET_KEY"),
+        bucket=container.settings.get("services.s3_bucket", "") or container._get_config_attr("S3_BUCKET"),
+        region=container.settings.get("services.s3_region", "") or container._get_config_attr("S3_REGION", "us-east-1"),
+    )
 
 
 def _create_local_archive(container: ServiceContainer) -> Any:
@@ -147,11 +154,14 @@ def _create_vector_rag(container: "ServiceContainer") -> Any:
         chunk_overlap_tokens = int(container._get_config_attr("CHUNK_OVERLAP_TOKENS", "64"))
     except (ValueError, TypeError) as e:
         raise ValueError(f"Invalid chunking configuration: {e}") from e
+    # Get effective chunking strategy (settings override or Config)
+    chunking_strategy = container.settings.get("pipeline.chunking_strategy", "") or container._get_config_attr("CHUNKING_STRATEGY", "hybrid")
+
     from app.backends.rag.vector_adapter import VectorRAGBackend
     return VectorRAGBackend(
         vector_store=vector_store,
         embedding_client=embedding_client,
-        chunking_strategy=container._get_config_attr("CHUNKING_STRATEGY", "hybrid"),
+        chunking_strategy=chunking_strategy,
         chunk_max_tokens=chunk_max_tokens,
         chunk_overlap_tokens=chunk_overlap_tokens,
         docling_serve_url=container._get_effective_url("docling_serve", "DOCLING_SERVE_URL"),

@@ -27,7 +27,10 @@ python-dotenv==1.0.1
 jsonschema==4.23.0
 
 # Scheduling
-schedule==1.2.1
+apscheduler==3.10.4
+
+# SQL (APScheduler job store + Alembic migrations)
+sqlalchemy==2.0.36
 
 # PostgreSQL + pgvector
 psycopg[binary]==3.3.2
@@ -36,4 +39,16 @@ pgvector==0.4.2
 
 # Redis / Valkey
 valkey==6.1.1
+
+# S3-compatible archive backend
+boto3==1.35.81
+
+# Semantic chunking (optional)
+langchain-text-splitters==0.3.4
+
+# Observability
+prometheus_client==0.21.1
+
+# Database migrations
+alembic==1.14.1
 

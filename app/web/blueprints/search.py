@@ -96,6 +96,90 @@ def search():
         return jsonify({"error": "Search failed"}), 500
 
 
+@bp.route("/api/search/hybrid", methods=["POST"])
+@limiter.limit("30/minute")
+def hybrid_search():
+    """Hybrid search combining vector similarity with keyword matching.
+
+    Request JSON:
+        query: str - search text
+        sources: list[str] - optional source filter
+        limit: int - max results (default 10, max 50)
+        metadata_filter: dict - optional JSONB containment filter
+        vector_weight: float - weight for vector similarity (default 0.7)
+        keyword_weight: float - weight for keyword similarity (default 0.3)
+    """
+    data = request.get_json(silent=True) or {}
+    query = data.get("query", "").strip()
+
+    if not query:
+        return jsonify({"error": "Query is required"}), 400
+
+    sources = data.get("sources", None)
+    if sources is not None:
+        if not isinstance(sources, list):
+            return jsonify({"error": "sources must be a list"}), 400
+        for src in sources:
+            if not isinstance(src, str) or not _SAFE_NAME_RE.match(src):
+                return jsonify({"error": "Invalid source name"}), 400
+
+    try:
+        limit = int(data.get("limit", Config.SEARCH_DEFAULT_LIMIT))
+    except (TypeError, ValueError):
+        limit = Config.SEARCH_DEFAULT_LIMIT
+    limit = max(1, min(limit, Config.SEARCH_MAX_RESULTS))
+
+    metadata_filter = data.get("metadata_filter", None)
+    if metadata_filter is not None and not isinstance(metadata_filter, dict):
+        return jsonify({"error": "metadata_filter must be an object"}), 400
+
+    try:
+        vector_weight = float(data.get("vector_weight", 0.7))
+        keyword_weight = float(data.get("keyword_weight", 0.3))
+    except (TypeError, ValueError):
+        vector_weight = 0.7
+        keyword_weight = 0.3
+
+    # Clamp weights to [0.0, 1.0] and ensure at least one is non-zero
+    vector_weight = max(0.0, min(1.0, vector_weight))
+    keyword_weight = max(0.0, min(1.0, keyword_weight))
+    if vector_weight + keyword_weight == 0:
+        vector_weight = 0.7
+        keyword_weight = 0.3
+
+    try:
+        embedder = container.embedding_client
+        if not embedder.is_configured():
+            return jsonify({"error": "Embedding service not configured"}), 503
+
+        pgvector = container.pgvector_client
+        if not pgvector.is_configured():
+            return jsonify({"error": "pgvector not configured"}), 503
+
+        query_embedding = embedder.embed_single(query)
+
+        results = pgvector.hybrid_search(  # type: ignore[attr-defined]
+            query_text=query,
+            query_embedding=query_embedding,
+            sources=sources if sources else None,
+            metadata_filter=metadata_filter,
+            limit=limit,
+            vector_weight=vector_weight,
+            keyword_weight=keyword_weight,
+        )
+
+        return jsonify({
+            "query": query,
+            "count": len(results),
+            "search_type": "hybrid",
+            "results": results,
+        })
+
+    except Exception as exc:
+        log_exception(logger, exc, "search.hybrid.error")
+        return jsonify({"error": "Hybrid search failed"}), 500
+
+
 @bp.route("/api/sources")
 def list_sources():
     """List available sources with chunk counts."""

@@ -199,6 +199,12 @@ class PgVectorVectorStore(VectorStoreBackend):
                 with conn.cursor() as cur:
                     cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
+                    # pg_trgm for hybrid search (non-fatal if missing)
+                    try:
+                        cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+                    except Exception:
+                        self.logger.debug("pg_trgm extension not available (hybrid search will use vector-only)")
+
                     # Check for dimension mismatch on existing table
                     existing_dims = self._get_existing_dimensions(cur)
                     if existing_dims is not None and existing_dims != self._dimensions:
@@ -225,6 +231,14 @@ class PgVectorVectorStore(VectorStoreBackend):
                         CREATE INDEX IF NOT EXISTS idx_document_chunks_metadata
                         ON document_chunks USING GIN (metadata)
                     """)
+                    # GIN trigram index on content for keyword search
+                    try:
+                        cur.execute("""
+                            CREATE INDEX IF NOT EXISTS idx_document_chunks_content_trgm
+                            ON document_chunks USING GIN (content gin_trgm_ops)
+                        """)
+                    except Exception:
+                        self.logger.debug("Trigram index creation skipped (pg_trgm may not be available)")
                     # AnythingLLM-compatible VIEW
                     if self._view_name:
                         from app.backends.vectorstores.pgvector_anythingllm_view import (
@@ -488,6 +502,111 @@ class PgVectorVectorStore(VectorStoreBackend):
                 "content": row[3],
                 "metadata": row[4] if isinstance(row[4], dict) else json.loads(row[4] or "{}"),
                 "score": float(row[5]),
+            })
+
+        return results
+
+    def hybrid_search(
+        self,
+        query_text: str,
+        query_embedding: list[float],
+        sources: Optional[list[str]] = None,
+        metadata_filter: Optional[dict[str, Any]] = None,
+        limit: int = 10,
+        vector_weight: float = 0.7,
+        keyword_weight: float = 0.3,
+    ) -> list[dict[str, Any]]:
+        """Hybrid search combining vector cosine similarity with keyword trigram matching.
+
+        Uses pgvector cosine distance for semantic similarity and pg_trgm
+        for keyword matching. Falls back to pure vector search if pg_trgm
+        extension is unavailable.
+
+        Args:
+            query_text: Raw search query text (for keyword matching)
+            query_embedding: Query vector (for semantic matching)
+            sources: Optional source name filter
+            metadata_filter: Optional JSONB containment filter
+            limit: Maximum results (1-1000)
+            vector_weight: Weight for vector similarity (0-1)
+            keyword_weight: Weight for keyword similarity (0-1)
+
+        Returns:
+            List of result dicts with: source, filename, chunk_index,
+            content, metadata, score, vector_score, keyword_score
+        """
+        if limit < 1 or limit > 1000:
+            raise ValueError(f"limit must be between 1 and 1000, got {limit}")
+
+        pool = self._get_pool()
+
+        # Check if pg_trgm extension is available
+        has_trgm = False
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'")
+                    has_trgm = bool(cur.fetchone())
+        except Exception:
+            pass
+
+        if not has_trgm:
+            self.logger.debug("pg_trgm not available, falling back to vector-only search")
+            return self.search(
+                query_embedding=query_embedding,
+                sources=sources,
+                metadata_filter=metadata_filter,
+                limit=limit,
+            )
+
+        conditions = []
+        params: list[Any] = [query_embedding, query_text]
+
+        if sources:
+            conditions.append("source = ANY(%s)")
+            params.append(sources)
+
+        if metadata_filter:
+            conditions.append("metadata @> %s::jsonb")
+            params.append(json.dumps(metadata_filter))
+
+        where_clause = ""
+        if conditions:
+            where_clause = "WHERE " + " AND ".join(conditions)
+
+        params.extend([vector_weight, keyword_weight, query_embedding, query_text, limit])
+
+        from pgvector.psycopg import register_vector
+
+        with pool.connection() as conn:
+            register_vector(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT source, filename, chunk_index, content, metadata,
+                           1 - (embedding <=> %s::vector) AS vector_score,
+                           similarity(content, %s) AS keyword_score,
+                           (%s * (1 - (embedding <=> %s::vector))) + (%s * similarity(content, %s)) AS combined_score
+                    FROM document_chunks
+                    {where_clause}
+                    ORDER BY combined_score DESC
+                    LIMIT %s
+                    """,
+                    params,
+                )
+                rows = cur.fetchall()
+
+        results = []
+        for row in rows:
+            results.append({
+                "source": row[0],
+                "filename": row[1],
+                "chunk_index": row[2],
+                "content": row[3],
+                "metadata": row[4] if isinstance(row[4], dict) else json.loads(row[4] or "{}"),
+                "vector_score": float(row[5]),
+                "keyword_score": float(row[6]),
+                "score": float(row[7]),
             })
 
         return results

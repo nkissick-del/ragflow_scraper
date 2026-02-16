@@ -34,6 +34,7 @@ class ReconciliationReport:
     urls_only_in_paperless: list[str] = field(default_factory=list)
     urls_in_paperless_not_rag: list[str] = field(default_factory=list)
     urls_added_to_state: int = 0
+    changed_urls: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -47,6 +48,7 @@ class ReconciliationReport:
             "urls_only_in_paperless": self.urls_only_in_paperless,
             "urls_in_paperless_not_rag": self.urls_in_paperless_not_rag,
             "urls_added_to_state": self.urls_added_to_state,
+            "changed_urls": self.changed_urls,
             "errors": self.errors,
         }
 
@@ -204,6 +206,12 @@ class ReconciliationService:
                     rag_urls.add(doc_name)
         except Exception as e:
             report.errors.append(f"RAG listing failed: {e}")
+
+        # Get changed URLs from state
+        try:
+            report.changed_urls = tracker.get_urls_by_status("changed")
+        except Exception as e:
+            report.errors.append(f"Changed URL lookup failed: {e}")
 
         # Compute set differences
         paperless_url_set = set(paperless_urls.keys())

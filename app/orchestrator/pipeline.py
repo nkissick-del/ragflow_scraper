@@ -17,7 +17,7 @@ from app.scrapers import ScraperRegistry
 from app.scrapers.models import DocumentMetadata
 from app.utils import get_logger
 from app.utils.errors import ParserBackendError, ArchiveError
-from app.utils.file_utils import generate_filename_from_template
+from app.utils.file_utils import generate_filename_from_template, get_file_hash
 from app.utils.html_utils import inject_metadata_stamp
 from app.utils.logging_config import log_exception, log_event
 
@@ -30,6 +30,8 @@ class PipelineResult:
     scraper_name: str
     scraped_count: int = 0
     downloaded_count: int = 0
+    skipped_count: int = 0
+    changed_count: int = 0
     parsed_count: int = 0
     archived_count: int = 0
     verified_count: int = 0
@@ -47,6 +49,8 @@ class PipelineResult:
             "scraper_name": self.scraper_name,
             "scraped_count": self.scraped_count,
             "downloaded_count": self.downloaded_count,
+            "skipped_count": self.skipped_count,
+            "changed_count": self.changed_count,
             "parsed_count": self.parsed_count,
             "archived_count": self.archived_count,
             "verified_count": self.verified_count,
@@ -285,10 +289,21 @@ class Pipeline:
                 result.failed_count += 1
                 return
 
+            # Content hash dedup / change detection
+            skip, is_changed = self._check_content_hash(
+                file_path, doc_metadata.url or "", result
+            )
+            if skip:
+                return
+
             # Process document through modular pipeline
             process_result = self._process_document(
                 doc_metadata, file_path, doc_dict
             )
+
+            # Store content hash after successful processing
+            if doc_metadata.url and (process_result["parsed"] or process_result["archived"]):
+                self._store_content_hash(file_path, doc_metadata.url)
 
             # Update counters
             if process_result["parsed"]:
@@ -822,6 +837,84 @@ class Pipeline:
         except Exception as e:
             self.logger.warning(f"LLM enrichment failed (non-fatal): {e}")
 
+    def _check_content_hash(
+        self,
+        file_path: Path,
+        url: str,
+        result: PipelineResult,
+    ) -> tuple[bool, bool]:
+        """Check content hash for dedup / change detection.
+
+        Args:
+            file_path: Path to downloaded file
+            url: Source URL
+            result: PipelineResult to update counters
+
+        Returns:
+            (should_skip, is_changed) — skip=True means content unchanged
+        """
+        if not url:
+            return False, False
+
+        try:
+            tracker = self.container.state_tracker(self.scraper_name)
+            file_hash = get_file_hash(file_path)
+            stored_hash = tracker.get_content_hash(url)
+
+            if stored_hash is None:
+                # First time — no hash stored, proceed normally
+                return False, False
+
+            if stored_hash == file_hash:
+                # Content unchanged — skip
+                self.logger.info(
+                    f"Content unchanged (hash match), skipping: {file_path.name}"
+                )
+                result.skipped_count += 1
+                return True, False
+
+            # Content changed — mark and continue processing
+            self.logger.info(
+                f"Content changed for {file_path.name} "
+                f"(old={stored_hash[:12]}..., new={file_hash[:12]}...)"
+            )
+            result.changed_count += 1
+            tracker.mark_processed(url, status="changed", metadata={
+                "old_hash": stored_hash,
+                "new_hash": file_hash,
+            })
+
+            # Send notification for content change
+            self._notify_content_change(url, file_path.name)
+            return False, True
+
+        except Exception as e:
+            self.logger.debug(f"Content hash check failed (non-fatal): {e}")
+            return False, False
+
+    def _store_content_hash(self, file_path: Path, url: str) -> None:
+        """Store content hash after successful processing."""
+        try:
+            tracker = self.container.state_tracker(self.scraper_name)
+            file_hash = get_file_hash(file_path)
+            tracker.store_content_hash(url, file_hash)
+        except Exception as e:
+            self.logger.debug(f"Failed to store content hash (non-fatal): {e}")
+
+    def _notify_content_change(self, url: str, filename: str) -> None:
+        """Send Ntfy notification when content changes."""
+        try:
+            ntfy = self.container.ntfy_client
+            if ntfy.is_configured():
+                ntfy.send(
+                    title=f"Content Changed: {self.scraper_name}",
+                    message=f"Document changed: {filename}\nURL: {url}",
+                    priority="default",
+                    tags=["arrows_counterclockwise", self.scraper_name],
+                )
+        except Exception as e:
+            self.logger.debug(f"Ntfy notification failed (non-fatal): {e}")
+
     @staticmethod
     def _text_to_markdown(text: str, title: str | None = None) -> str:
         """Convert plain text to minimal markdown with title heading."""
@@ -849,6 +942,8 @@ class Pipeline:
         self.logger.info(
             f"Pipeline completed: {result.status} - "
             f"{result.downloaded_count} downloaded, "
+            f"{result.skipped_count} skipped, "
+            f"{result.changed_count} changed, "
             f"{result.parsed_count} parsed, "
             f"{result.archived_count} archived, "
             f"{result.verified_count} verified, "
@@ -863,6 +958,8 @@ class Pipeline:
             scraper=self.scraper_name,
             status=result.status,
             downloaded=result.downloaded_count,
+            skipped=result.skipped_count,
+            changed=result.changed_count,
             parsed=result.parsed_count,
             archived=result.archived_count,
             verified=result.verified_count,
@@ -871,6 +968,20 @@ class Pipeline:
             duration_s=result.duration_seconds,
             step_times=self._step_times,
         )
+
+        # Emit Prometheus metrics (non-fatal)
+        try:
+            from app.web.blueprints.metrics import (
+                SCRAPER_RUNS, SCRAPER_DURATION, DOCUMENTS_PROCESSED,
+            )
+            SCRAPER_RUNS.labels(scraper=self.scraper_name, status=result.status).inc()
+            SCRAPER_DURATION.labels(scraper=self.scraper_name).observe(result.duration_seconds)
+            DOCUMENTS_PROCESSED.labels(scraper=self.scraper_name, stage="downloaded").inc(result.downloaded_count)
+            DOCUMENTS_PROCESSED.labels(scraper=self.scraper_name, stage="parsed").inc(result.parsed_count)
+            DOCUMENTS_PROCESSED.labels(scraper=self.scraper_name, stage="archived").inc(result.archived_count)
+            DOCUMENTS_PROCESSED.labels(scraper=self.scraper_name, stage="rag_indexed").inc(result.rag_indexed_count)
+        except Exception:
+            pass
 
         return result
 

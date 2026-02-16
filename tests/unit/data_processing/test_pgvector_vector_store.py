@@ -69,15 +69,18 @@ class TestPgVectorVectorStoreSchema:
         store = PgVectorVectorStore(database_url="postgresql://localhost/test", dimensions=768)
         store.ensure_ready()
 
-        # CREATE EXTENSION + dimension check + CREATE TABLE + CREATE INDEX + CREATE VIEW
+        # CREATE EXTENSION vector + CREATE EXTENSION pg_trgm + dimension check
+        # + CREATE TABLE + CREATE INDEX (metadata) + CREATE INDEX (trgm) + CREATE VIEW
         calls = mock_cursor.execute.call_args_list
-        assert len(calls) >= 5
+        assert len(calls) >= 6
 
-        # Verify CREATE EXTENSION
+        # Verify CREATE EXTENSION vector
         assert "CREATE EXTENSION IF NOT EXISTS vector" in str(calls[0])
+        # Verify CREATE EXTENSION pg_trgm
+        assert "CREATE EXTENSION IF NOT EXISTS pg_trgm" in str(calls[1])
 
         # Verify table creation with correct dimensions (after dimension check)
-        assert "vector(768)" in str(calls[2])
+        assert "vector(768)" in str(calls[3])
 
         # Should commit
         mock_conn.commit.assert_called_once()
@@ -482,9 +485,10 @@ class TestAnythingLLMView:
         )
         store.ensure_ready()
 
-        # 4 calls: CREATE EXTENSION + dimension check + CREATE TABLE + CREATE INDEX (no VIEW)
+        # 6 calls: CREATE EXTENSION vector + CREATE EXTENSION pg_trgm + dimension check
+        # + CREATE TABLE + CREATE INDEX (metadata) + CREATE INDEX (trgm) (no VIEW)
         calls = mock_cursor.execute.call_args_list
-        assert len(calls) == 4
+        assert len(calls) == 6
         for call in calls:
             assert "CREATE OR REPLACE VIEW" not in str(call)
 

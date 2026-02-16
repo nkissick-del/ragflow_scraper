@@ -51,6 +51,12 @@ def create_app() -> Flask:
     csrf.exempt(search_bp)
     from app.web.blueprints.sse import bp as sse_bp
     csrf.exempt(sse_bp)
+    from app.web.blueprints.metrics import bp as metrics_bp
+    csrf.exempt(metrics_bp)
+
+    # Initialize Prometheus metrics middleware
+    from app.web.blueprints.metrics import init_metrics_middleware
+    init_metrics_middleware(app)
 
     @app.route("/health")
     def health():

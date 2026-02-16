@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.services.tika_client import TikaClient
     from app.services.embedding_client import EmbeddingClient
     from app.services.llm_client import LLMClient
+    from app.services.ntfy_client import NtfyClient
     from app.services.state_store import StateStore
 
 
@@ -69,6 +70,7 @@ class ServiceContainer:
         self._tika_client: Optional[TikaClient] = None
         self._embedding_client: Optional[EmbeddingClient] = None
         self._llm_client: Optional[LLMClient] = None
+        self._ntfy_client: Optional[NtfyClient] = None
 
         # State store (PostgreSQL, lazy-loaded)
         self._state_store: Optional[StateStore] = None
@@ -241,6 +243,7 @@ class ServiceContainer:
         self._flaresolverr_client = None
         self._embedding_client = None
         self._llm_client = None
+        self._ntfy_client = None
         self._state_store = None
         self.logger.debug("Service/backend instances reset (settings preserved)")
 
@@ -443,6 +446,23 @@ class ServiceContainer:
         return self._llm_client
 
     @property
+    def ntfy_client(self) -> "NtfyClient":
+        """
+        Get Ntfy client (lazy-loaded singleton).
+
+        Returns:
+            NtfyClient instance
+        """
+        if self._ntfy_client is None:
+            from app.services.ntfy_client import NtfyClient
+
+            ntfy_url = self._get_effective_url("ntfy", "NTFY_URL")
+            ntfy_topic = self.settings.get("services.ntfy_topic", "") or self._get_config_attr("NTFY_TOPIC", "")
+            self._ntfy_client = NtfyClient(url=ntfy_url, topic=ntfy_topic)
+            self.logger.debug("Initialized NtfyClient")
+        return self._ntfy_client
+
+    @property
     def pgvector_client(self) -> "VectorStoreBackend":
         """Backward-compat alias for vector_store."""
         return self.vector_store
@@ -467,6 +487,7 @@ class ServiceContainer:
         self._tika_client = None
         self._embedding_client = None
         self._llm_client = None
+        self._ntfy_client = None
         self._state_store = None
         self.logger.debug("Service container reset")
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 
@@ -288,21 +288,164 @@ class HybridDoclingChunker(ChunkingStrategy):
         return chunks
 
 
+class SemanticChunker(ChunkingStrategy):
+    """Embedding-based semantic chunker using langchain-text-splitters.
+
+    Groups sentences by embedding similarity, splitting at semantic
+    boundaries rather than fixed word counts.
+    Falls back to FixedChunker if langchain or embedding service unavailable.
+    """
+
+    def __init__(
+        self,
+        embedding_client: Any = None,
+        max_tokens: int = 512,
+        overlap_tokens: int = 64,
+        breakpoint_threshold_type: str = "percentile",
+    ):
+        self._embedding_client = embedding_client
+        self._max_tokens = max_tokens
+        self._breakpoint_type = breakpoint_threshold_type
+        self._fallback = FixedChunker(max_tokens=max_tokens, overlap_tokens=overlap_tokens)
+        self.logger = get_logger("chunking.semantic")
+
+    @property
+    def name(self) -> str:
+        return "semantic"
+
+    def chunk(self, text: str, metadata: Optional[dict] = None) -> list[Chunk]:
+        if not text or not text.strip():
+            return []
+
+        try:
+            from langchain_text_splitters import SemanticChunker as LCSemanticChunker  # type: ignore[import-untyped]
+        except ImportError:
+            self.logger.warning(
+                "langchain-text-splitters not installed, falling back to fixed chunker"
+            )
+            return self._fallback.chunk(text, metadata)
+
+        if not self._embedding_client or not self._embedding_client.is_configured():
+            self.logger.warning(
+                "Embedding client not configured, falling back to fixed chunker"
+            )
+            return self._fallback.chunk(text, metadata)
+
+        try:
+            wrapper = _OllamaEmbeddingsWrapper(self._embedding_client)
+            splitter = LCSemanticChunker(
+                embeddings=wrapper,
+                breakpoint_threshold_type=self._breakpoint_type,
+            )
+            documents = splitter.create_documents([text])
+
+            base_metadata = dict(metadata or {})
+            chunks: list[Chunk] = []
+            for i, doc in enumerate(documents):
+                chunk_meta = dict(base_metadata)
+                chunk_meta["chunk_index"] = i
+                chunk_meta["chunker"] = "semantic"
+                chunks.append(Chunk(content=doc.page_content, index=i, metadata=chunk_meta))
+
+            if not chunks:
+                self.logger.warning("Semantic chunker returned 0 chunks, falling back")
+                return self._fallback.chunk(text, metadata)
+
+            return chunks
+        except Exception as e:
+            self.logger.warning(f"Semantic chunking failed, falling back to fixed: {e}")
+            return self._fallback.chunk(text, metadata)
+
+
+class _OllamaEmbeddingsWrapper:
+    """Bridge adapter: wraps EmbeddingClient to LangChain Embeddings protocol."""
+
+    def __init__(self, embedding_client: Any):
+        self._client = embedding_client
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embed a list of documents."""
+        result = self._client.embed(texts)
+        return result.embeddings
+
+    def embed_query(self, text: str) -> list[float]:
+        """Embed a single query."""
+        return self._client.embed_single(text)
+
+
+class AutoChunker(ChunkingStrategy):
+    """Automatic strategy selection based on document structure.
+
+    Examines heading density in markdown:
+    - 3+ headings → HybridDoclingChunker (structure-aware)
+    - Fewer headings → SemanticChunker (embedding-based boundaries)
+    """
+
+    def __init__(
+        self,
+        embedding_client: Any = None,
+        max_tokens: int = 512,
+        overlap_tokens: int = 64,
+        docling_serve_url: str = "",
+        docling_serve_timeout: int = 120,
+    ):
+        self._hybrid = HybridDoclingChunker(
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
+            docling_serve_url=docling_serve_url,
+            docling_serve_timeout=docling_serve_timeout,
+        )
+        self._semantic = SemanticChunker(
+            embedding_client=embedding_client,
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
+        )
+        self.logger = get_logger("chunking.auto")
+
+    @property
+    def name(self) -> str:
+        return "auto"
+
+    @staticmethod
+    def _count_headings(text: str) -> int:
+        """Count markdown headings (lines starting with #)."""
+        import re
+        return len(re.findall(r"^#{1,6}\s", text, re.MULTILINE))
+
+    def chunk(self, text: str, metadata: Optional[dict] = None) -> list[Chunk]:
+        if not text or not text.strip():
+            return []
+
+        heading_count = self._count_headings(text)
+        if heading_count >= 3:
+            self.logger.debug(
+                f"Auto: {heading_count} headings detected, using hybrid chunker"
+            )
+            return self._hybrid.chunk(text, metadata)
+        else:
+            self.logger.debug(
+                f"Auto: {heading_count} headings detected, using semantic chunker"
+            )
+            return self._semantic.chunk(text, metadata)
+
+
 def create_chunker(
     strategy: str = "hybrid",
     max_tokens: int = 512,
     overlap_tokens: int = 64,
     docling_serve_url: str = "",
     docling_serve_timeout: int = 120,
+    embedding_client: Any = None,
 ) -> ChunkingStrategy:
     """Factory function to create a chunking strategy.
 
     Args:
-        strategy: Strategy name ("fixed" or "hybrid")
+        strategy: Strategy name ("fixed", "hybrid", "semantic", or "auto")
         max_tokens: Maximum tokens (words) per chunk
         overlap_tokens: Number of overlapping tokens between chunks
         docling_serve_url: URL for docling-serve (hybrid strategy)
         docling_serve_timeout: Request timeout for docling-serve
+        embedding_client: Embedding client for semantic/auto strategies
 
     Returns:
         ChunkingStrategy instance
@@ -314,6 +457,20 @@ def create_chunker(
         return FixedChunker(max_tokens=max_tokens, overlap_tokens=overlap_tokens)
     elif strategy == "hybrid":
         return HybridDoclingChunker(
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
+            docling_serve_url=docling_serve_url,
+            docling_serve_timeout=docling_serve_timeout,
+        )
+    elif strategy == "semantic":
+        return SemanticChunker(
+            embedding_client=embedding_client,
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
+        )
+    elif strategy == "auto":
+        return AutoChunker(
+            embedding_client=embedding_client,
             max_tokens=max_tokens,
             overlap_tokens=overlap_tokens,
             docling_serve_url=docling_serve_url,

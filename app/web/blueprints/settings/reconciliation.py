@@ -60,6 +60,15 @@ def reconciliation_report(name: str):
                 rag_gaps_html += f"<li>... and {len(report.urls_in_paperless_not_rag) - 50} more</li>"
             rag_gaps_html += "</ul></details>"
 
+        changed_html = ""
+        if report.changed_urls:
+            changed_html = f'<details><summary>{len(report.changed_urls)} changed documents</summary><ul>'
+            for url in report.changed_urls[:50]:
+                changed_html += f"<li><code>{escape(url)}</code></li>"
+            if len(report.changed_urls) > 50:
+                changed_html += f"<li>... and {len(report.changed_urls) - 50} more</li>"
+            changed_html += "</ul></details>"
+
         return f'''
             <div class="alert alert-info">
                 <strong>Reconciliation Report: {escape(name)}</strong>
@@ -67,11 +76,13 @@ def reconciliation_report(name: str):
                     <tr><td>State URLs:</td><td><strong>{report.state_url_count}</strong></td></tr>
                     <tr><td>Paperless URLs:</td><td><strong>{report.paperless_url_count}</strong></td></tr>
                     <tr><td>RAG Documents:</td><td><strong>{report.rag_document_count}</strong></td></tr>
+                    <tr><td>Changed Documents:</td><td><strong>{len(report.changed_urls)}</strong></td></tr>
                 </table>
                 {errors_html}
                 {only_state_html}
                 {only_paperless_html}
                 {rag_gaps_html}
+                {changed_html}
             </div>
         '''
     except Exception as exc:
@@ -98,6 +109,39 @@ def reconciliation_rebuild(name: str):
     except Exception as exc:
         log_exception(logger, exc, "reconciliation.rebuild.error")
         return f'<div class="alert alert-danger">Rebuild failed: {escape(str(exc))}</div>'
+
+
+@bp.route("/settings/reconciliation/reprocess-changed/<name>", methods=["POST"])
+def reconciliation_reprocess_changed(name: str):
+    if not _validate_scraper_name(name):
+        return '<div class="alert alert-danger">Invalid scraper name</div>'
+
+    try:
+        tracker = container.state_tracker(name)
+        changed_urls = tracker.get_urls_by_status("changed")
+
+        if not changed_urls:
+            return '''
+                <div class="alert alert-info">
+                    No changed documents found. All content is up to date.
+                </div>
+            '''
+
+        # Reset changed URLs back to "downloaded" so the next scrape re-processes them
+        reset_count = 0
+        for url in changed_urls:
+            tracker.mark_processed(url, status="downloaded")
+            reset_count += 1
+
+        return f'''
+            <div class="alert alert-success">
+                Reset {reset_count} changed document(s) for re-processing.
+                Run the scraper again to re-process them.
+            </div>
+        '''
+    except Exception as exc:
+        log_exception(logger, exc, "reconciliation.reprocess_changed.error")
+        return f'<div class="alert alert-danger">Reprocess failed: {escape(str(exc))}</div>'
 
 
 @bp.route("/settings/reconciliation/sync-rag/<name>", methods=["POST"])

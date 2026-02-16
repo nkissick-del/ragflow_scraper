@@ -35,6 +35,7 @@ class VectorRAGBackend(RAGBackend):
             overlap_tokens=chunk_overlap_tokens,
             docling_serve_url=docling_serve_url,
             docling_serve_timeout=docling_serve_timeout,
+            embedding_client=embedding_client,
         )
         self.logger = get_logger("backends.rag.vector")
 

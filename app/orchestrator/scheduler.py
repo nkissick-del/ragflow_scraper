@@ -1,16 +1,20 @@
 """
-Simple scheduler for running scrapers on a schedule.
+Scheduler for running scrapers on a schedule using APScheduler.
+
+Uses CronTrigger for real cron expressions and optional SQLAlchemy job store
+for persistent jobs across restarts.
 """
 
 from __future__ import annotations
 
 import json
 import threading
-import time
 from datetime import datetime
 from typing import Optional
 
-import schedule  # type: ignore[import-untyped]
+from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED  # type: ignore[import-untyped]
 
 from app.config import Config
 from app.utils import get_logger
@@ -19,18 +23,64 @@ from app.utils.logging_config import log_exception, log_event
 
 class Scheduler:
     """
-    Simple Python scheduler for running scrapers.
+    APScheduler-based scheduler for running scrapers.
 
-    Uses the 'schedule' library for cron-like scheduling.
-    Runs in a background thread.
+    Uses CronTrigger for real cron expressions.
+    Optionally persists jobs to PostgreSQL via SQLAlchemyJobStore.
     """
 
     def __init__(self):
         """Initialize the scheduler."""
         self.logger = get_logger("scheduler")
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
-        self._jobs: dict[str, schedule.Job] = {}
+        self._scheduler: Optional[BackgroundScheduler] = None
+        self._init_lock = threading.Lock()
+
+    def _get_scheduler(self) -> BackgroundScheduler:
+        """Get or create the APScheduler instance (lazy, thread-safe)."""
+        if self._scheduler is not None:
+            return self._scheduler
+
+        with self._init_lock:
+            if self._scheduler is not None:
+                return self._scheduler
+
+            jobstores = {}
+            # Use SQLAlchemy job store when DATABASE_URL is configured
+            if Config.DATABASE_URL:
+                try:
+                    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore  # type: ignore[import-untyped]
+                    jobstores["default"] = SQLAlchemyJobStore(
+                        url=Config.DATABASE_URL,
+                        tablename="apscheduler_jobs",
+                    )
+                    self.logger.info("Using SQLAlchemy job store (persistent)")
+                except Exception as e:
+                    self.logger.warning(
+                        f"SQLAlchemy job store unavailable, using memory: {e}"
+                    )
+
+            self._scheduler = BackgroundScheduler(
+                jobstores=jobstores,
+                job_defaults={
+                    "coalesce": True,
+                    "max_instances": 1,
+                    "misfire_grace_time": 3600,
+                },
+            )
+            self._scheduler.add_listener(
+                self._job_event_listener,
+                EVENT_JOB_EXECUTED | EVENT_JOB_ERROR,
+            )
+            return self._scheduler
+
+    def _job_event_listener(self, event):
+        """Log job execution events."""
+        if event.exception:
+            self.logger.error(
+                f"Scheduled job failed: {event.job_id} — {event.exception}"
+            )
+        else:
+            self.logger.info(f"Scheduled job completed: {event.job_id}")
 
     def load_schedules(self):
         """Load schedules from scraper configuration files."""
@@ -61,24 +111,31 @@ class Scheduler:
 
     def add_scraper_schedule(self, scraper_name: str, cron: str):
         """
-        Add a schedule for a scraper.
+        Add a schedule for a scraper using a real cron expression.
 
         Args:
             scraper_name: Name of the scraper
-            cron: Cron-like expression (simplified)
-
-        Supported cron formats:
-            - "0 2 * * *" - Daily at 2 AM
-            - "0 0 * * 0" - Weekly on Sunday at midnight
-            - "0 */6 * * *" - Every 6 hours
-            - "*/30 * * * *" - Every 30 minutes
+            cron: Standard 5-field cron expression (minute hour day month weekday)
         """
         # Remove existing schedule if any
         self.remove_schedule(scraper_name)
 
-        job = self._parse_cron_and_schedule(scraper_name, cron)
-        if job:
-            self._jobs[scraper_name] = job
+        parts = cron.split()
+        if len(parts) != 5:
+            self.logger.error(f"Invalid cron expression: {cron}")
+            return
+
+        try:
+            trigger = CronTrigger.from_crontab(cron)
+            scheduler = self._get_scheduler()
+            scheduler.add_job(
+                self._run_scraper,
+                trigger=trigger,
+                args=[scraper_name],
+                id=f"scraper_{scraper_name}",
+                name=f"Scraper: {scraper_name}",
+                replace_existing=True,
+            )
             log_event(
                 self.logger,
                 "info",
@@ -86,67 +143,8 @@ class Scheduler:
                 scraper=scraper_name,
                 cron=cron,
             )
-
-    def _parse_cron_and_schedule(
-        self,
-        scraper_name: str,
-        cron: str,
-    ) -> Optional[schedule.Job]:
-        """Parse a cron expression and create a schedule job."""
-        parts = cron.split()
-        if len(parts) != 5:
-            self.logger.error(f"Invalid cron expression: {cron}")
-            return None
-
-        minute, hour, day, month, weekday = parts
-
-        def run_scraper():
-            self._run_scraper(scraper_name)
-
-        try:
-            # Handle common patterns
-            if minute.startswith("*/"):
-                # Every N minutes
-                interval = int(minute[2:])
-                return schedule.every(interval).minutes.do(run_scraper)
-
-            elif hour.startswith("*/"):
-                # Every N hours
-                interval = int(hour[2:])
-                return schedule.every(interval).hours.do(run_scraper)
-
-            elif weekday != "*":
-                # Weekly on specific day
-                days = {
-                    "0": schedule.every().sunday,
-                    "1": schedule.every().monday,
-                    "2": schedule.every().tuesday,
-                    "3": schedule.every().wednesday,
-                    "4": schedule.every().thursday,
-                    "5": schedule.every().friday,
-                    "6": schedule.every().saturday,
-                }
-                time_str = f"{int(hour):02d}:{int(minute):02d}"
-                day_scheduler = days.get(weekday, schedule.every().sunday)
-                return day_scheduler.at(time_str).do(run_scraper)
-
-            elif day != "*":
-                # Monthly on specific day (simplified: run daily and check)
-                def check_and_run():
-                    if datetime.now().day == int(day):
-                        run_scraper()
-
-                time_str = f"{int(hour):02d}:{int(minute):02d}"
-                return schedule.every().day.at(time_str).do(check_and_run)
-
-            else:
-                # Daily at specific time
-                time_str = f"{int(hour):02d}:{int(minute):02d}"
-                return schedule.every().day.at(time_str).do(run_scraper)
-
         except Exception as e:
-            self.logger.error(f"Failed to parse cron '{cron}': {e}")
-            return None
+            self.logger.error(f"Failed to schedule '{scraper_name}' with cron '{cron}': {e}")
 
     def _run_scraper(self, scraper_name: str):
         """Run a scraper (called by scheduler)."""
@@ -163,7 +161,6 @@ class Scheduler:
             # Use Pipeline to handle scraping + upload + parsing
             from app.orchestrator.pipeline import run_pipeline
 
-            # Run pipeline (scraper -> paperless -> ragflow)
             result = run_pipeline(
                 scraper_name=scraper_name,
                 upload_to_ragflow=scraper_config.get("upload_to_ragflow", True),
@@ -192,26 +189,29 @@ class Scheduler:
 
     def remove_schedule(self, scraper_name: str):
         """Remove a schedule for a scraper."""
-        if scraper_name in self._jobs:
-            schedule.cancel_job(self._jobs[scraper_name])
-            del self._jobs[scraper_name]
-            self.logger.info(f"Removed schedule for {scraper_name}")
+        scheduler = self._get_scheduler()
+        job_id = f"scraper_{scraper_name}"
+        try:
+            if scheduler.get_job(job_id):
+                scheduler.remove_job(job_id)
+                self.logger.info(f"Removed schedule for {scraper_name}")
+        except Exception:
+            pass
 
     def clear_all(self):
         """Clear all schedules."""
-        schedule.clear()
-        self._jobs.clear()
+        scheduler = self._get_scheduler()
+        scheduler.remove_all_jobs()
         self.logger.info("Cleared all schedules")
 
     def start(self):
-        """Start the scheduler in a background thread."""
-        if self._running:
+        """Start the scheduler."""
+        scheduler = self._get_scheduler()
+        if scheduler.running:
             self.logger.warning("Scheduler is already running")
             return
 
-        self._running = True
-        self._thread = threading.Thread(target=self._run_loop, daemon=True)
-        self._thread.start()
+        scheduler.start()
         log_event(self.logger, "info", "scheduler.started")
 
     def run_now(self, scraper_name: str):
@@ -226,40 +226,32 @@ class Scheduler:
 
     def stop(self):
         """Stop the scheduler."""
-        self._running = False
-        if self._thread:
-            self._thread.join(timeout=5)
-            self._thread = None
+        scheduler = self._get_scheduler()
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
         log_event(self.logger, "info", "scheduler.stopped")
-
-    def _run_loop(self):
-        """Main scheduler loop."""
-        while self._running:
-            try:
-                schedule.run_pending()
-            except Exception as e:
-                log_exception(self.logger, e, "scheduler.run_pending.exception")
-            time.sleep(1)
 
     def get_next_runs(self) -> dict[str, Optional[datetime]]:
         """Get the next scheduled run time for each scraper."""
+        scheduler = self._get_scheduler()
         result = {}
-        for name, job in self._jobs.items():
-            next_run = job.next_run
-            result[name] = next_run
+        for job in scheduler.get_jobs():
+            name = job.id.replace("scraper_", "", 1)
+            result[name] = getattr(job, "next_run_time", None)
         return result
 
     def get_status(self) -> dict:
         """Get scheduler status."""
+        scheduler = self._get_scheduler()
         return {
-            "running": self._running,
-            "job_count": len(self._jobs),
+            "running": scheduler.running,
+            "job_count": len(scheduler.get_jobs()),
             "jobs": [
                 {
-                    "name": name,
-                    "next_run": job.next_run.isoformat() if job.next_run else None,
+                    "name": job.id.replace("scraper_", "", 1),
+                    "next_run": nrt.isoformat() if (nrt := getattr(job, "next_run_time", None)) else None,
                 }
-                for name, job in self._jobs.items()
+                for job in scheduler.get_jobs()
             ],
         }
 

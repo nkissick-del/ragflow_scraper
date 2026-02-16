@@ -148,6 +148,18 @@ class StateStore:
                 )
                 return [row[0] for row in cur.fetchall()]
 
+    def get_urls_by_status(self, scraper_name: str, status: str) -> list[str]:
+        """Get URLs with a specific status for a scraper."""
+        self.ensure_schema()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT url FROM processed_urls "
+                    "WHERE scraper_name = %s AND status = %s ORDER BY processed_at",
+                    (scraper_name, status),
+                )
+                return [row[0] for row in cur.fetchall()]
+
     def remove_url(self, scraper_name: str, url: str) -> bool:
         """Remove a URL from processed state."""
         self.ensure_schema()
@@ -183,6 +195,36 @@ class StateStore:
             "status": row[1],
             "metadata": row[2] if isinstance(row[2], dict) else json.loads(row[2] or "{}"),
         }
+
+    def get_content_hash(self, scraper_name: str, url: str) -> Optional[str]:
+        """Get the stored content hash for a URL from metadata JSONB."""
+        self.ensure_schema()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata->>'content_hash' FROM processed_urls "
+                    "WHERE scraper_name = %s AND url = %s",
+                    (scraper_name, url),
+                )
+                row = cur.fetchone()
+        if row is None or row[0] is None:
+            return None
+        return str(row[0])
+
+    def store_content_hash(
+        self, scraper_name: str, url: str, content_hash: str
+    ) -> None:
+        """Store a content hash in the URL's metadata JSONB."""
+        self.ensure_schema()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE processed_urls SET "
+                    "metadata = jsonb_set(COALESCE(metadata, '{}'), '{content_hash}', %s::jsonb) "
+                    "WHERE scraper_name = %s AND url = %s",
+                    (json.dumps(content_hash), scraper_name, url),
+                )
+            conn.commit()
 
     # ── statistics & state ──────────────────────────────────────────
 

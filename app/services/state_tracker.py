@@ -178,6 +178,38 @@ class StateTracker:
             info = self._state["processed_urls"].get(url)
             return copy.deepcopy(info) if info else None
 
+    def get_urls_by_status(self, status: str) -> list[str]:
+        """Get URLs with a specific status."""
+        if self._store is not None:
+            return self._store.get_urls_by_status(self.scraper_name, status)
+        with self._lock:
+            return [
+                url for url, info in self._state["processed_urls"].items()
+                if isinstance(info, dict) and info.get("status") == status
+            ]
+
+    def get_content_hash(self, url: str) -> Optional[str]:
+        """Get the stored content hash for a URL."""
+        if self._store is not None:
+            return self._store.get_content_hash(self.scraper_name, url)
+        with self._lock:
+            info = self._state["processed_urls"].get(url)
+            if info and isinstance(info, dict):
+                return info.get("metadata", {}).get("content_hash")
+            return None
+
+    def store_content_hash(self, url: str, content_hash: str) -> None:
+        """Store a content hash for a URL in its metadata."""
+        if self._store is not None:
+            self._store.store_content_hash(self.scraper_name, url, content_hash)
+            return
+        with self._lock:
+            info = self._state["processed_urls"].get(url)
+            if info and isinstance(info, dict):
+                if "metadata" not in info:
+                    info["metadata"] = {}
+                info["metadata"]["content_hash"] = content_hash
+
     def clear(self):
         """Clear all state (use with caution)."""
         if self._store is not None:

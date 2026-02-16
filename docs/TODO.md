@@ -212,19 +212,31 @@ The scraper pattern is well-established (9 scrapers, documented walkthrough). Ad
 
 ---
 
-## 9. Additional Backends (As Needed)
+## 9. Deferred — Low Priority
+
+**Priority:** LOW | **Type:** [Infrastructure]
+
+Items identified during stack audit (2026-02-16) that are intentionally deferred.
+
+- [ ] **PostgreSQL backup automation** — pg_dump on cron to Garage S3 bucket. Requires Garage S3 backend (Phase 6) first.
+- [ ] **Chunk-level export API** — `GET /api/export/chunks?source=aemo&format=jsonl` for downstream ML pipelines. Low demand until external consumers exist.
+- [ ] **Full alerting system** — Beyond Ntfy: webhooks, email (SMTP), Slack integration. Ntfy covers 90% of use cases; expand when team grows.
+
+---
+
+## 10. Additional Backends (As Needed)
 
 **Priority:** LOW | **Effort:** varies | **Type:** [Code]
 
 Only implement when there's a concrete use case. Stubs exist in container.py for S3 and local archive.
 
 - [ ] **Local filesystem archive** — useful for development/testing without Paperless
-- [ ] **S3 archive** — cloud storage for large-scale deployments
+- [x] **S3 archive** — Garage S3 backend implemented (Phase 6, 2026-02-16)
 - [ ] **MinerU parser** — alternative to Docling for specific document types
 
 ---
 
-## 10. Backup & Restore Procedures
+## 11. Backup & Restore Procedures
 
 **Priority:** LOW | **Effort:** 2-3h | **Type:** [Local]
 
@@ -236,7 +248,7 @@ Deferred from Phase 4.5. State files and scraper configs are the primary data to
 
 ---
 
-## 11. UI Polish (Low)
+## 12. UI Polish (Low)
 
 **Priority:** LOW | **Effort:** 2-3h | **Type:** [Code]
 
@@ -247,7 +259,7 @@ Minor UI/UX improvements identified in audit.
 
 ---
 
-## 12. Future Considerations
+## 13. Future Considerations
 
 **Priority:** WATCH | **Type:** [Research]
 

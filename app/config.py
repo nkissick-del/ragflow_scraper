@@ -232,8 +232,19 @@ class Config:
         os.getenv("EMBEDDING_TIMEOUT", "60"), "EMBEDDING_TIMEOUT"
     )
 
+    # Ntfy alerts
+    NTFY_URL = os.getenv("NTFY_URL", "")
+    NTFY_TOPIC = os.getenv("NTFY_TOPIC", "scraper-alerts")
+
+    # S3 / Garage archive backend
+    S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "")
+    S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
+    S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
+    S3_BUCKET = os.getenv("S3_BUCKET", "")
+    S3_REGION = os.getenv("S3_REGION", "us-east-1")
+
     # Chunking
-    VALID_CHUNKING_STRATEGIES = ("fixed", "hybrid")
+    VALID_CHUNKING_STRATEGIES = ("fixed", "hybrid", "semantic", "auto")
     CHUNKING_STRATEGY = os.getenv("CHUNKING_STRATEGY", "hybrid").strip().lower()
     CHUNK_MAX_TOKENS = _parse_int(os.getenv("CHUNK_MAX_TOKENS", "512"), "CHUNK_MAX_TOKENS")
     CHUNK_OVERLAP_TOKENS = _parse_int(os.getenv("CHUNK_OVERLAP_TOKENS", "64"), "CHUNK_OVERLAP_TOKENS")
@@ -415,6 +426,21 @@ class Config:
             if not cls.PAPERLESS_API_TOKEN:
                 raise ValueError(
                     "Invalid Config: ARCHIVE_BACKEND='paperless' requires PAPERLESS_API_TOKEN"
+                )
+
+        if cls.ARCHIVE_BACKEND == "s3":
+            missing = []
+            if not cls.S3_ENDPOINT_URL:
+                missing.append("S3_ENDPOINT_URL")
+            if not cls.S3_ACCESS_KEY:
+                missing.append("S3_ACCESS_KEY")
+            if not cls.S3_SECRET_KEY:
+                missing.append("S3_SECRET_KEY")
+            if not cls.S3_BUCKET:
+                missing.append("S3_BUCKET")
+            if missing:
+                raise ValueError(
+                    f"Invalid Config: ARCHIVE_BACKEND='s3' requires {', '.join(missing)}"
                 )
 
         if cls.RAG_BACKEND == "ragflow":
