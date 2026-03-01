@@ -442,6 +442,31 @@ Closed all TODO Section 7 items. 74 new tests across 4 test files (+ 3 existing 
 
 ---
 
+## 14. n8n Pipeline Generator — Remaining Code Quality Items
+
+**Priority:** LOW | **Effort:** 1-2h | **Type:** [Code Quality]
+
+Remaining items from CodeRabbit review of the n8n pipeline generator (`n8n-workflows/`). All critical and high priority issues have been resolved. These are medium/low severity code quality improvements.
+
+### Medium
+
+- [ ] **`simpleHash` collision risk** (`extract.py`) — `simpleHash()` uses a basic additive hash. Low collision risk at current scale but could use `crypto.createHash('sha256')` for robustness.
+- [ ] **Missing tracking params in `_normalizeUrl`** — Only strips `utm_*` and `fbclid`. Could also strip `gclid`, `mc_cid`, `_ga`, `mc_eid`, `msclkid` for more aggressive dedup.
+- [ ] **`htmlToMd` nested tag handling** (`crawl.py`) — Regex-based HTML→Markdown can't handle nested tags (`<strong><em>text</em></strong>` → `****text**`). Would need a proper parser for full correctness.
+- [ ] **`date_display` locale dependency** (`status.py`) — `new Date().toLocaleDateString('en-AU')` depends on the n8n container's locale. Consider explicit formatting.
+- [ ] **`getOrCreateId` race with concurrent pipelines** (`archive.py`) — Search-then-create pattern has a TOCTOU window. The 409 retry handles it, but a `SELECT ... FOR UPDATE` or upsert would be cleaner.
+- [ ] **`connect()` doesn't validate node names** (`helpers.py`) — `connect()` silently creates dangling references if a node name is misspelled. Could add validation against `wf['nodes']`.
+
+### Low
+
+- [ ] **Duplicate `require()` imports across nodes** — Multiple Code nodes import the same modules (`http`, `https`, `url`, `crypto`). Each node runs in a separate sandbox so this is unavoidable, but could be documented.
+- [ ] **`searchObj` unbounded recursion depth** (`extract.py`) — Recursive JSON search in `extractLinks` has no depth limit. Malicious JSON-LD could cause stack overflow.
+- [ ] **No Python type annotations** — The generator (`generate-v8.py`, `pipeline/*.py`) has no type hints. Low priority since it's a build tool, not runtime code.
+- [ ] **Node position magic numbers** — All node positions are hardcoded `(x, y)` tuples. Could use a layout system, but current manual positioning matches n8n UI expectations.
+- [ ] **`settled` flag race condition** (`helpers.py:_fetch`) — Minor: between `res.on('end')` and `req.on('error')`, both could fire in edge cases. The `settled` flag guards against this but it's a known Node.js pattern limitation.
+
+---
+
 ## Current State
 
 - **1085 unit/integration tests passing** (all green locally and CI; stack tests excluded from default collection)
