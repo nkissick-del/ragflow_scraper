@@ -15,7 +15,7 @@ feedparser==6.0.11
 defusedxml==0.7.1
 
 # HTTP
-requests==2.32.4
+requests==2.33.0
 
 # Cryptography (for RAGFlow RSA login)
 pycryptodome==3.20.0
