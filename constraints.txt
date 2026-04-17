@@ -13,7 +13,7 @@ python-dotenv==1.0.1
 apscheduler==3.10.4
 sqlalchemy==2.0.36
 boto3==1.35.81
-langchain-text-splitters==1.1.0
+langchain-text-splitters==1.1.2
 prometheus_client==0.21.1
 alembic==1.14.1
 jsonschema==4.23.0
